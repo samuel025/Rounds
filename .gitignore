@@ -4,3 +4,5 @@ node_modules/
 target/
 dist/
 __pycache__/
+results/conformance-scenarios.json
+results/conformance-ts.json

@@ -1,0 +1,83 @@
+Rounds demo replay (offline). Network testnet; contract rounds-core-012465.testnet; board rounds-board-012465.sputnik-v2.testnet
+
+STEPS (each links to its testnet transaction)
+  1  Setup                      register rounds-ada-012465.testnet for test USDC                     https://explorer.testnet.near.org/transactions/GoW7qMpjVVuyDCMJM2CDcW3PsLFSrwAwxtjYFsDcyjxN
+  1  Setup                      register rounds-fund-012465.testnet for test USDC                    https://explorer.testnet.near.org/transactions/EPfXVmqH5Mr97bdcfqzsXeBt768vjFobkpcb1vN6WHFd
+  1  Setup                      register rounds-indep-012465.testnet for test USDC                   https://explorer.testnet.near.org/transactions/4cA98XYZfB3Dr6dEbXVKBkgeKG6jz66kK2ftPDtkUHYX
+  1  Setup                      register rounds-bayo-012465.testnet for test USDC                    https://explorer.testnet.near.org/transactions/DncAkNrZCCUm6Y5prnDSrJTUhxmx2ExTD8FixE3c537p
+  1  Setup                      register rounds-chidi-012465.testnet for test USDC                   https://explorer.testnet.near.org/transactions/9t9HdtfCwqv1Q9jph47SwqnJEaAtJns1nxcR5M6tGsx9
+  1  Setup                      register rounds-dayo-012465.testnet for test USDC                    https://explorer.testnet.near.org/transactions/42F5qzQfXwsZpPqPU23cyTEbYy6dw24fGBR3yVQK1m93
+  1  Setup                      register rounds-efe-012465.testnet for test USDC                     https://explorer.testnet.near.org/transactions/DQFLw3yZb87vHgRHJgzvfods9tSq2QvxTEH7B3NnVpr4
+  1  Setup                      register rounds-zed-012465.testnet for test USDC                     https://explorer.testnet.near.org/transactions/9j6F9BGiuumsz35evJzsdUHB1ohWrY4n7p1xWw6KDfHn
+  1  Setup                      register rounds-core-012465.testnet for test USDC                    https://explorer.testnet.near.org/transactions/55LuXuN68yEHEwR9roeE8Z8hLiHiM91LFr8Vsvr5fytg
+  1  Setup                      register rounds-board-012465.sputnik-v2.testnet for test USDC        https://explorer.testnet.near.org/transactions/6jhGq2UnaHhqHyMieoYLPfkXQpnpor27J1fef5vwViH2
+  1  Setup                      register rounds-chidi-012465.testnet for the fake token              https://explorer.testnet.near.org/transactions/HDgpMDEaKejobkwTKKNfGmVN9BNnYe24bsYmTT6vbNHL
+  1  Setup                      register rounds-core-012465.testnet for the fake token               https://explorer.testnet.near.org/transactions/TPyKe4wHKQBTLf2zAwvE1GaZkFcegukZCjH5dfiiZzY
+  1  Setup                      faucet: fund $9,000,000 test USDC                                    https://explorer.testnet.near.org/transactions/BJr3jQMmFfy6i7MoS8DJz3mtU9v4MFmPSdAjW1qvUyv5
+  1  Setup                      faucet: chidi $500,000                                               https://explorer.testnet.near.org/transactions/EsbtXs4TXoCGDhKH1wgjVa8D7tMAzQ7LHtvG3r7ntUTz
+  1  Setup                      faucet: dayo $250,000                                                https://explorer.testnet.near.org/transactions/7cmZSQZfneBMM9totwEoeVCzX7YvSjUKS2tocYkruVTs
+  1  Setup                      faucet: zed $20,000,000                                              https://explorer.testnet.near.org/transactions/4j3hdzaDBLK9E9PmcinB9S617mZytuxv792zpkm48gBS
+  1  Setup                      faucet: 100 fake tokens to chidi                                     https://explorer.testnet.near.org/transactions/GvsbbTNAxNDiJn5LmTVmZEU6YQCaEumdEgtevUtDccqt
+  1  Setup                      DAO proposal: board makes ada an officer                             https://explorer.testnet.near.org/transactions/DJ9nkJXA19x4tqMvJtfNWmGyCYgV2DckfUJPsqRFEJwK
+  1  Setup                      DAO vote 1/2 (fund) on #3                                            https://explorer.testnet.near.org/transactions/BQtEgwvAMCVpK5wRevxz4XrGzv5UzXWz7dpoq91tHgj9
+  1  Setup                      DAO vote 2/2 (indep) on #3: executes set_officer                     https://explorer.testnet.near.org/transactions/35iSF7oX9b21ZtVWsAZbNd4ugtaQWNeyEg924SjrDKVF
+  2  Founders                   ada proposes Founder round                                           https://explorer.testnet.near.org/transactions/DyYJLyzku2J3mp6nTqWUAtpDyukCF85rcLdbkrrT8GAk
+  2  Founders                   DAO proposal: board approves founder issuance by plan hash           https://explorer.testnet.near.org/transactions/G7D2Aiqi5opsWZoZ9eLwt1pddDe4Jocx4T8cnXXhxxhF
+  2  Founders                   DAO vote 1/2 (fund) on #4                                            https://explorer.testnet.near.org/transactions/4esTUu9hFcwj2ajMvKH4tzJ7EeDfMJJT6ed5i6H6vujm
+  2  Founders                   DAO vote 2/2 (indep) on #4: executes approve_round                   https://explorer.testnet.near.org/transactions/5YD1Y5w6eVHXeG4YjFsDfzDm8yku8BmDAsk8o7zS59Sq
+  2  Founders                   anyone closes founder issuance                                       https://explorer.testnet.near.org/transactions/CkHeL9iHHsyAow3GzyEReifJUUt4diVDPfx1C1DJmiAo
+  3  SAFEs                      ada proposes Safe round                                              https://explorer.testnet.near.org/transactions/7iXrG5Fa6zwjfsp1aM8UMpNwv4RVfi5GrwbSa2usaEE2
+  3  SAFEs                      safe1 holder pays $500000 into escrow                                https://explorer.testnet.near.org/transactions/6DUrpKMDNR4GmJZWcmRgXf7BhK4f2Xici2ncTkuhuZzg
+  3  SAFEs                      DAO proposal: board approves safe1 by plan hash                      https://explorer.testnet.near.org/transactions/8VQBJCaax4Cv9J1oepGrQBKjxe8P7Hh7xsZ7rsWHs8TQ
+  3  SAFEs                      DAO vote 1/2 (fund) on #5                                            https://explorer.testnet.near.org/transactions/ESXvoHvt5xmN4KJFuv5fVLhpoktSxmu57V4cxiAoVXbb
+  3  SAFEs                      DAO vote 2/2 (indep) on #5: executes approve_round                   https://explorer.testnet.near.org/transactions/DosoUMnqrgMs9G2WS8aGAg7WFb78i6aUHLrJPfZ1MUBk
+  3  SAFEs                      anyone closes safe1                                                  https://explorer.testnet.near.org/transactions/7AFccoWMPQWjdbhQATZgeRERn4BmKwrDvnS41miwovfU
+  3  SAFEs                      ada proposes Safe round                                              https://explorer.testnet.near.org/transactions/6JUQLTnsrVX9o5RusNdBSKPQ49nMDwoEyxWmmseYe33b
+  3  SAFEs                      safe2 holder pays $250000 into escrow                                https://explorer.testnet.near.org/transactions/3S7xufamKE6rx8BFk5rVWdqQECuFezs6Y4J8sFKZrj7c
+  3  SAFEs                      DAO proposal: board approves safe2 by plan hash                      https://explorer.testnet.near.org/transactions/6FVQUbkbEWdnjD31g3tHc1WDnbdKKFkvCH4viW71q5FY
+  3  SAFEs                      DAO vote 1/2 (fund) on #6                                            https://explorer.testnet.near.org/transactions/ApAeWpP4ibuaWFZ1v8Et5TyVkhWvMcdHEspSfJBT6jqq
+  3  SAFEs                      DAO vote 2/2 (indep) on #6: executes approve_round                   https://explorer.testnet.near.org/transactions/4WNXop6gjNLf6B412MswyMK5DmhEVr521FezncL8wm9a
+  3  SAFEs                      anyone closes safe2                                                  https://explorer.testnet.near.org/transactions/236sxtbaQH1aJ2Yh6XEo9PXtPuWBBRewcS7mDCgHMFPz
+  4  Series A proposed          ada proposes Priced round                                            https://explorer.testnet.near.org/transactions/6YNKfUu24Vx1dvYy38KFcmVJ6uxxv8X3MEEqrDtx4zBg
+  5  Series A funded and closed fund pays $9,000,000 into escrow                                     https://explorer.testnet.near.org/transactions/6KwpDCDq68Vab8DD6MYFCiRePntVSeLtgEXsC2WXi3iG
+  5  Series A funded and closed DAO proposal: board approves Series A by plan hash                   https://explorer.testnet.near.org/transactions/B7rcBZf8XwtHxbdXzWxtZisEPQFthVshb7KA1ZxjXNNk
+  5  Series A funded and closed DAO vote 1/2 (fund) on #7                                            https://explorer.testnet.near.org/transactions/DRUmaUNTHECaUFPv7F34DfwGR2oMy6KjEWYUPSxe1Mqt
+  5  Series A funded and closed DAO vote 2/2 (indep) on #7: executes approve_round                   https://explorer.testnet.near.org/transactions/AgruxS2L2zeFBYcB8fWsFS5sPfPYFNQ5HmsBLtRGDcm8
+  5  Series A funded and closed anyone closes Series A                                               https://explorer.testnet.near.org/transactions/A1DEtpzPqHsKs8bcWjgJfFxesBeVMtCp1PQ9w2zsSu2J
+  6  Attacks                    chidi deposits the WRONG token                                       https://explorer.testnet.near.org/transactions/4FzRSisx2x9BF2esmFcBJJLSnNHateUNKtJTkrnhsMkS
+  7  Grant                      DAO proposal: board grants Efe 100,000 options at $2.00              https://explorer.testnet.near.org/transactions/FqNzU2MjdWVSsJrMVYv2stCUXngNX8voGyg6XzXQDLy1
+  7  Grant                      DAO vote 1/2 (fund) on #8                                            https://explorer.testnet.near.org/transactions/4NGpGrRs5yv6hJ1jnpkWt9owcDuLpLHCPMMJhHUbjBXF
+  7  Grant                      DAO vote 2/2 (indep) on #8: executes grant                           https://explorer.testnet.near.org/transactions/HxsLLm2KYKa47hnK5grwV38pW2VEt5RrZ4z47x9mqgxM
+  8  Exit                       ada proposes the $20M exit                                           https://explorer.testnet.near.org/transactions/9XcBbgnevQvsEHRbaiyeTZXMCJZUszXVgq2UsGdpFbB4
+  8  Exit                       zed funds the exit ($19999999.999999)                                https://explorer.testnet.near.org/transactions/4pZF66ujz6sKKaATAV8WHtZGTUukj5rHq9Dnzm8AHzHe
+  8  Exit                       DAO proposal: board approves the exit by plan hash                   https://explorer.testnet.near.org/transactions/F4jbS1gzURie4n3SSwUuM7Mj6EkCXZ1KzUXQuZMzePJr
+  8  Exit                       DAO vote 1/2 (fund) on #9                                            https://explorer.testnet.near.org/transactions/13GRw5kEAP4zaJNGDW3EVcbrLs2EzWLZ7dkamwVdBqtv
+  8  Exit                       DAO vote 2/2 (indep) on #9: executes approve_exit                    https://explorer.testnet.near.org/transactions/FXrmSWTZ2GvrcJip7Yz8LqvXmsGX364Fe1reyWozbACP
+  8  Exit                       anyone runs distribute                                               https://explorer.testnet.near.org/transactions/GQ2A9DtvgvdLm71SenJs1NRMYGuuP6oLbD17uu2YnsKY
+
+CAP TABLE rebuilt from committed events
+  ada            Common                        5000000   33.33%
+  bayo           Common                        2750000   18.33%
+  chidi          SAFE 1 shadow preferred       1000000    6.66%
+  dayo           SAFE 2 shadow preferred        250000    1.66%
+  fund           Series A Preferred            4500000   30.00%
+  unissued_pool  Common                        1500000   10.00%
+  total                                       15000000
+
+EXIT PAYOUTS from committed events
+  ada               $6,111,111.11
+  bayo              $3,361,111.11
+  chidi             $1,222,222.22
+  dayo                $305,555.56
+  fund              $9,000,000.00
+
+CHECKS against the engine (recomputed offline)
+PASS four rounds closed in order (founders, two SAFEs, Series A)
+PASS replayed holdings equal the engine's holdings for every (holder, class)
+PASS GV-1: price $2.0000 and 15,000,000 fully diluted shares
+PASS every committed plan equals the plan the engine recomputes
+PASS the committed exit plan equals the engine's waterfall plan
+PASS GV-2 at $20M: all 5 payouts equal the engine's waterfall to the micro-dollar
+PASS payouts plus the reported rounding remainder equal the $20,000,000 proceeds
+PASS every round and the exit were approved by the board before execution
+PASS summary: 8 checks, 0 failed

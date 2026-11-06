@@ -22,3 +22,15 @@ web-dev:
 .PHONY: demo
 demo: build-contract
 	npx vite-node scripts/demo.ts
+
+.PHONY: verify-onchain replay
+verify-onchain:
+	@npx vite-node scripts/verify-onchain.ts > results/verify-onchain.txt; code=$$?; cat results/verify-onchain.txt; exit $$code
+replay:
+	@npx vite-node scripts/replay.ts > results/replay.txt; code=$$?; cat results/replay.txt; exit $$code
+
+.PHONY: summary check-readme
+summary:
+	node scripts/summary.mjs
+check-readme:
+	node scripts/check-readme.mjs

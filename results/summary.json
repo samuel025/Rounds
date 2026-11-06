@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "engine": 21,
+    "engine_failed": 0,
+    "engine_files": 5,
+    "properties": 9,
+    "golden_vector_tests": 8,
+    "sandbox": 6
+  },
+  "conformance": {
+    "scenarios": 1000,
+    "rejected_inputs": 40,
+    "mismatches": 0
+  },
+  "demo": {
+    "transactions": 53,
+    "events": 23,
+    "rounds_closed": 4,
+    "payouts": 5
+  },
+  "verify_onchain": {
+    "checks": 19,
+    "failed": 0
+  },
+  "replay": {
+    "checks": 8,
+    "failed": 0
+  }
+}
