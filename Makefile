@@ -1,6 +1,10 @@
-.PHONY: test
+.PHONY: test conformance
 test:
 	npx vitest run
+	$(MAKE) conformance
+
+conformance:
+	python3 -I ref/conformance.py 1000
 
 .PHONY: build-contract test-contract
 build-contract:

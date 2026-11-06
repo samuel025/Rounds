@@ -1,0 +1,10 @@
+{
+ "scenarios": 1000,
+ "by_kind": {
+  "round": 400,
+  "waterfall": 400,
+  "vesting": 200
+ },
+ "rejected_inputs": 40,
+ "mismatches": 0
+}
