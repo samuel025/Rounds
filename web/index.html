@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rounds — a cap table anyone can verify</title>
+  <meta name="description" content="Cap table and fundraising on NEAR testnet: an exact equity engine, a DAO board that approves by plan hash, and a verifier anyone can run." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header class="nav"><div class="wrap nav-in">
+    <a class="brand" href="#top"><span class="dot"></span>Rounds</a>
+    <nav><a href="#cap">Cap table</a><a href="#model">Model a round</a><a href="#people">Investors &amp; employees</a><a href="#exit">Exit</a><a href="#verify">Verify</a></nav>
+    <span class="net"><i></i>NEAR testnet</span>
+  </div></header>
+  <main id="top">
+    <section class="hero wrap">
+      <p class="eyebrow">Cap table · fundraising · NEAR</p>
+      <h1>The cap table that<br/>shows its work.</h1>
+      <p class="lede">An exact equity engine does the math. A DAO board approves each round by plan hash. Anyone can re-verify it.</p>
+      <div class="cta"><a class="btn primary" href="#model">Model a Series A</a><a class="btn" href="#verify">Verify a round</a></div>
+      <div class="card hero-chart"><div class="card-h"><span class="mono muted">OWNERSHIP · BEFORE → AFTER SERIES A</span><span class="mono muted" id="hero-price"></span></div><div id="hero-bars"></div><div id="hero-legend" class="legend"></div></div>
+    </section>
+    <section id="cap" class="wrap sec"><h2>Cap table</h2><p class="sub">Every number comes from the engine, never from a model. <a href="rules.html" class="mono">RULES.md</a> defines each one.</p>
+      <div class="tabs" id="cap-filter"></div><div class="card"><table id="cap-table"></table></div></section>
+    <section id="model" class="wrap sec"><h2>Round modeler</h2><p class="sub">Change an input; the engine re-solves SAFE conversion, pool top-up and price exactly.</p>
+      <div class="model-grid"><div class="card form" id="form"></div><div><div class="card" id="model-out"></div><div class="card" id="plan-card"></div></div></div></section>
+    <section id="people" class="wrap sec"><h2>Investors &amp; employees</h2>
+      <div class="grid2"><div class="card" id="investor"></div><div class="card" id="employee"></div></div></section>
+    <section id="exit" class="wrap sec"><h2>Exit simulator</h2><p class="sub">Drag proceeds. Preferred takes its preference or converts, whichever pays more.</p>
+      <div class="card" id="exit-card"></div></section>
+    <section id="verify" class="wrap sec"><h2>Events &amp; verify</h2><p class="sub" id="verify-sub"></p>
+      <div class="card"><div class="card-h"><span class="mono muted">ON-CHAIN EVENTS</span><button class="btn primary sm" id="verify-btn">Verify</button></div><div id="events"></div><pre class="out" id="verify-out"></pre></div></section>
+  </main>
+  <footer class="wrap foot"><p>Rounds is a model and a testnet demo, not a securities offering, and it has no legal validity. Holdings on the demo contract are public on chain. Test dollars have no value.</p></footer>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

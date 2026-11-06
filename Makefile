@@ -8,3 +8,9 @@ build-contract:
 	cd contract/mock-ft && cargo near build non-reproducible-wasm
 test-contract: build-contract
 	cd contract/it && cargo test -- --test-threads=2
+
+.PHONY: web web-dev
+web:
+	node scripts/rules-html.mjs && npx vite build
+web-dev:
+	node scripts/rules-html.mjs && npx vite

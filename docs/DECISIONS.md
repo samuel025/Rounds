@@ -11,3 +11,6 @@
 - 2026-11-06 (M3): distribute is capped at 8 payouts per call (25 Tgas each + overhead); answers open Q6 conservatively, not measured.
 - 2026-11-06 (M3): the contract does not register payout receivers for NEP-141 storage (open Q5): receivers must already be registered, otherwise their payout fails and stays retryable. The demo script registers everyone first.
 - 2026-11-06 (M3): exercise strikes accumulate in the contract (counted in ledger_total) and are not yet forwarded to the treasury; documented gap.
+- 2026-11-06 (M4 web): visual language taken from resend.com's CSS tokens (pure black, hairline borders, Inter + mono, tight tracking, pill buttons, one green accent). Fonts load from Google Fonts with system fallbacks; dark theme only. Vite + vanilla TypeScript, no framework, no charting library (bars are plain CSS).
+- 2026-11-06 (M4 web): the page has no wallet. "Propose on chain" prints the plan hash and the exact `near` CLI call instead of sending a transaction; "Run exit" is simulated only. Wallet integration is not built and the page says so.
+- 2026-11-06 (M4 web): Verify currently checks the engine against GV-1 and, once deployment.json and events.json are filled by the demo, recomputes each round's plan hash and compares it with the chain. Events and deployment are empty until the testnet deploy.
