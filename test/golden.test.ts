@@ -5,7 +5,8 @@ import { priceRound, waterfall } from "../src/engine/index";
 const load = (f: string) => JSON.parse(readFileSync(new URL(`../vectors/${f}`, import.meta.url), "utf8"));
 const B = (s: string) => BigInt(s);
 const rec = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, B(v)]));
-const cents = (micro: bigint) => { const c = micro / 10_000n; return `${c / 100n}.${(c % 100n).toString().padStart(2, "0")}`; };
+const cents = (micro: bigint) => { const c = (micro + 5_000n) / 10_000n; // round half up for display (vector amounts are shown to the cent)
+  return `${c / 100n}.${(c % 100n).toString().padStart(2, "0")}`; };
 
 describe("GV-1", () => {
   const v = load("gv-1.json");

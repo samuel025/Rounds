@@ -44,3 +44,10 @@ vectors/gv-1.json, vectors/gv-2.json (hand-checked against R3, R6, R8 on 2026-11
 
 ## Clarification (M1)
 Cap_pre depends on which SAFEs convert at cap vs discount; A_i/C_i of the pre-round capitalization holds only when every SAFE is in the cap regime. GV-3 (discount-only, $2.1612 price, 578,382 SAFE shares) is in test/gv-discount.test.ts.
+
+## Clarifications (M2)
+- R6: if V - t*V' <= 0 (target pool cannot fit inside the pre-money) the price would be zero or negative; the engine rejects the input.
+- R7: vested(m) = 0 for m < cliff; floor(total*m/term) for cliff <= m < term; total for m >= term. 25% at month 12 of 48.
+- R8: when proceeds fall short of the preferences, preferences are paid by rank, pro rata within a rank, rounded down; the rounding dust is reported as the remainder and is NOT given to common (otherwise common's payout is non-monotone in proceeds, found by P7). Option payouts are reported net of the strike; options are taken lowest-strike first and exercise only while per-share payout > strike.
+- Display: vector amounts "to the cent" round half up from micro-dollars (GV-2 SAFE 2 at $20M: 305,555.5556 -> 305,555.56). The engine itself floors in micro-dollars.
+- GV-4 (hand-checked): 100,000 options at $2.00 are unexercised at a $20M exit and exercised at $60M (pps = 60.2M/13.6M = $4.42647; Ada $22,132,352.94; Efe net $242,647.06).

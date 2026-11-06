@@ -1,8 +1,7 @@
 import { Rat, rat, add, sub, mul, div, floor, cmp } from "./rat";
 export * from "./rat";
-import { waterfall as wf, type Waterfall, type WaterfallResult } from "./waterfall";
-export const waterfall = wf;
-export type { Waterfall, WaterfallResult };
+export * from "./waterfall";
+export * from "./vesting";
 
 export interface Safe { id: string; holder: string; amount: bigint; postMoneyCap: bigint; discountBps: number }
 export interface PricedRoundInput {
@@ -47,6 +46,7 @@ export function priceRound(inp: PricedRoundInput): PricedRoundResult {
   const t = inp.poolTarget;
   const one = rat(1n);
   capOnlyCapitalization(N, inp.safes); // validates sum p < 1
+  if (cmp(sub(rat(V), mul(t, rat(Vp))), rat(0n)) <= 0) throw new Error("pool target too large for this pre-money: price would be zero");
 
   type Regime = "cap" | "discount";
   const solve = (P: bigint) => {
