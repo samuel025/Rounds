@@ -1,0 +1,46 @@
+{
+ "id": "GV-7",
+ "description": "down round: the $0.90 round price is below the SAFE's $1.80 cap price, so the SAFE converts at the round price",
+ "inputs": {
+  "common": {
+   "ada": "9000000"
+  },
+  "unissued_pool": "1000000",
+  "safes": [
+   {
+    "id": "s",
+    "holder": "s-holder",
+    "amount": "1000000000000",
+    "post_money_cap": "20000000000000",
+    "discount_bps": 0
+   }
+  ],
+  "round": {
+   "pre_money": "10000000000000",
+   "investors": {
+    "fund": "2000000000000"
+   },
+   "pool_target": {
+    "num": "0",
+    "den": "100"
+   }
+  }
+ },
+ "expected": {
+  "price_micro": "900000",
+  "holdings": {
+   "ada": "9000000",
+   "s": "1111111",
+   "fund": "2222222",
+   "unissued_pool": "1000000"
+  },
+  "safe_price_micro": {
+   "s": "900000"
+  },
+  "regime": {
+   "s": "discount"
+  },
+  "pool_top_up": "0",
+  "fully_diluted": "13333333"
+ }
+}

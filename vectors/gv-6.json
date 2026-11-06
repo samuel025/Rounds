@@ -1,0 +1,33 @@
+{
+ "id": "GV-6",
+ "description": "no pool top-up: the 5% target (625,000 shares) is already covered by the 1,000,000 pool; P = V/(X+pool)",
+ "inputs": {
+  "common": {
+   "ada": "9000000"
+  },
+  "unissued_pool": "1000000",
+  "safes": [],
+  "round": {
+   "pre_money": "20000000000000",
+   "investors": {
+    "fund": "5000000000000"
+   },
+   "pool_target": {
+    "num": "5",
+    "den": "100"
+   }
+  }
+ },
+ "expected": {
+  "price_micro": "2000000",
+  "holdings": {
+   "ada": "9000000",
+   "fund": "2500000",
+   "unissued_pool": "1000000"
+  },
+  "safe_price_micro": {},
+  "regime": {},
+  "pool_top_up": "0",
+  "fully_diluted": "12500000"
+ }
+}

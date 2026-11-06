@@ -1,0 +1,100 @@
+{
+ "id": "GV-5",
+ "note": "A $1M SAFE with a 20% discount. Cap wins in case A, discount wins in case B. Hand-derived in docs/NOTES.md.",
+ "cases": [
+  {
+   "name": "A: cap wins ($10M cap)",
+   "id": "GV-5A",
+   "description": "cap price $0.90 < discount price $1.44",
+   "inputs": {
+    "common": {
+     "ada": "9000000"
+    },
+    "unissued_pool": "1000000",
+    "safes": [
+     {
+      "id": "s",
+      "holder": "s-holder",
+      "amount": "1000000000000",
+      "post_money_cap": "10000000000000",
+      "discount_bps": 2000
+     }
+    ],
+    "round": {
+     "pre_money": "20000000000000",
+     "investors": {
+      "fund": "5000000000000"
+     },
+     "pool_target": {
+      "num": "0",
+      "den": "100"
+     }
+    }
+   },
+   "expected": {
+    "price_micro": "1800000",
+    "holdings": {
+     "ada": "9000000",
+     "s": "1111111",
+     "fund": "2777777",
+     "unissued_pool": "1000000"
+    },
+    "safe_price_micro": {
+     "s": "900000"
+    },
+    "regime": {
+     "s": "cap"
+    },
+    "pool_top_up": "0",
+    "fully_diluted": "13888888"
+   }
+  },
+  {
+   "name": "B: discount wins ($100M cap)",
+   "id": "GV-5B",
+   "description": "cap price ~$9.90 > discount price $1.50",
+   "inputs": {
+    "common": {
+     "ada": "9000000"
+    },
+    "unissued_pool": "1000000",
+    "safes": [
+     {
+      "id": "s",
+      "holder": "s-holder",
+      "amount": "1000000000000",
+      "post_money_cap": "100000000000000",
+      "discount_bps": 2000
+     }
+    ],
+    "round": {
+     "pre_money": "20000000000000",
+     "investors": {
+      "fund": "5000000000000"
+     },
+     "pool_target": {
+      "num": "0",
+      "den": "100"
+     }
+    }
+   },
+   "expected": {
+    "price_micro": "1875000",
+    "holdings": {
+     "ada": "9000000",
+     "s": "666666",
+     "fund": "2666666",
+     "unissued_pool": "1000000"
+    },
+    "safe_price_micro": {
+     "s": "1500000"
+    },
+    "regime": {
+     "s": "discount"
+    },
+    "pool_top_up": "0",
+    "fully_diluted": "13333332"
+   }
+  }
+ ]
+}
