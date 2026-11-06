@@ -111,7 +111,7 @@ What Rounds does differently: it is on NEAR, uses a DAO board that approves by p
 - **Code window:** all code in this repository was written starting 2026-11-06.
 - **AI assistance:** the code, tests, specs and this README were written by Claude (Anthropic) through Claude Code, directed by the human team. The human reviews and submits.
 - **Libraries:** near-sdk 5.30, near-workspaces 0.22, cargo-near 0.22, near-cli-rs 0.30, Sputnik DAO v2 (deployed from the testnet factory), TypeScript, Vitest, fast-check, Vite, Python standard library (fractions).
-- **Other NEAR project by the same entrant:** _TODO for the human to fill in before submitting (none named so far)._
+- **Other NEAR project by the same entrant:** none. Rounds is the only project entered.
 - **Inspiration:** the web app's look was modelled on resend.com's design tokens; no Resend code or assets are used.
 
 ## License

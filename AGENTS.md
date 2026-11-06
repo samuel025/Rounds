@@ -44,4 +44,3 @@ Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet.
 - The Python reference and the TypeScript engine were written by the same author in one session.
 - The committed demo run predates the vesting-timing fix in `scripts/demo.ts`; see README.
 - The SAFE clause citations in `RULES.md` are not written yet.
-- A TODO remains in the README disclosures (the entrant's other NEAR project, if any).
