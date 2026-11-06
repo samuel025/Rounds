@@ -26,7 +26,7 @@ Each converted SAFE becomes its own preferred class with original issue price = 
 Inputs: pre-money V, new money I (per investor I_k), pool target t (share of post-round fully diluted). V' = V + I.
 X = issued + granted options + SAFE shares (unissued pool excluded).
 Pool after = t * FD_post, FD_post = V'/P, so with pool top-up T and pool before B: P = V / (X + B + T), T = (t*V'/P) - B.
-Solve: P = V*(1-t)... see derivation TODO in M1. If T < 0: T = 0 and P = V / (X + B).
+Derivation: X + B + T = V/P (top-up in pre-money) and B + T = t*V'/P, so X = (V - t*V')/P and P = (V - t*V')/X, then T = floor(t*V'/P) - B. If T < 0: T = 0 and P = V / (X + B).
 New investor k gets floor(I_k / P) shares. FD_post differs from V'/P only within rounding; the engine reports the difference.
 GV-1: V=21M, I=9M, X=9,000,000, B=1,000,000, T=500,000, P=$2.00, Fund = 4,500,000.
 
@@ -41,3 +41,6 @@ sha256 of RFC 8785 canonical JSON of the plan, all amounts as strings.
 
 ## Golden vectors
 vectors/gv-1.json, vectors/gv-2.json (hand-checked against R3, R6, R8 on 2026-11-06). TODO: add five more (discount-only SAFE; cap+discount each winning; no top-up; down round below caps; exit with out-of-the-money option).
+
+## Clarification (M1)
+Cap_pre depends on which SAFEs convert at cap vs discount; A_i/C_i of the pre-round capitalization holds only when every SAFE is in the cap regime. GV-3 (discount-only, $2.1612 price, 578,382 SAFE shares) is in test/gv-discount.test.ts.
