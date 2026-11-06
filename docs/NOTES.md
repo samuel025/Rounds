@@ -12,3 +12,4 @@
   - add_proposal bond used: 0.1 NEAR (policy proposal_bond), paid by the proposer.
   - Keys: near-cli-rs "save-to-legacy-keychain" put throwaway testnet keys in ~/.near-credentials/testnet/ (outside the repo, no value). Faucet gives 10 NEAR per account.
   - Stub: spike/stub (near-sdk 5, cargo-near 0.22 builds in ~40s).
+- 2026-11-06 M3: contract/ (near-sdk 5.30, wasm 275 KB), contract/mock-ft (test NEP-141, 6 decimals, faucet, fail switch), contract/it (near-workspaces 0.22.4, sandbox). `make test-contract` = 6 sandbox tests, ~50 s, pass. Mutation check: removing only_board from approve_round makes the non-board test fail.

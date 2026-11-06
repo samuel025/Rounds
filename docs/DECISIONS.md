@@ -5,3 +5,9 @@
 - 2026-11-06 (spike): near-cli-rs stores demo keys in ~/.near-credentials (legacy keychain), not .state/; they are throwaway testnet keys and never enter the repo. Account names/ids live in .state/suffix.
 - 2026-11-06 (M2): GV-2 SAFE 2 shows $305,555.56 although the micro-dollar value floors to .55; vector amounts are rounded half-up to the cent for display only (see RULES.md).
 - 2026-11-06 (M2): shortfall dust is reported as remainder, not paid to common (found by P7 monotonicity).
+- 2026-11-06 (M3): sandbox tests use a plain account as the "board" instead of the Sputnik wasm. The contract only checks predecessor == board, and the real DAO-as-predecessor path was proven on testnet in the spike. Sputnik-in-sandbox stays a nice-to-have.
+- 2026-11-06 (M3): plans travel as canonical-JSON strings; the contract checks sha256(plan bytes) == plan_hash before parsing, so the board approves exactly the bytes the contract will execute. The verifier must produce byte-identical canonical JSON (open Q4 still open for TS/Python/Rust).
+- 2026-11-06 (M3): the contract credits the plan's issuances as given; it does not recompute equity math (by design: the engine is off-chain, the board approves the hash, anyone re-verifies).
+- 2026-11-06 (M3): distribute is capped at 8 payouts per call (25 Tgas each + overhead); answers open Q6 conservatively, not measured.
+- 2026-11-06 (M3): the contract does not register payout receivers for NEP-141 storage (open Q5): receivers must already be registered, otherwise their payout fails and stays retryable. The demo script registers everyone first.
+- 2026-11-06 (M3): exercise strikes accumulate in the contract (counted in ledger_total) and are not yet forwarded to the treasury; documented gap.
