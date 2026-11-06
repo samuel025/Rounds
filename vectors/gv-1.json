@@ -1,0 +1,22 @@
+{
+  "id": "GV-1",
+  "units": { "shares": "integer", "money": "micro-dollars as strings (6 decimals)" },
+  "inputs": {
+    "common": { "ada": "5000000", "bayo": "2750000" },
+    "unissued_pool": "1000000",
+    "safes": [
+      { "id": "safe1", "holder": "chidi", "amount": "500000000000", "post_money_cap": "5000000000000", "discount_bps": 0 },
+      { "id": "safe2", "holder": "dayo", "amount": "250000000000", "post_money_cap": "10000000000000", "discount_bps": 0 }
+    ],
+    "round": { "pre_money": "21000000000000", "investors": { "fund": "9000000000000" }, "pool_target": { "num": "1", "den": "10" } }
+  },
+  "expected": {
+    "price_micro": "2000000",
+    "x_shares": "9000000",
+    "pool_top_up": "500000",
+    "fully_diluted": "15000000",
+    "holdings": { "ada": "5000000", "bayo": "2750000", "safe1": "1000000", "safe2": "250000", "fund": "4500000", "unissued_pool": "1500000" },
+    "safe_conversion_price_micro": { "safe1": "500000", "safe2": "1000000" },
+    "post_money_check": "30000000000000"
+  }
+}

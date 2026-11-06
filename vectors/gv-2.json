@@ -1,0 +1,17 @@
+{
+  "id": "GV-2",
+  "after": "GV-1",
+  "classes": {
+    "safe1": { "shares": "1000000", "preference_micro": "500000000000" },
+    "safe2": { "shares": "250000", "preference_micro": "250000000000" },
+    "fund":  { "shares": "4500000", "preference_micro": "9000000000000" }
+  },
+  "common_shares": { "ada": "5000000", "bayo": "2750000" },
+  "ranking": "pari-passu",
+  "note": "Payouts in dollars to the cent; the engine works in micro-dollars and reports remainders.",
+  "cases": [
+    { "proceeds": "12000000", "converts": [], "payouts": { "ada": "1451612.90", "bayo": "798387.10", "safe1": "500000.00", "safe2": "250000.00", "fund": "9000000.00" } },
+    { "proceeds": "20000000", "converts": ["safe1","safe2"], "payouts": { "ada": "6111111.11", "bayo": "3361111.11", "safe1": "1222222.22", "safe2": "305555.56", "fund": "9000000.00" } },
+    { "proceeds": "60000000", "converts": ["safe1","safe2","fund"], "payouts": { "ada": "22222222.22", "bayo": "12222222.22", "safe1": "4444444.44", "safe2": "1111111.11", "fund": "20000000.00" } }
+  ]
+}

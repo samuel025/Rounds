@@ -1,0 +1,9 @@
+{
+  "name": "rounds",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "typescript": "^5.6.0", "vitest": "^2.1.0", "fast-check": "^3.23.0" }
+}
