@@ -11,7 +11,7 @@ Every number below is checked against `results/summary.json` by `make check-read
 - The engine reproduces the golden vectors GV-1 (a Series A with two converting SAFEs) and GV-2 (an exit waterfall), plus hand-checked cases GV-3 (discount-only SAFE), GV-4 (options in and out of the money), GV-5 (cap wins, then discount wins), GV-6 (no pool top-up) and GV-7 (down round below the SAFE cap). The expected values of GV-5 to GV-7 were derived on paper first (docs/NOTES.md). Engine tests: <!--n:tests.engine-->25<!--/n--> passing, including <!--n:tests.properties-->9<!--/n--> property tests.
 - A second implementation in Python agrees with the TypeScript engine on <!--n:conformance.scenarios-->1000<!--/n--> seeded random scenarios (<!--n:conformance.mismatches-->0<!--/n--> mismatches; <!--n:conformance.rejected_inputs-->40<!--/n--> deliberately invalid inputs rejected by both).
 - The Rust contract passes <!--n:tests.sandbox-->6<!--/n--> near-workspaces sandbox tests (full round and exit, wrong-token refund, non-board approval, hash mismatch, double close, exact refunds, hostile token, failed-transfer retry, private callbacks, vesting and exercise).
-- On **testnet**, a Series A with two converting SAFEs closed through a 2-of-3 Sputnik DAO vote and an exit paid every holder. The final demo run recorded <!--n:demo.transactions-->53<!--/n--> transactions and <!--n:demo.events-->23<!--/n--> contract events, and <!--n:demo.rounds_closed-->4<!--/n--> rounds closed.
+- On **testnet**, a Series A with two converting SAFEs closed through a 2-of-3 Sputnik DAO vote and an exit paid every holder. The final demo run recorded <!--n:demo.transactions-->57<!--/n--> transactions and <!--n:demo.events-->23<!--/n--> contract events, and <!--n:demo.rounds_closed-->4<!--/n--> rounds closed.
 - `make verify-onchain` (read-only) recomputes the demo from the engine and compares with the chain: <!--n:verify_onchain.checks-->19<!--/n--> checks, <!--n:verify_onchain.failed-->0<!--/n--> failed.
 - `make replay` (no network) rebuilds the cap table and exit from committed events: <!--n:replay.checks-->8<!--/n--> checks, <!--n:replay.failed-->0<!--/n--> failed.
 
@@ -44,31 +44,33 @@ Network: NEAR testnet. Throwaway accounts, no value.
 
 | Thing | Account |
 |---|---|
-| Rounds contract | `rounds-core-012465.testnet` |
-| Board (Sputnik DAO v2.0.0, 2-of-3 council) | `rounds-board-012465.sputnik-v2.testnet` |
-| Test USDC (6 decimals, public faucet) | `rounds-usdc-012465.testnet` |
+| Rounds contract | `rounds-core-372231.testnet` |
+| Board (Sputnik DAO v2.0.0, 2-of-3 council) | `rounds-board-372231.sputnik-v2.testnet` |
+| Test USDC (6 decimals, public faucet) | `rounds-usdc-372231.testnet` |
 
 | Demo step | Key transaction |
 |---|---|
-| Founders and pool closed (after a board vote) | [CkHeL9iH…](https://explorer.testnet.near.org/transactions/CkHeL9iHHsyAow3GzyEReifJUUt4diVDPfx1C1DJmiAo) |
-| SAFE 1 closed, SAFE 2 closed | [7AFccoWM…](https://explorer.testnet.near.org/transactions/7AFccoWMPQWjdbhQATZgeRERn4BmKwrDvnS41miwovfU), [236sxtba…](https://explorer.testnet.near.org/transactions/236sxtbaQH1aJ2Yh6XEo9PXtPuWBBRewcS7mDCgHMFPz) |
-| Fund pays $9,000,000 into escrow | [6KwpDCDq…](https://explorer.testnet.near.org/transactions/6KwpDCDq68Vab8DD6MYFCiRePntVSeLtgEXsC2WXi3iG) |
-| Series A closed, holdings credited | [A1DEtpzP…](https://explorer.testnet.near.org/transactions/A1DEtpzPqHsKs8bcWjgJfFxesBeVMtCp1PQ9w2zsSu2J) |
-| Wrong-token deposit (refunded in full) | [4FzRSisx…](https://explorer.testnet.near.org/transactions/4FzRSisx2x9BF2esmFcBJJLSnNHateUNKtJTkrnhsMkS) |
-| Board executes the option grant for Efe | [HxsLLm2K…](https://explorer.testnet.near.org/transactions/HxsLLm2KYKa47hnK5grwV38pW2VEt5RrZ4z47x9mqgxM) |
-| Zed funds the $20M exit; board approves; distribute | [4pZF66uj…](https://explorer.testnet.near.org/transactions/4pZF66ujz6sKKaATAV8WHtZGTUukj5rHq9Dnzm8AHzHe), [FXrmSWTZ…](https://explorer.testnet.near.org/transactions/FXrmSWTZ2GvrcJip7Yz8LqvXmsGX364Fe1reyWozbACP), [GQ2A9DtV…](https://explorer.testnet.near.org/transactions/GQ2A9DtvgvdLm71SenJs1NRMYGuuP6oLbD17uu2YnsKY) |
+| DAO board created (2-of-3 council) | [6NRaGpMx…](https://explorer.testnet.near.org/transactions/6NRaGpMx5sgqxTMTRGzRtJcM4whg7W5ZDgj6rW82D9wy) |
+| Founders and pool closed (after a board vote) | [FW4zh1Hn…](https://explorer.testnet.near.org/transactions/FW4zh1HnDJ9xEsFfkHC9eYJADS5Q7J1vR4m5SXj1M6yD) |
+| SAFE 1 closed, SAFE 2 closed | [Douq7RQ4…](https://explorer.testnet.near.org/transactions/Douq7RQ41o6gvr4onpcnuaCzcRUQomQsXV8czhz7EVck), [6w4cJZzy…](https://explorer.testnet.near.org/transactions/6w4cJZzy96ghpR7FSgqiPopSQWw8xKANhjuQwsZFBzLB) |
+| Fund pays $9,000,000 into escrow | [5GwcsfBf…](https://explorer.testnet.near.org/transactions/5GwcsfBfkRyCte3PEoG6M4yyFD1PofUBgw2dcauuZy8D) |
+| Series A closed, holdings credited | [FqqMy1sJ…](https://explorer.testnet.near.org/transactions/FqqMy1sJixYbXoYr3TWmpXay2MTbcoiTDgugFpCHVpks) |
+| Wrong-token deposit (refunded in full) | [C7nzqzCS…](https://explorer.testnet.near.org/transactions/C7nzqzCSUWAMdo5MEqVBg6G5RA7ZLSWScqiZ9iQ94ZB9) |
+| Board executes the option grant for Efe | [56JywYMR…](https://explorer.testnet.near.org/transactions/56JywYMRC4wm1boXy21npR4PHowATo5fy33jz73zukNy) |
+| Zed funds the $20M exit; board approves; distribute | [6y55zt8q…](https://explorer.testnet.near.org/transactions/6y55zt8qCo39ejJ73sojGfwDJWheENXugpFh3U9V5i7o), [6s46EHeT…](https://explorer.testnet.near.org/transactions/6s46EHeTX7WSTXju9WnB3NuYY6JecBnQWGzd3azYnUzp), [BuKGYvdy…](https://explorer.testnet.near.org/transactions/BuKGYvdyDENuKn2GjpfTt7WTxcLP1J9Ws5siXMpUEQmb) |
 
 All transactions of the final run are in `results/demo-txs.json`, and every event in `results/demo-events.json`.
 
 Be aware of what this run does and does not show:
 
 - **The failed attacks have no transaction links.** The stranger's `approve_round` and the second `close_round` were rejected; the script confirmed each rejection but did not record the failed transaction hashes. The wrong-token deposit is a real transaction whose refund the script verified by balance.
-- **The demo was resumed.** It was resumed three times after script bugs (CLI output parsing, a u64 argument, RPC timeouts), so the accounts, DAO and contract deployments were created in earlier attempts and are not in the list of the final run.
-- **Vesting timing.** Efe's vesting read 37,500 after the cliff (month 18 on the demo clock) because the grant's clock started before the two board votes. That equals the engine's value for month 18. The script has since been fixed to start the clock after approval and to check the exact month-12 or month-13 value; that fix has **not** been re-run on testnet. One demo "month" lasts 5 seconds, a contract parameter.
+- **This run went from fresh accounts to the end without being resumed.** An earlier run (accounts suffixed `012465`) also exists on testnet; it was resumed several times after script bugs and is superseded by this one.
+- **Vesting.** After the cliff the contract reported 27,083 vested for Efe, which is exactly the engine's value for month 13 (the script accepts month 12, 25,000, or month 13). It is month 13, not the cleaner 25% at month 12, because the script waits a few seconds past the cliff and one demo "month" lasts only 5 seconds, a contract parameter.
+- **Event collection.** Two of the <!--n:demo.events-->23<!--/n--> events (`exit_proposed`, `exit_approved`) were missed by the demo's own collector after an RPC hiccup and were re-collected afterwards from the same transactions with `scripts/collect-events.ts`.
 - **Exercise on chain** is covered by the sandbox tests, not by the testnet demo.
-- **Funding:** the testnet faucet rate-limited account creation, so some accounts were funded from earlier demo accounts.
+- **Funding:** the testnet faucet was rate-limited, so the new accounts were funded from the leftover test NEAR of the earlier run's accounts (`DEMO_FUND_FROM`).
 
-`make demo` is the script that produced this run. It needs the `near` CLI (near-cli-rs), network access, and creates fresh throwaway testnet accounts through the public faucet; it spends no real money. Re-running it needs either a fresh suffix or `DEMO_SUFFIX=<old suffix>` to resume.
+`make demo` is the script that produced this run. It needs the `near` CLI (near-cli-rs), network access, and creates fresh throwaway testnet accounts through the public faucet (or a previous run's leftovers); it spends no real money. Each run creates fresh accounts; set `DEMO_SUFFIX=<suffix>` to resume a partly finished run, or `DEMO_FUND_FROM=<old suffix>` to fund the new accounts from a previous run's accounts when the faucet refuses.
 
 ## How NEAR is used
 

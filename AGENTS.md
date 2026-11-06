@@ -36,11 +36,11 @@ Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet.
 ## Known slow or flaky steps
 
 - `make test-contract`: first run downloads the near-workspaces sandbox binary and compiles a large dependency tree (several minutes); later runs take about a minute.
-- `make verify-onchain` and `make demo`: testnet RPC can time out; the scripts retry. The testnet faucet rate-limits after about 7 accounts per run; `make demo` then funds the remaining accounts from earlier demo accounts.
+- `make verify-onchain` and `make demo`: testnet RPC can time out; the scripts retry. The testnet faucet rate-limits after about 7 accounts per run; `make demo` then funds the remaining accounts from earlier demo accounts, or from a previous run's accounts with `DEMO_FUND_FROM=<old suffix>`.
 - `make demo` has no cleanup and creates new accounts each time unless `DEMO_SUFFIX` is set to resume.
 
 ## Things to check skeptically
 
 - The Python reference and the TypeScript engine were written by the same author in one session.
-- The committed demo run predates the vesting-timing fix in `scripts/demo.ts`; see README.
+- The committed demo run reads 27,083 vested (engine's month-13 value), not 25,000; see README.
 - The SAFE clause citations in `RULES.md` are not written yet.

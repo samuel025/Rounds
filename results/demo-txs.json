@@ -1,320 +1,344 @@
 [
   {
     "step": "1",
-    "tx": "GoW7qMpjVVuyDCMJM2CDcW3PsLFSrwAwxtjYFsDcyjxN",
-    "what": "register rounds-ada-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "6NRaGpMx5sgqxTMTRGzRtJcM4whg7W5ZDgj6rW82D9wy",
+    "what": "create the DAO board (2-of-3 council)",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "EPfXVmqH5Mr97bdcfqzsXeBt768vjFobkpcb1vN6WHFd",
-    "what": "register rounds-fund-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "F2EN6GE5apMtct6GMX5RfpskpNwg91VgCQXh84jJ8j7U",
+    "what": "deploy test USDC (6 decimals, public faucet, no value)",
+    "signer": "rounds-usdc-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "4cA98XYZfB3Dr6dEbXVKBkgeKG6jz66kK2ftPDtkUHYX",
-    "what": "register rounds-indep-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "HbrfTW2fB7maM6muTQ75a7uYqzLB3ZLRsj9ojrnq7b6Z",
+    "what": "deploy a second token used only for the wrong-token attack",
+    "signer": "rounds-fake-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "DncAkNrZCCUm6Y5prnDSrJTUhxmx2ExTD8FixE3c537p",
-    "what": "register rounds-bayo-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "DDFJQLuKFFCxy28fK6Q1Fvj8ZMuYCfJTbgWK5GVPbhKg",
+    "what": "deploy Rounds with the DAO as board",
+    "signer": "rounds-core-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "9t9HdtfCwqv1Q9jph47SwqnJEaAtJns1nxcR5M6tGsx9",
-    "what": "register rounds-chidi-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "64suGVvxYvcrnhdUUpDeRcnuFaHb6J79nbJp7AaxJAzt",
+    "what": "register rounds-ada-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "42F5qzQfXwsZpPqPU23cyTEbYy6dw24fGBR3yVQK1m93",
-    "what": "register rounds-dayo-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "9b2ATu81BU4uUivEEZtCYFn7DjKNj9tmiQ2ZPdkzNFAr",
+    "what": "register rounds-fund-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "DQFLw3yZb87vHgRHJgzvfods9tSq2QvxTEH7B3NnVpr4",
-    "what": "register rounds-efe-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "EShPFKKkpvVAe5428TEwUk6sBGP9g7ab9GYe85sNZ37U",
+    "what": "register rounds-indep-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "9j6F9BGiuumsz35evJzsdUHB1ohWrY4n7p1xWw6KDfHn",
-    "what": "register rounds-zed-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "E3KiBj8NGjAvBxLrkigvjuxsB2aKMLpyEbSWo2oyPiJp",
+    "what": "register rounds-bayo-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "55LuXuN68yEHEwR9roeE8Z8hLiHiM91LFr8Vsvr5fytg",
-    "what": "register rounds-core-012465.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "CVs1u5DHgnVtcrs7dSXkJZvwRXNV5mN5PFYzkokLyBBh",
+    "what": "register rounds-chidi-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "6jhGq2UnaHhqHyMieoYLPfkXQpnpor27J1fef5vwViH2",
-    "what": "register rounds-board-012465.sputnik-v2.testnet for test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "5vrUeUH48U87yRVfViuZKt5hGeSxWpTanqTr95LReWDH",
+    "what": "register rounds-dayo-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "HDgpMDEaKejobkwTKKNfGmVN9BNnYe24bsYmTT6vbNHL",
-    "what": "register rounds-chidi-012465.testnet for the fake token",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "H7qfxdd8zJYMvUQui6Ks6rto9a4AeYYb2uB3JtUmsZLL",
+    "what": "register rounds-efe-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "TPyKe4wHKQBTLf2zAwvE1GaZkFcegukZCjH5dfiiZzY",
-    "what": "register rounds-core-012465.testnet for the fake token",
-    "signer": "rounds-ada-012465.testnet"
+    "tx": "4esEQ76HgyBHREjuDcyAK4eXckxCXVPKZnwA7XUdiCU6",
+    "what": "register rounds-zed-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "BJr3jQMmFfy6i7MoS8DJz3mtU9v4MFmPSdAjW1qvUyv5",
+    "tx": "3oJiWJYCdPXQcRh1NFbfs1QEGAi5CZ8zMT4wE6nvjGRE",
+    "what": "register rounds-core-372231.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
+  },
+  {
+    "step": "1",
+    "tx": "2SngoZVXqcLtvHyBB1Qz4KiPS5DfjCEtv7uH688Sffvw",
+    "what": "register rounds-board-372231.sputnik-v2.testnet for test USDC",
+    "signer": "rounds-ada-372231.testnet"
+  },
+  {
+    "step": "1",
+    "tx": "5AWTQBZurzWhA3vvu9Ek5yHGhrhSvD4YFCfWP4KinNJr",
+    "what": "register rounds-chidi-372231.testnet for the fake token",
+    "signer": "rounds-ada-372231.testnet"
+  },
+  {
+    "step": "1",
+    "tx": "G2fGGggUXFW2CR1LNU91asyNqv6ZUw4ZVM7MnCdkGNgi",
+    "what": "register rounds-core-372231.testnet for the fake token",
+    "signer": "rounds-ada-372231.testnet"
+  },
+  {
+    "step": "1",
+    "tx": "A4Qg2uU72iYnmVzgaRhHxCgxvz11GNJ5Lr6aqZskEuc",
     "what": "faucet: fund $9,000,000 test USDC",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "EsbtXs4TXoCGDhKH1wgjVa8D7tMAzQ7LHtvG3r7ntUTz",
+    "tx": "CfJqVBs4MDYYnr69c1aDESvgfUsHaEAYDdGrFAFCb4qF",
     "what": "faucet: chidi $500,000",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "7cmZSQZfneBMM9totwEoeVCzX7YvSjUKS2tocYkruVTs",
+    "tx": "KotQwjDhwQfGXd1QQD6TcHZo6Do2FK1XCNe6XX51wyU",
     "what": "faucet: dayo $250,000",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "4j3hdzaDBLK9E9PmcinB9S617mZytuxv792zpkm48gBS",
+    "tx": "CEfU3xXHUqm8ZiM9gQtRwfMri9Q7AsDj7Cq8GdZ1ferP",
     "what": "faucet: zed $20,000,000",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "GvsbbTNAxNDiJn5LmTVmZEU6YQCaEumdEgtevUtDccqt",
+    "tx": "CCTDvHLxXCxcjdZFjHnVGeuoMKT2GjhFKJzh2ZaWG2SL",
     "what": "faucet: 100 fake tokens to chidi",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "DJ9nkJXA19x4tqMvJtfNWmGyCYgV2DckfUJPsqRFEJwK",
+    "tx": "3oZNziYi8vZ5heppYJvP3dfmXtcEhcFdHTse15vPBcYP",
     "what": "DAO proposal: board makes ada an officer",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "BQtEgwvAMCVpK5wRevxz4XrGzv5UzXWz7dpoq91tHgj9",
-    "what": "DAO vote 1/2 (fund) on #3",
-    "signer": "rounds-fund-012465.testnet"
+    "tx": "3Jq76FeX788bTLrQy9MwwFnXeegUauWM6gUy4vU6ku55",
+    "what": "DAO vote 1/2 (fund) on #0",
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "1",
-    "tx": "35iSF7oX9b21ZtVWsAZbNd4ugtaQWNeyEg924SjrDKVF",
-    "what": "DAO vote 2/2 (indep) on #3: executes set_officer",
-    "signer": "rounds-indep-012465.testnet"
+    "tx": "6DPEvcQv3j5j6YH4sunKd2TwLvBpcm1prUEmGdQu4wzE",
+    "what": "DAO vote 2/2 (indep) on #0: executes set_officer",
+    "signer": "rounds-indep-372231.testnet"
   },
   {
     "step": "2",
-    "tx": "DyYJLyzku2J3mp6nTqWUAtpDyukCF85rcLdbkrrT8GAk",
+    "tx": "3ZDsNMCfGQS93nxbf51kXBWS4ms8ogQDUxZ8KXyq4BtG",
     "what": "ada proposes Founder round",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "2",
-    "tx": "G7D2Aiqi5opsWZoZ9eLwt1pddDe4Jocx4T8cnXXhxxhF",
+    "tx": "34UDZ2Cw5iAv2npgHtvxBzaYbbHbxf2itTJa6KxjV57N",
     "what": "DAO proposal: board approves founder issuance by plan hash",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "2",
-    "tx": "4esTUu9hFcwj2ajMvKH4tzJ7EeDfMJJT6ed5i6H6vujm",
-    "what": "DAO vote 1/2 (fund) on #4",
-    "signer": "rounds-fund-012465.testnet"
+    "tx": "GLdydNbzukbTHTaAxJNJ9diEo45sqeA75L86gtW3H5Gb",
+    "what": "DAO vote 1/2 (fund) on #1",
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "2",
-    "tx": "5YD1Y5w6eVHXeG4YjFsDfzDm8yku8BmDAsk8o7zS59Sq",
-    "what": "DAO vote 2/2 (indep) on #4: executes approve_round",
-    "signer": "rounds-indep-012465.testnet"
+    "tx": "6Mt18JVps3jx91kwe4JuZZzZs7HNKoQkCj6Kkfp3q9E1",
+    "what": "DAO vote 2/2 (indep) on #1: executes approve_round",
+    "signer": "rounds-indep-372231.testnet"
   },
   {
     "step": "2",
-    "tx": "CkHeL9iHHsyAow3GzyEReifJUUt4diVDPfx1C1DJmiAo",
+    "tx": "FW4zh1HnDJ9xEsFfkHC9eYJADS5Q7J1vR4m5SXj1M6yD",
     "what": "anyone closes founder issuance",
-    "signer": "rounds-zed-012465.testnet"
+    "signer": "rounds-zed-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "7iXrG5Fa6zwjfsp1aM8UMpNwv4RVfi5GrwbSa2usaEE2",
+    "tx": "3wMMYKpuy7KFtDN5HZZT7ZjW8QMG3MtwtuPvGpRzKF7K",
     "what": "ada proposes Safe round",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "6DUrpKMDNR4GmJZWcmRgXf7BhK4f2Xici2ncTkuhuZzg",
+    "tx": "4ALJWjYZ5PGYyc6NSTpRfJo4bizHkCJ31cb9KQ8JKq6G",
     "what": "safe1 holder pays $500000 into escrow",
-    "signer": "rounds-chidi-012465.testnet"
+    "signer": "rounds-chidi-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "8VQBJCaax4Cv9J1oepGrQBKjxe8P7Hh7xsZ7rsWHs8TQ",
+    "tx": "4396zRijWJ1338cpZNAcjXWnS76eUaNDaxdfiPTmNiNq",
     "what": "DAO proposal: board approves safe1 by plan hash",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "ESXvoHvt5xmN4KJFuv5fVLhpoktSxmu57V4cxiAoVXbb",
-    "what": "DAO vote 1/2 (fund) on #5",
-    "signer": "rounds-fund-012465.testnet"
+    "tx": "boCjBW8dHgavoAncUqZJSRwna1Pkfuo6fcfbcKt28Tk",
+    "what": "DAO vote 1/2 (fund) on #2",
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "DosoUMnqrgMs9G2WS8aGAg7WFb78i6aUHLrJPfZ1MUBk",
-    "what": "DAO vote 2/2 (indep) on #5: executes approve_round",
-    "signer": "rounds-indep-012465.testnet"
+    "tx": "AzYECZXwFXd5mS2Yf1RAinNvaLhPLtM1ozvCfaLbJXbY",
+    "what": "DAO vote 2/2 (indep) on #2: executes approve_round",
+    "signer": "rounds-indep-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "7AFccoWMPQWjdbhQATZgeRERn4BmKwrDvnS41miwovfU",
+    "tx": "Douq7RQ41o6gvr4onpcnuaCzcRUQomQsXV8czhz7EVck",
     "what": "anyone closes safe1",
-    "signer": "rounds-zed-012465.testnet"
+    "signer": "rounds-zed-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "6JUQLTnsrVX9o5RusNdBSKPQ49nMDwoEyxWmmseYe33b",
+    "tx": "AtP711fW4fpX8xxsLfGj73omfifpwnBiDE3h1pNvmPa",
     "what": "ada proposes Safe round",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "3S7xufamKE6rx8BFk5rVWdqQECuFezs6Y4J8sFKZrj7c",
+    "tx": "J7WFJvVWawZEzUVvPfWho16H6Abp37o8D1hPf1Nduthv",
     "what": "safe2 holder pays $250000 into escrow",
-    "signer": "rounds-dayo-012465.testnet"
+    "signer": "rounds-dayo-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "6FVQUbkbEWdnjD31g3tHc1WDnbdKKFkvCH4viW71q5FY",
+    "tx": "4ZCPrWpppNwJtzamV4yJ4jsg9E6He31h95srgXAsvM37",
     "what": "DAO proposal: board approves safe2 by plan hash",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "ApAeWpP4ibuaWFZ1v8Et5TyVkhWvMcdHEspSfJBT6jqq",
-    "what": "DAO vote 1/2 (fund) on #6",
-    "signer": "rounds-fund-012465.testnet"
+    "tx": "8K7FCtachaLoLLhGrgfA14nair3R6kZCWKRKprwkQ9tM",
+    "what": "DAO vote 1/2 (fund) on #3",
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "4WNXop6gjNLf6B412MswyMK5DmhEVr521FezncL8wm9a",
-    "what": "DAO vote 2/2 (indep) on #6: executes approve_round",
-    "signer": "rounds-indep-012465.testnet"
+    "tx": "2wV5RQ2kVVRNaDKPDUVfcuY2GvPPPR8MVnk8ZoX7BAK9",
+    "what": "DAO vote 2/2 (indep) on #3: executes approve_round",
+    "signer": "rounds-indep-372231.testnet"
   },
   {
     "step": "3",
-    "tx": "236sxtbaQH1aJ2Yh6XEo9PXtPuWBBRewcS7mDCgHMFPz",
+    "tx": "6w4cJZzy96ghpR7FSgqiPopSQWw8xKANhjuQwsZFBzLB",
     "what": "anyone closes safe2",
-    "signer": "rounds-zed-012465.testnet"
+    "signer": "rounds-zed-372231.testnet"
   },
   {
     "step": "4",
-    "tx": "6YNKfUu24Vx1dvYy38KFcmVJ6uxxv8X3MEEqrDtx4zBg",
+    "tx": "BRSVJSZjkqW29Y5GdRecqZgVGfiMS7PcdjZAZCPFwYxp",
     "what": "ada proposes Priced round",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "5",
-    "tx": "6KwpDCDq68Vab8DD6MYFCiRePntVSeLtgEXsC2WXi3iG",
+    "tx": "5GwcsfBfkRyCte3PEoG6M4yyFD1PofUBgw2dcauuZy8D",
     "what": "fund pays $9,000,000 into escrow",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "5",
-    "tx": "B7rcBZf8XwtHxbdXzWxtZisEPQFthVshb7KA1ZxjXNNk",
+    "tx": "3nJQfVr1qDTxG4ZpxznpQUGCrJ4VjAw4Pgbf5vjdapwT",
     "what": "DAO proposal: board approves Series A by plan hash",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "5",
-    "tx": "DRUmaUNTHECaUFPv7F34DfwGR2oMy6KjEWYUPSxe1Mqt",
-    "what": "DAO vote 1/2 (fund) on #7",
-    "signer": "rounds-fund-012465.testnet"
+    "tx": "B5h5E5Gear6LHEajnj22UXwVcdPZoEr2M38DpbRwGyGq",
+    "what": "DAO vote 1/2 (fund) on #4",
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "5",
-    "tx": "AgruxS2L2zeFBYcB8fWsFS5sPfPYFNQ5HmsBLtRGDcm8",
-    "what": "DAO vote 2/2 (indep) on #7: executes approve_round",
-    "signer": "rounds-indep-012465.testnet"
+    "tx": "3V4nQQy7LF23rNYSuytyq3gD8S55vAvmkugLKkPURrAj",
+    "what": "DAO vote 2/2 (indep) on #4: executes approve_round",
+    "signer": "rounds-indep-372231.testnet"
   },
   {
     "step": "5",
-    "tx": "A1DEtpzPqHsKs8bcWjgJfFxesBeVMtCp1PQ9w2zsSu2J",
+    "tx": "FqqMy1sJixYbXoYr3TWmpXay2MTbcoiTDgugFpCHVpks",
     "what": "anyone closes Series A",
-    "signer": "rounds-zed-012465.testnet"
+    "signer": "rounds-zed-372231.testnet"
   },
   {
     "step": "6",
-    "tx": "4FzRSisx2x9BF2esmFcBJJLSnNHateUNKtJTkrnhsMkS",
+    "tx": "C7nzqzCSUWAMdo5MEqVBg6G5RA7ZLSWScqiZ9iQ94ZB9",
     "what": "chidi deposits the WRONG token",
-    "signer": "rounds-chidi-012465.testnet"
+    "signer": "rounds-chidi-372231.testnet"
   },
   {
     "step": "7",
-    "tx": "FqNzU2MjdWVSsJrMVYv2stCUXngNX8voGyg6XzXQDLy1",
+    "tx": "2jifziEMNMZQhYtY1uqNqoFSFkaDoNXeh9Hs9sauPmpV",
     "what": "DAO proposal: board grants Efe 100,000 options at $2.00",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "7",
-    "tx": "4NGpGrRs5yv6hJ1jnpkWt9owcDuLpLHCPMMJhHUbjBXF",
-    "what": "DAO vote 1/2 (fund) on #8",
-    "signer": "rounds-fund-012465.testnet"
+    "tx": "GDu589VEKHX7LfJnEGNJ9em9tD5emyrKit9G7okQKb6k",
+    "what": "DAO vote 1/2 (fund) on #5",
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "7",
-    "tx": "HxsLLm2KYKa47hnK5grwV38pW2VEt5RrZ4z47x9mqgxM",
-    "what": "DAO vote 2/2 (indep) on #8: executes grant",
-    "signer": "rounds-indep-012465.testnet"
+    "tx": "56JywYMRC4wm1boXy21npR4PHowATo5fy33jz73zukNy",
+    "what": "DAO vote 2/2 (indep) on #5: executes grant",
+    "signer": "rounds-indep-372231.testnet"
   },
   {
     "step": "8",
-    "tx": "9XcBbgnevQvsEHRbaiyeTZXMCJZUszXVgq2UsGdpFbB4",
+    "tx": "5sGbonQg9wdHDLB76C7sNUVtFsKegErEFEUvU4SZ3h8M",
     "what": "ada proposes the $20M exit",
-    "signer": "rounds-ada-012465.testnet"
+    "signer": "rounds-ada-372231.testnet"
   },
   {
     "step": "8",
-    "tx": "4pZF66ujz6sKKaATAV8WHtZGTUukj5rHq9Dnzm8AHzHe",
+    "tx": "6y55zt8qCo39ejJ73sojGfwDJWheENXugpFh3U9V5i7o",
     "what": "zed funds the exit ($19999999.999999)",
-    "signer": "rounds-zed-012465.testnet"
+    "signer": "rounds-zed-372231.testnet"
   },
   {
     "step": "8",
-    "tx": "F4jbS1gzURie4n3SSwUuM7Mj6EkCXZ1KzUXQuZMzePJr",
+    "tx": "GmnkdpjeY9JapCFoe8wLfQJk4XBpunBfq7EtaD21h3Qk",
     "what": "DAO proposal: board approves the exit by plan hash",
-    "signer": "rounds-fund-012465.testnet"
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "8",
-    "tx": "13GRw5kEAP4zaJNGDW3EVcbrLs2EzWLZ7dkamwVdBqtv",
-    "what": "DAO vote 1/2 (fund) on #9",
-    "signer": "rounds-fund-012465.testnet"
+    "tx": "54VbjA4ZW3iRr58CvLUWn424rv9rHumVNEic42Z7Aehx",
+    "what": "DAO vote 1/2 (fund) on #6",
+    "signer": "rounds-fund-372231.testnet"
   },
   {
     "step": "8",
-    "tx": "FXrmSWTZ2GvrcJip7Yz8LqvXmsGX364Fe1reyWozbACP",
-    "what": "DAO vote 2/2 (indep) on #9: executes approve_exit",
-    "signer": "rounds-indep-012465.testnet"
+    "tx": "6s46EHeTX7WSTXju9WnB3NuYY6JecBnQWGzd3azYnUzp",
+    "what": "DAO vote 2/2 (indep) on #6: executes approve_exit",
+    "signer": "rounds-indep-372231.testnet"
   },
   {
     "step": "8",
-    "tx": "GQ2A9DtvgvdLm71SenJs1NRMYGuuP6oLbD17uu2YnsKY",
+    "tx": "BuKGYvdyDENuKn2GjpfTt7WTxcLP1J9Ws5siXMpUEQmb",
     "what": "anyone runs distribute",
-    "signer": "rounds-zed-012465.testnet"
+    "signer": "rounds-zed-372231.testnet"
   }
 ]

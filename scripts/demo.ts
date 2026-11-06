@@ -69,8 +69,14 @@ async function dao(step: string, what: string, receiver: string, method: string,
 async function collectEvents() {
   for (const t of txs) {
     if (!t.tx || !t.signer) continue;
-    const res: any = await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "EXPERIMENTAL_tx_status", params: { tx_hash: t.tx, sender_account_id: t.signer, wait_until: "FINAL" } }) }).then((r) => r.json()).catch(() => null);
-    for (const ro of res?.result?.receipts_outcome ?? []) for (const l of ro.outcome.logs as string[]) {
+    let res: any = null;
+    for (let i = 1; i <= 6 && !res; i++) {
+      try {
+        const r: any = await (await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "EXPERIMENTAL_tx_status", params: { tx_hash: t.tx, sender_account_id: t.signer, wait_until: "FINAL" } }) })).json();
+        if (r.result) res = r.result; else throw new Error(JSON.stringify(r.error).slice(0, 100));
+      } catch (e) { if (i === 6) throw new Error(`could not read tx ${t.tx}: ${(e as Error).message}`); await sleep(2000 * i); }
+    }
+    for (const ro of res.receipts_outcome ?? []) for (const l of ro.outcome.logs as string[]) {
       if (!l.startsWith("EVENT_JSON:")) continue;
       const e = JSON.parse(l.slice(11)); if (e.standard !== "rounds") continue;
       events.push({ name: e.event, tx: t.tx, data: e.data, plan: e.event === "round_proposed" ? planByRound[String(e.data.round_id)] : undefined });
@@ -85,8 +91,12 @@ async function main() {
   const exists = async (a: string) => { const r: any = await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "view_account", finality: "final", account_id: a } }) }).then((x) => x.json()); return !r.error && !r.result?.error; };
   // faucet first (10 NEAR each); if it rate-limits, a funded earlier account pays for the rest
   const fallback: Record<string, [string, string]> = { zed: [A.chidi, "1.5 NEAR"], core: [A.bayo, "4.5 NEAR"], usdc: [A.efe, "3.5 NEAR"], fake: [A.dayo, "3 NEAR"] };
+  // DEMO_FUND_FROM=<old suffix>: skip the faucet and fund every account from a previous run's leftover testnet NEAR
+  const old = process.env.DEMO_FUND_FROM; const od = (n: string) => `rounds-${n}-${old}.testnet`;
+  const forced: Record<string, [string, string]> = old ? { ada: [od("indep"), "7.5 NEAR"], fund: [od("chidi"), "1.8 NEAR"], indep: [od("chidi"), "0.7 NEAR"], bayo: [od("dayo"), "0.8 NEAR"], chidi: [od("dayo"), "1 NEAR"], dayo: [od("efe"), "0.8 NEAR"], efe: [od("efe"), "0.8 NEAR"], zed: [od("efe"), "1.2 NEAR"], core: [od("fund"), "4.5 NEAR"], usdc: [od("fund"), "3.5 NEAR"], fake: [od("bayo"), "3 NEAR"] } : {};
   for (const [k, a] of Object.entries(A)) {
     if (await exists(a)) { log(`exists ${k}: ${a}`); continue; }
+    if (forced[k]) { near(["account", "create-account", "fund-myself", a, forced[k][1], "autogenerate-new-keypair", "save-to-legacy-keychain", "sign-as", forced[k][0], "network-config", NET, "sign-with-legacy-keychain", "send"]); log(`created ${k}: ${a} (funded ${forced[k][1]} from ${forced[k][0]})`); continue; }
     try { near(["account", "create-account", "sponsor-by-faucet-service", a, "autogenerate-new-keypair", "save-to-legacy-keychain", "network-config", NET, "create"]); }
     catch (e) {
       const fb = fallback[k]; if (!fb) throw e;

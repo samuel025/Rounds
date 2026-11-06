@@ -13,7 +13,7 @@
     "mismatches": 0
   },
   "demo": {
-    "transactions": 53,
+    "transactions": 57,
     "events": 23,
     "rounds_closed": 4,
     "payouts": 5

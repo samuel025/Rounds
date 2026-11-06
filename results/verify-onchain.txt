@@ -1,17 +1,17 @@
 PASS engine reproduces GV-1 (price $2.0000, 15,000,000 fully diluted, Fund 4,500,000)
-PASS config: board is the DAO rounds-board-012465.sputnik-v2.testnet and the payment token is rounds-usdc-012465.testnet
+PASS config: board is the DAO rounds-board-372231.sputnik-v2.testnet and the payment token is rounds-usdc-372231.testnet
 PASS round 1 (Founder): status Closed
 PASS round 1: on-chain plan equals the plan the engine recomputes
-PASS round 1: on-chain plan hash a9a13979265ecba7… equals sha256 of the recomputed plan
+PASS round 1: on-chain plan hash 4cdd185f78790027… equals sha256 of the recomputed plan
 PASS round 2 (Safe): status Closed
 PASS round 2: on-chain plan equals the plan the engine recomputes
-PASS round 2: on-chain plan hash 9ab35a5682fcf617… equals sha256 of the recomputed plan
+PASS round 2: on-chain plan hash 6e53da09bca5a222… equals sha256 of the recomputed plan
 PASS round 3 (Safe): status Closed
 PASS round 3: on-chain plan equals the plan the engine recomputes
-PASS round 3: on-chain plan hash 7e056482532acc3f… equals sha256 of the recomputed plan
+PASS round 3: on-chain plan hash f05d5dc7f3783151… equals sha256 of the recomputed plan
 PASS round 4 (Priced): status Closed
 PASS round 4: on-chain plan equals the plan the engine recomputes
-PASS round 4: on-chain plan hash 51f8bfdc2eda39e1… equals sha256 of the recomputed plan
+PASS round 4: on-chain plan hash 7d4380e10882ff9d… equals sha256 of the recomputed plan
 PASS cap table: all 6 (holder, class) holdings equal the engine's result
 PASS exit 1: on-chain plan hash equals sha256 of the recomputed waterfall plan
 PASS exit 1: all 5 payouts Paid
