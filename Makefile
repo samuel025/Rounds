@@ -14,3 +14,7 @@ web:
 	node scripts/rules-html.mjs && npx vite build
 web-dev:
 	node scripts/rules-html.mjs && npx vite
+
+.PHONY: demo
+demo: build-contract
+	npx vite-node scripts/demo.ts

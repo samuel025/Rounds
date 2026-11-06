@@ -1,1 +1,8 @@
-{ "network": "testnet", "rpc": "https://rpc.testnet.near.org", "explorer": "https://explorer.testnet.near.org", "rounds": null, "board": null, "token": null }
+{
+  "network": "testnet",
+  "rpc": "https://rpc.testnet.near.org",
+  "explorer": "https://explorer.testnet.near.org",
+  "rounds": "rounds-core-012465.testnet",
+  "board": "rounds-board-012465.sputnik-v2.testnet",
+  "token": "rounds-usdc-012465.testnet"
+}

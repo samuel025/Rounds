@@ -1,0 +1,92 @@
+[demo] suffix 012465
+[demo] exists ada: rounds-ada-012465.testnet
+[demo] exists fund: rounds-fund-012465.testnet
+[demo] exists indep: rounds-indep-012465.testnet
+[demo] exists bayo: rounds-bayo-012465.testnet
+[demo] exists chidi: rounds-chidi-012465.testnet
+[demo] exists dayo: rounds-dayo-012465.testnet
+[demo] exists efe: rounds-efe-012465.testnet
+[demo] exists zed: rounds-zed-012465.testnet
+[demo] exists core: rounds-core-012465.testnet
+[demo] exists usdc: rounds-usdc-012465.testnet
+[demo] exists fake: rounds-fake-012465.testnet
+[demo] exists DAO rounds-board-012465.sputnik-v2.testnet
+[demo] already deployed rounds-usdc-012465.testnet
+[demo] already deployed rounds-fake-012465.testnet
+[demo] already deployed rounds-core-012465.testnet
+[demo] 1 register rounds-ada-012465.testnet for test USDC GoW7qMpj
+[demo] 1 register rounds-fund-012465.testnet for test USDC EPfXVmqH
+[demo] 1 register rounds-indep-012465.testnet for test USDC 4cA98XYZ
+[demo] 1 register rounds-bayo-012465.testnet for test USDC DncAkNrZ
+[demo] 1 register rounds-chidi-012465.testnet for test USDC 9t9HdtfC
+[demo] 1 register rounds-dayo-012465.testnet for test USDC 42F5qzQf
+[demo] 1 register rounds-efe-012465.testnet for test USDC DQFLw3yZ
+[demo] 1 register rounds-zed-012465.testnet for test USDC 9j6F9BGi
+[demo] 1 register rounds-core-012465.testnet for test USDC 55LuXuN6
+[demo] 1 register rounds-board-012465.sputnik-v2.testnet for test USDC 6jhGq2Un
+[demo] 1 register rounds-chidi-012465.testnet for the fake token HDgpMDEa
+[demo] 1 register rounds-core-012465.testnet for the fake token TPyKe4wH
+[demo] 1 faucet: fund $9,000,000 test USDC BJr3jQMm
+[demo] 1 faucet: chidi $500,000 EsbtXs4T
+[demo] 1 faucet: dayo $250,000 7cmZSQZf
+[demo] 1 faucet: zed $20,000,000 4j3hdzaD
+[demo] 1 faucet: 100 fake tokens to chidi GvsbbTNA
+[demo] 1 DAO proposal: board makes ada an officer DJ9nkJXA
+[demo] 1 DAO vote 1/2 (fund) on #3 BQtEgwvA
+[demo] 1 DAO vote 2/2 (indep) on #3: executes set_officer 35iSF7oX
+[demo] 2 ada proposes Founder round DyYJLyzk
+[demo] 2 DAO proposal: board approves founder issuance by plan hash G7D2Aiqi
+[demo] 2 DAO vote 1/2 (fund) on #4 4esTUu9h
+[demo] 2 DAO vote 2/2 (indep) on #4: executes approve_round 5YD1Y5w6
+[demo] 2 anyone closes founder issuance CkHeL9iH
+[demo] 3 ada proposes Safe round 7iXrG5Fa
+[demo] 3 safe1 holder pays $500000 into escrow 6DUrpKMD
+[demo] 3 DAO proposal: board approves safe1 by plan hash 8VQBJCaa
+[demo] 3 DAO vote 1/2 (fund) on #5 ESXvoHvt
+[demo] 3 DAO vote 2/2 (indep) on #5: executes approve_round DosoUMnq
+[demo] 3 anyone closes safe1 7AFccoWM
+[demo] 3 ada proposes Safe round 6JUQLTns
+[demo] 3 safe2 holder pays $250000 into escrow 3S7xufam
+[demo] 3 DAO proposal: board approves safe2 by plan hash 6FVQUbkb
+[demo] 3 DAO vote 1/2 (fund) on #6 ApAeWpP4
+[demo] 3 DAO vote 2/2 (indep) on #6: executes approve_round 4WNXop6g
+[demo] 3 anyone closes safe2 236sxtba
+[demo] 4 ada proposes Priced round 6YNKfUu2
+[demo] 5 fund pays $9,000,000 into escrow 6KwpDCDq
+[demo] 5 DAO proposal: board approves Series A by plan hash B7rcBZf8
+[demo] 5 DAO vote 1/2 (fund) on #7 DRUmaUNT
+[demo] 5 DAO vote 2/2 (indep) on #7: executes approve_round AgruxS2L
+[demo] 5 anyone closes Series A A1DEtpzP
+[demo] Series A status Closed
+[demo] holding fund = 4500000 (GV-1 ok)
+[demo] holding safe1 = 1000000 (GV-1 ok)
+[demo] holding safe2 = 250000 (GV-1 ok)
+[demo] holding pool = 1500000 (GV-1 ok)
+[demo] ATTACK FAILED AS EXPECTED: a stranger calls approve_round
+[demo] 6 chidi deposits the WRONG token 4FzRSisx
+[demo] wrong-token deposit refunded in full
+[demo] ATTACK FAILED AS EXPECTED: close_round runs a second time
+[demo] 7 DAO proposal: board grants Efe 100,000 options at $2.00 FqNzU2Mj
+[demo] 7 DAO vote 1/2 (fund) on #8 4NGpGrRs
+[demo] 7 DAO vote 2/2 (indep) on #8: executes grant HxsLLm2K
+[demo] waiting for the demo clock to reach the cliff (12 'months' x 5 s)...
+[demo] vested after the cliff: 37500 (engine says 25000 at month 12)
+[demo] 8 ada proposes the $20M exit 9XcBbgne
+[demo] 8 zed funds the exit ($19999999.999999) 4pZF66uj
+[demo] 8 DAO proposal: board approves the exit by plan hash F4jbS1gz
+[demo] 8 DAO vote 1/2 (fund) on #9 13GRw5kE
+[demo] 8 DAO vote 2/2 (indep) on #9: executes approve_exit FXrmSWTZ
+[demo] 8 anyone runs distribute GQ2A9Dtv
+[demo] payout ada = 6111111.111111 (GV-2 ok)
+[demo] payout bayo = 3361111.111111 (GV-2 ok)
+[demo] payout safe1 = 1222222.222222 (GV-2 ok)
+[demo] payout safe2 = 305555.555555 (GV-2 ok)
+[demo] payout fund = 9000000 (GV-2 ok)
+[demo] efe options out of the money: efe token balance 0
+[demo] PASS round 1 (Founder): recomputed plan hash a9a13979265ecba7… matches chain, status Closed
+[demo] PASS round 2 (Safe): recomputed plan hash 9ab35a5682fcf617… matches chain, status Closed
+[demo] PASS round 3 (Safe): recomputed plan hash 7e056482532acc3f… matches chain, status Closed
+[demo] PASS round 4 (Priced): recomputed plan hash 51f8bfdc2eda39e1… matches chain, status Closed
+[demo] PASS exit 1: plan hash matches chain, all payouts Paid
+[demo] 0 failed
+[demo] 23 events collected

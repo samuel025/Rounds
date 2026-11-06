@@ -13,3 +13,8 @@
   - Keys: near-cli-rs "save-to-legacy-keychain" put throwaway testnet keys in ~/.near-credentials/testnet/ (outside the repo, no value). Faucet gives 10 NEAR per account.
   - Stub: spike/stub (near-sdk 5, cargo-near 0.22 builds in ~40s).
 - 2026-11-06 M3: contract/ (near-sdk 5.30, wasm 275 KB), contract/mock-ft (test NEP-141, 6 decimals, faucet, fail switch), contract/it (near-workspaces 0.22.4, sandbox). `make test-contract` = 6 sandbox tests, ~50 s, pass. Mutation check: removing only_board from approve_round makes the non-board test fail.
+- 2026-11-06 TESTNET DEMO RUN (suffix 012465), `make demo` (scripts/demo.ts), 0 failed:
+  - Contracts: Rounds `rounds-core-012465.testnet`, test USDC `rounds-usdc-012465.testnet`, board DAO `rounds-board-012465.sputnik-v2.testnet` (2-of-3 council). All 53 transactions: results/demo-txs.json; 23 contract events with tx hashes: results/demo-events.json (also web/public/events.json).
+  - GV-1 holdings reproduced on chain (Fund 4,500,000; SAFE1 1,000,000; SAFE2 250,000; pool 1,500,000). Three attacks failed as expected (stranger approve, wrong-token deposit refunded in full, second close). GV-2 exit at $20M paid exactly (Ada 6,111,111.111111 ... Fund 9,000,000) and Efe's out-of-the-money options stayed unexercised.
+  - Verify (browser, reads the live chain): 9 PASS, 0 failed.
+  - Faucet rate-limited after 7 accounts, so zed/core/usdc/fake were funded by earlier demo accounts (script falls back automatically). A re-run needs a fresh suffix (new accounts) or DEMO_SUFFIX to resume.

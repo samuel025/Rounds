@@ -170,4 +170,4 @@ async function initVerify() {
   };
 }
 
-renderForm(); renderModel(); void initVerify();
+renderForm(); renderModel(); void initVerify().then(() => { if (location.hash === "#verify-run") $<HTMLButtonElement>("verify-btn").click(); });
