@@ -26,7 +26,9 @@ const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bay
   proceeds: 20_000_000, month: 18, filter: "All", investor: "fund", locked: false };
 const COLORS: Record<string, string> = { ada: "#fafafa", bayo: "#a1a1aa", safe1: "#44ffa4", safe2: "#2ca86c", fund: "#3080ff", unissued_pool: "#f99c00", efe: "#d946ef" };
 const names: Record<string, string> = {}; // filled with the real account ids when the modeler is tied to a sandbox on chain
-const label = (k: string) => names[k] ?? ({ unissued_pool: "Option pool (unissued)", fund: "New investor (Series A)", safe1: "Chidi · early investor, SAFE 1", safe2: "Dayo · early investor, SAFE 2", ada: "Ada · founder", bayo: "Bayo · founder", efe: "Efe · employee (options)" } as Record<string, string>)[k] ?? k;
+const labelRaw = (k: string) => names[k] ?? ({ unissued_pool: "Option pool (unissued)", fund: "New investor (Series A)", safe1: "Chidi · early investor, SAFE 1", safe2: "Dayo · early investor, SAFE 2", ada: "Ada · founder", bayo: "Bayo · founder", efe: "Efe · employee (options)" } as Record<string, string>)[k] ?? k;
+// Names can come from the chain (a plan's holder is any string a proposer chose), so everything that goes into HTML is escaped.
+const label = (k: string) => esc(labelRaw(k));
 const CLASS_OF: Record<string, string> = { ada: "Common", bayo: "Common", unissued_pool: "Common", fund: "Series A Preferred", safe1: "SAFE 1 shadow preferred", safe2: "SAFE 2 shadow preferred" };
 
 function input(): PricedRoundInput {
@@ -62,7 +64,7 @@ function renderModel() {
   const post = BigInt(state.pre + state.raise) * M;
   out.innerHTML = `<div class="stat"><div><b>${price4(r.priceMicro)}</b><span>Round price ${RULES("r6")}</span></div><div><b>${n(r.poolTopUp)}</b><span>Pool top-up</span></div><div><b>${(Number(founderBefore - founderAfter) / 100).toFixed(1)} pts</b><span>Founder dilution</span></div></div>
   ${chart}
-  <table style="margin-top:16px"><tr><th>SAFE</th><th>Regime</th><th class="n">Conv. price</th><th class="n">Shares</th><th class="n">Value at round</th></tr>${state.safes.map((s) => `<tr><td>${s.holder}</td><td>${r.safeRegime[s.id]}</td><td class="n">${price4(r.safeConversionPriceMicro[s.id])}</td><td class="n">${n(r.holdings[s.id])}</td><td class="n">${usd(r.holdings[s.id] * r.priceMicro)}</td></tr>`).join("")}</table>
+  <table style="margin-top:16px"><tr><th>SAFE</th><th>Regime</th><th class="n">Conv. price</th><th class="n">Shares</th><th class="n">Value at round</th></tr>${state.safes.map((s) => `<tr><td>${esc(s.holder)}</td><td>${r.safeRegime[s.id]}</td><td class="n">${price4(r.safeConversionPriceMicro[s.id])}</td><td class="n">${n(r.holdings[s.id])}</td><td class="n">${usd(r.holdings[s.id] * r.priceMicro)}</td></tr>`).join("")}</table>
   <p class="note" style="margin-top:12px">Fully diluted ${n(r.fullyDiluted)} × ${price4(r.priceMicro)} = ${usd(r.fullyDiluted * r.priceMicro)} vs post-money ${usd(post)}; the difference is price rounding, reported not hidden ${RULES("r1")}. SAFE shares are priced at the lower of the cap and discount prices ${RULES("r3")}.</p>`;
   void renderPlan(r);
   window.dispatchEvent(new Event("rounds:model"));
@@ -139,7 +141,7 @@ function renderCap(r: Res) {
     `<tr><td><b>Total</b></td><td></td><td class="n"><b>${n(fd)}</b></td><td class="n">100.00%</td><td></td></tr>`;
   $("csv-btn").onclick = () => {
     const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
-    const csv = ["holder,class,shares,fully_diluted_pct,price_paid", ...rows.map((x) => [q(label(x.k)), q(CLASS_OF[x.k]), x.shares, pct(x.shares, fd).replace("%", ""), q(x.price)].join(",")), `"Total",,${fd},100.00,`].join("\n") + "\n";
+    const csv = ["holder,class,shares,fully_diluted_pct,price_paid", ...rows.map((x) => [q(labelRaw(x.k)), q(CLASS_OF[x.k]), x.shares, pct(x.shares, fd).replace("%", ""), q(x.price)].join(",")), `"Total",,${fd},100.00,`].join("\n") + "\n";
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "rounds-cap-table.csv"; a.click(); URL.revokeObjectURL(a.href);
   };
   document.querySelectorAll<HTMLButtonElement>("#cap-filter .tab:not(#csv-btn)").forEach((b) => b.onclick = () => { state.filter = b.dataset.f!; renderCap(r); });
@@ -189,7 +191,7 @@ function renderExit(r: Res) {
 function renderForm() {
   const lk = state.locked ? " disabled" : "";
   const f = (id: string, lab: string, v: number, step = 1, locked = false) => `<label for="${id}">${lab}</label><input type="number" id="${id}" value="${v}" step="${step}" min="0"${locked ? lk : ""}/>`;
-  const who = (k: string, dflt: string) => (names[k] ? names[k] : dflt);
+  const who = (k: string, dflt: string) => esc(names[k] ? names[k] : dflt);
   $("form").innerHTML =
     `<div class="form-h">THE ROUND · you choose these</div>` +
     f("pre", "Valuation before the round ($)", state.pre, 500_000) + f("raise", state.locked ? "New money from you, the new investor ($)" : "New money from the new investor ($)", state.raise, 500_000) + f("pool", "Option pool wanted after the round (% of all shares)", state.pool, 1) +
@@ -215,7 +217,7 @@ async function initVerify() {
   const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://testnet.nearblocks.io", rounds: null, board: null, token: null, network: "testnet" }));
   const evs: Ev[] = await fetch("events.json").then((r) => r.json()).catch(() => []);
   $("verify-sub").innerHTML = dep.rounds ? `Contract <span class="mono">${dep.rounds}</span> on ${dep.network}, board <span class="mono">${dep.board}</span>. Verify recomputes each plan with the engine and compares it with the chain.` : `No contract is configured in <span class="mono">deployment.json</span> yet, so Verify runs the engine self-check against the golden vector only.`;
-  $("events").innerHTML = evs.length ? evs.map((e) => `<div class="ev"><b>${e.name}</b><span class="muted mono">${JSON.stringify(e.data)}</span><a class="mono" href="${dep.explorer}/txns/${e.tx}" target="_blank" rel="noopener">tx ↗</a></div>`).join("") : `<p class="note">No events committed yet. After <span class="mono">make demo</span> they appear here, each with its transaction link.</p>`;
+  $("events").innerHTML = evs.length ? evs.map((e) => `<div class="ev"><b>${esc(e.name)}</b><span class="muted mono">${esc(JSON.stringify(e.data))}</span><a class="mono" href="${dep.explorer}/txns/${e.tx}" target="_blank" rel="noopener">tx ↗</a></div>`).join("") : `<p class="note">No events committed yet. After <span class="mono">make demo</span> they appear here, each with its transaction link.</p>`;
   $<HTMLButtonElement>("verify-btn").onclick = async () => {
     const out = $("verify-out"); const lines: string[] = []; let failed = 0;
     const P = (ok: boolean, msg: string) => { lines.push(`<span class="${ok ? "pass" : "fail"}">${ok ? "PASS" : "FAIL"}</span> ${msg}`); if (!ok) failed++; out.innerHTML = lines.join("\n"); };
@@ -300,3 +302,4 @@ async function initChain() {
 }
 
 renderForm(); renderModel(); void initChain(); void initVerify().then(() => { if (location.hash === "#verify-run") $<HTMLButtonElement>("verify-btn").click(); });
+if (import.meta.env.DEV) (window as any).__test = { names, rerender: () => { renderForm(); renderModel(); } }; // dev-server only: lets scripts/e2e checks feed hostile names

@@ -115,6 +115,7 @@ impl Rounds {
     // ---------- rounds ----------
     pub fn propose_round(&mut self, kind: RoundKind, plan_hash: String, plan_uri: String, plan: String, raise: Vec<(AccountId, U128)>, deadline_ns: u64) -> u64 {
         self.only_officer();
+        require!(plan.len() <= 65_536, "plan too large");
         check_hash(&plan, &plan_hash);
         let parsed: RoundPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad plan"));
         require!(raise.len() <= 32 && parsed.issuances.len() <= 64 && parsed.safes.len() <= 32, "plan too large");
@@ -168,6 +169,7 @@ impl Rounds {
         let mut r = self.rounds.get(&round_id).cloned().unwrap_or_else(|| env::panic_str("no such round"));
         require!(r.status == RoundStatus::Approved, "round not approved or already closing/closed");
         require!(r.raise.iter().zip(r.deposits.iter()).all(|(a, b)| a.1 .0 == b.1 .0), "round not fully funded");
+        self.check_creditable(&r); // refuse BEFORE any money moves if the plan can never be credited
         let total: u128 = r.deposits.iter().map(|d| d.1 .0).sum();
         if total == 0 {
             self.credit_round(&r);
@@ -191,6 +193,29 @@ impl Rounds {
         r.status = RoundStatus::Closed; self.rounds.insert(round_id, r);
         event("round_closed", &format!("{{\"round_id\":{}}}", round_id));
         true
+    }
+    /// Exactly what credit_round will require, checked without changing state. If the escrow were forwarded first and the credit then failed in the
+    /// callback, the money would be at the board while the round stayed stuck in Closing; so a plan that cannot be credited is refused up front.
+    fn check_creditable(&self, r: &Round) {
+        use std::collections::{HashMap, HashSet};
+        let p: RoundPlan = near_sdk::serde_json::from_str(&r.plan).unwrap_or_else(|_| env::panic_str("bad plan"));
+        let mut add: HashMap<&str, u128> = HashMap::new();
+        for i in &p.issuances {
+            require!(self.classes.get(i.class.as_str()).is_some(), "unknown class");
+            *add.entry(i.class.as_str()).or_insert(0) += i.shares.0;
+        }
+        for (class, extra) in add {
+            let def = self.classes.get(class).unwrap_or_else(|| env::panic_str("unknown class"));
+            require!(self.issued.get(class).copied().unwrap_or(0) + extra <= def.authorized.0, "exceeds authorized shares");
+        }
+        let mut fresh: HashSet<&str> = HashSet::new();
+        for s in &p.safes { require!(self.safes.get(&s.id).is_none() && fresh.insert(s.id.as_str()), "safe id exists"); }
+        let mut converting: HashSet<&str> = HashSet::new();
+        for id in &p.converted_safes {
+            require!(converting.insert(id.as_str()), "safe already converted");
+            let ok = fresh.contains(id.as_str()) || self.safes.get(id).map(|s| !s.converted).unwrap_or(false);
+            require!(ok, "unknown or already converted safe");
+        }
     }
     fn credit_round(&mut self, r: &Round) {
         let p: RoundPlan = near_sdk::serde_json::from_str(&r.plan).unwrap_or_else(|_| env::panic_str("bad plan"));

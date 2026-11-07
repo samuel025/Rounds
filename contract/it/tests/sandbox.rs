@@ -225,3 +225,37 @@ async fn grant_vesting_exercise_and_termination() -> anyhow::Result<()> {
     assert_eq!(e.holding(&e.efe.id().to_string(), "Common").await, 1000, "exercise credits common");
     Ok(())
 }
+
+/// A funded round with a big plan must close (the callback that credits shares needs enough gas), never stick in Closing with the money gone.
+#[tokio::test]
+async fn large_funded_round_closes_and_credits_everything() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let issuances: Vec<Value> = (0..60).map(|i| json!({"class": "Common", "holder": format!("holder{}", i), "shares": "1000"})).collect();
+    let plan = json!({"converted_safes": [], "issuances": issuances}).to_string();
+    let r = e.propose("Priced", &plan, json!([[e.fund.id(), "9000000000000"]])).await;
+    e.deposit(&e.fund, r, 9_000_000).await;
+    assert!(e.approve(r, &plan).await);
+    let ok = e.efe.call(e.rounds.id(), "close_round").args_json(json!({"round_id": r})).gas(Gas::from_tgas(100)).transact().await?; // the gas the demo script attaches
+    assert!(ok.is_success(), "close_round itself succeeds");
+    assert_eq!(e.status(r).await, "Closed", "the round must finish closing, not stay Closing");
+    assert_eq!(e.holding("holder59", "Common").await, 1_000);
+    assert_eq!(u128::from_str_radix(&e.rounds.view("ledger_total").await?.json::<String>()?, 10)?, 0);
+    Ok(())
+}
+
+/// A plan that can never be credited (above the authorized shares) must be refused BEFORE any money moves.
+#[tokio::test]
+async fn close_that_cannot_credit_does_not_move_money() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let plan = r#"{"converted_safes":[],"issuances":[{"class":"Common","holder":"fund","shares":"200000000"}]}"#;
+    let r = e.propose("Priced", plan, json!([[e.fund.id(), "9000000000000"]])).await;
+    e.deposit(&e.fund, r, 9_000_000).await;
+    assert!(e.approve(r, plan).await);
+    let before = balance(&e.ft, e.board.id()).await;
+    let res = e.efe.call(e.rounds.id(), "close_round").args_json(json!({"round_id": r})).max_gas().transact().await?;
+    assert!(!res.is_success(), "closing a round that cannot be credited must be refused");
+    assert_eq!(e.status(r).await, "Approved", "the round stays retryable");
+    assert_eq!(balance(&e.ft, e.board.id()).await, before, "no money moved to the board");
+    assert_eq!(u128::from_str_radix(&e.rounds.view("ledger_total").await?.json::<String>()?, 10)?, 9_000_000 * USD, "the escrow is intact");
+    Ok(())
+}
