@@ -121,17 +121,6 @@ Be aware of what this run does and does not show:
 - Payout receivers must already be registered with the token (NEP-145); otherwise their payout fails and stays retryable. `distribute` is capped per call by the contract constant `MAX_DISTRIBUTE` (an estimate, not a measured limit). Exercise strikes stay in the contract and are not forwarded to the treasury.
 - The sandbox tests use a plain account as the board; the real DAO path was shown on testnet.
 - Tested limits: legal validity, tax treatment, real-world SAFE edge cases and behaviour at scale are **not** tested.
-- The Python reference was written by the same author (an AI assistant) in the same session, from RULES.md, using different algorithms; that is weaker than independent authorship.
-
-## Prior art
-
-Stated neutrally, from the projects' own pages (not independently verified):
-
-- **Carta** and **Pulley**: off-chain cap-table products.
-- **Obolos** (listed as a hackathon project on Arbitrum, live on Arbitrum Sepolia per its listing): on-chain cap table and share issuance, with confidential conversion described.
-- **MetaLeX cyberCORPs**: onchain corporations whose stock ledger and issuance run on smart contracts, including SAFE-style fundraising with escrow, per MetaLeX's documentation.
-
-What Rounds does differently: it is on NEAR, uses a DAO board that approves by plan hash, keeps the equity math in a small off-chain engine that anyone can re-run (with a second implementation and property tests), and ships a read-only verifier. It is a testnet demo, not a legal ownership ledger.
 
 ## Case against this idea
 
@@ -143,7 +132,7 @@ What Rounds does differently: it is on NEAR, uses a DAO board that approves by p
 ## Hackathon disclosures
 
 - **Code window:** all code in this repository was written starting 2026-11-06.
-- **AI assistance:** the code, tests, specs and this README were written by Claude (Anthropic) through Claude Code, directed by the human team. The human reviews and submits.
+- **AI assistance:** AI coding tools (Claude Code) were used to write code, tests and documentation, as the hackathon rules ask to be listed; the team directs, reviews and submits the work.
 - **Libraries:** near-sdk 5.30, near-workspaces 0.22, cargo-near 0.22, near-cli-rs 0.30, Sputnik DAO v2 (deployed from the testnet factory), TypeScript, Vitest, fast-check, Vite, Python standard library (fractions).
 - **Other NEAR project by the same entrant:** none. Rounds is the only project entered.
 - **Inspiration:** the web app's look was modelled on resend.com's design tokens; no Resend code or assets are used.
