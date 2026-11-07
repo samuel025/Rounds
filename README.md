@@ -1,14 +1,14 @@
-# Rounds — a cap table on NEAR that shows its work
+# Rounds — verifiable ownership and payouts for DAOs and crypto-native teams
 
-> **Not legal or financial advice.** Rounds is a model and a **NEAR testnet demo**, not a securities offering. It claims no legal validity for any instrument. All money is a test token with no value. Holdings on the demo contract are **public on chain**. Built at NEAR HACKATHON (Nov 2026).
+> **Not legal or financial advice.** Rounds is a model and a **NEAR testnet demo**, not a securities offering. It claims no legal validity for any instrument; the legal wrapper around any ownership is the organization's job. All money is a test token with no value. Holdings on the demo contract are **public on chain**. Built at NEAR HACKATHON (Nov 2026).
 
-Cap tables live in spreadsheets and PDFs, and nobody can check them. Rounds is a cap-table tool where a pure, exact equity engine does the math (common and preferred shares, option pool, post-money SAFEs, priced rounds with pool top-up, vesting, exit waterfall), a Sputnik DAO board approves each round and exit **by plan hash**, and anyone can re-verify the result against the chain.
+Crypto teams and DAOs raise money, hand out ownership, and vote on it on-chain. But the ownership table is still a spreadsheet, and a board's "yes" cannot be tied to the exact numbers it approved. Rounds fixes that. Every funding round becomes an exact plan with a fingerprint (a SHA-256 hash); investors' money waits in escrow; the DAO board approves that fingerprint, and the contract only runs a plan that matches it; payouts at an exit are paid out automatically. A pure, exact equity engine does the math (common and preferred shares, option pool, post-money SAFEs, priced rounds with pool top-up, vesting, exit waterfall), and anyone can re-verify any round in their own browser against the chain.
 
 ## Why this matters
 
 *New to cap tables? The page opens with a plain-English box and a glossary (cap table, SAFE, Series A, option pool, plan hash and the rest).*
 
-When a startup raises money, one spreadsheet says who owns what: founders, investors and employees' stock options. It is usually a private file, and it goes wrong in familiar ways: different people compute different numbers, an investor cannot check that what they were promised is what was recorded, and nobody can prove afterwards that a payout at a sale followed the agreed rules.
+Take a crypto team or DAO that raises from several investors. Ownership lives in a private spreadsheet and goes wrong in familiar ways: different people compute different numbers, an investor cannot check that what they were promised is what was recorded, and when the DAO board votes "yes" to a round, nobody can prove afterwards exactly which numbers it approved. These teams already run on-chain, already accept public holdings, already decide by board vote and already pay in tokens, so they are where a verifiable record fits best. Rounds is not a replacement for a conventional cap-table service for a private company: holdings here are public, and it is a testnet demo.
 
 Rounds makes the math checkable:
 
@@ -16,7 +16,7 @@ Rounds makes the math checkable:
 2. **An approval that cannot be swapped.** A round is written as a plan with a SHA-256 fingerprint. The company's board (a DAO vote on NEAR) approves that fingerprint, and the contract refuses to run any plan that does not match it. Investor money sits in escrow until the board approves.
 3. **Anyone can re-check.** An investor, employee or board member can recompute the plan in their own browser and compare it with the chain (the app's Verify button).
 
-Who it is for: a **founder** modelling and running a round; an **investor** verifying the shares they paid for; an **employee** checking vesting and exit value; a **board member** approving one exact plan.
+Who it is for: a **founder or contributor** modelling and running a round; an **investor** verifying the shares they paid for; a **team member** checking vesting and exit value; a **board member** approving one exact plan.
 
 ## How another person can use it today
 

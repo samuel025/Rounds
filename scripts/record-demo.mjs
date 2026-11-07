@@ -1,7 +1,8 @@
 // Records a captioned walkthrough of the web app: node scripts/record-demo.mjs [url] [out.mp4]
 // Drives headless Chrome over the DevTools protocol, shows a fake cursor + captions, encodes with ffmpeg.
-import { spawn, execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { N, VOICE as VOICE_, ttsFile } from "./demo-script.mjs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,27 @@ const OUT = process.argv[3] ?? "demo/rounds-demo.mp4";
 const W = 1280, H = 800, PORT = 9333;
 const work = join(process.env.REC_DIR ?? tmpdir(), "rounds-rec"); rmSync(work, { recursive: true, force: true }); mkdirSync(work, { recursive: true });
 mkdirSync("demo", { recursive: true });
+
+// The recording plays the whole guided flow on ONE unused sandbox, signed by that sandbox's throwaway founder account (no wallet pop-ups).
+const RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com";
+const rpcQ = async (params) => (await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params }) })).json());
+const viewC = async (acct, method, args) => { const j = await rpcQ({ request_type: "call_function", finality: "final", account_id: acct, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") }); const r = j.result?.result; return r ? JSON.parse(Buffer.from(r).toString()) : null; };
+let SANDBOX = process.env.SANDBOX;
+if (!SANDBOX) for (const c of JSON.parse(readFileSync("web/public/sandboxes.json", "utf8"))) { if ((await viewC(c.rounds, "round", { round_id: 4 })) === null) { SANDBOX = c.rounds; break; } }
+if (!SANDBOX) throw new Error("no unused sandbox in the pool");
+const JUDGE = SANDBOX.replace("rsbx-rounds-", "rsbx-bayo-");
+if (!existsSync(`${process.env.HOME}/.near-credentials/testnet/${JUDGE}.json`)) throw new Error(`no key for ${JUDGE}`);
+console.log(`sandbox ${SANDBOX}, signed in as ${JUDGE}`);
+async function signAndSend(signer, receiver, act) {
+  const args = ["contract", "call-function", "as-transaction", receiver, act.method, "json-args", act.args, "prepaid-gas", `${act.gasTgas} Tgas`, "attached-deposit", `${act.depositYocto} yoctoNEAR`, "sign-as", signer, "network-config", "testnet", "sign-with-legacy-keychain", "display"];
+  const r = spawnSync("near", args, { encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
+  const out = ((r.stderr ?? "") + (r.stdout ?? "")).replace(/\x1b\[[0-9;]*m/g, "");
+  const b64 = out.match(/serialized as base64\):\s*\n(\S+)/)?.[1]; if (!b64) throw new Error("signing failed: " + out.slice(-200));
+  const j = await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "send_tx", params: { signed_tx_base64: b64, wait_until: "FINAL" } }) })).json();
+  if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 200)); return j.result;
+}
+const execActs = async (signer, receiver, acts) => { let last; for (const a of acts) { last = await signAndSend(signer, receiver, a); if (last.status?.Failure) return last; } return last; };
+const bindings = [];
 
 const chrome = spawn("google-chrome", ["--headless=new", `--remote-debugging-port=${PORT}`, `--window-size=${W},${H}`, "--hide-scrollbars", "--force-dark-mode",
   "--no-first-run", `--user-data-dir=${join(work, "profile")}`, "about:blank"], { stdio: "ignore" });
@@ -22,6 +44,7 @@ let id = 0; const pending = new Map(); const frames = [];
 ws.onmessage = (m) => {
   const j = JSON.parse(m.data);
   if (j.id && pending.has(j.id)) { pending.get(j.id)(j); pending.delete(j.id); }
+  else if (j.method === "Runtime.bindingCalled") bindings.push(j.params);
   else if (j.method === "Page.screencastFrame") {
     const n = frames.length, f = join(work, `f${String(n).padStart(6, "0")}.jpg`);
     writeFileSync(f, Buffer.from(j.params.data, "base64")); frames.push({ f, t: performance.now() });
@@ -34,7 +57,10 @@ const ev = async (expr) => { const r = await send("Runtime.evaluate", { expressi
 await send("Page.enable"); await send("Runtime.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
-await send("Page.navigate", { url: URL_ }); await sleep(2500);
+await send("Runtime.addBinding", { name: "nodeSend" });
+await send("Page.addScriptToEvaluateOnNewDocument", { source: `window.__testWallet = { account: ${JSON.stringify(JUDGE)}, send: (receiver, acts) => new Promise((res) => { const id = Math.random().toString(36).slice(2); (window.__p ||= {})[id] = res; window.nodeSend(JSON.stringify({ id, receiver, acts })); }) };` });
+(async () => { for (;;) { while (bindings.length) { const b = bindings.shift(); const { id: cid, receiver, acts } = JSON.parse(b.payload); let out; try { out = await execActs(JUDGE, receiver, acts); } catch (e) { out = { status: { Failure: String(e.message) }, transaction: { hash: null } }; } await ev(`window.__p[${JSON.stringify(cid)}](${JSON.stringify(out)})`); } await sleep(150); } })();
+await send("Page.navigate", { url: `${URL_}?sandbox=${SANDBOX}` }); await sleep(2500);
 
 // overlay: cursor, ripple, caption
 await ev(`(() => {
@@ -56,17 +82,15 @@ await ev(`(() => {
 await send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
 
 const voice = []; let t0 = null;
-const EDGE = process.env.EDGE_TTS ?? "edge-tts", VOICE = process.env.VOICE ?? "en-US-AndrewMultilingualNeural";
-// One continuous voice clip per scene; the cursor actions run WHILE it plays, so the speech never stops and restarts.
-const narrate = async (text, actions = async () => {}) => {
-  const cache = join(process.env.REC_DIR ?? tmpdir(), "tts-cache"); mkdirSync(cache, { recursive: true });
-  const mp3 = join(cache, createHash("sha1").update(VOICE + text).digest("hex") + ".mp3");
-  if (!existsSync(mp3)) execFileSync(EDGE, ["--voice", VOICE, "--rate=-2%", "--text", text, "--write-media", mp3], { stdio: "ignore" });
+const EDGE = process.env.EDGE_TTS ?? "edge-tts", VOICE = VOICE_;
+const narrate = async (text, actions = async () => {}) => { // one continuous clip per scene; the cursor acts WHILE it plays
+  const mp3 = ttsFile(text);
+  if (!existsSync(mp3)) { mkdirSync(join(mp3, ".."), { recursive: true }); execFileSync(EDGE, ["--voice", VOICE, "--rate=-2%", "--text", text, "--write-media", mp3], { stdio: "ignore" }); }
   const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp3]).toString()) * 1000;
   voice.push({ wav: mp3, at: (performance.now() - (frames[0]?.t ?? performance.now())) / 1000 });
   const t0 = performance.now();
   await actions();
-  await sleep(Math.max(300, dur - (performance.now() - t0)) + 350); // let the sentence finish, then a natural beat
+  await sleep(Math.max(300, dur - (performance.now() - t0)) + 350);
 };
 const quiet = async () => {};
 const rect = async (sel, fx = 0.5, fy = 0.5) => { for (let i = 0; i < 20 && !(await ev(`!!document.querySelector(${JSON.stringify(sel)})`)); i++) await sleep(250); return rect0(sel, fx, fy); };
@@ -95,72 +119,65 @@ process.on("uncaughtException", async (e) => { try { console.log("DIAG", await e
 // ---- script ----
 await sleep(2200);
 await ev(`document.getElementById("title").style.opacity=0`); await sleep(900); await ev(`document.getElementById("title").remove()`);
-// warm up the wallet selector (it loads lazily) so the modal opens instantly during the narration
-await click("#wallet-btn");
-for (let i = 0; i < 40 && !(await ev(`[...document.querySelectorAll("*")].some(e=>e.children.length===0&&/Connect Your Wallet/.test(e.textContent)&&e.offsetParent!==null)`)); i++) await sleep(500);
-await ev(`(()=>{const c=[...document.querySelectorAll('[class*="close"]')].find(e=>e.offsetParent!==null);if(c)c.click()})()`); await sleep(1200);
-await ev(`window.scrollTo(0,0)`); await sleep(600);
-const closeModal = () => ev(`(()=>{const c=[...document.querySelectorAll('[class*="close"]')].find(e=>e.offsetParent!==null);if(c)c.click()})()`);
+await ev(`window.scrollTo(0,0)`); await sleep(500);
 
-await narrate("This is Rounds, a cap table and fundraising tool built on NEAR testnet, so there is no real money involved. The idea is simple: every number on a cap table should come with a way to check it. What you are looking at is a Series A, showing who owns what before and after the round, along with the price per share, which is solved exactly, in whole shares, with no floating point.", async () => {
-  await sleep(3000); await point("h1", 0.4, 0.5); await sleep(5200); await point("#hero-bars", 0.5, 0.35); await sleep(5200); await point("#hero-price", 0.5, 0.5);
+const flowBtn = (a) => `#flow [data-flow="${a}"]`;
+const rowCls = (n) => ev(`document.querySelectorAll("#flow .flow-row")[${n - 1}]?.className ?? ""`);
+const waitRow = async (n, re, ms = 150000) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (re.test(await rowCls(n))) return; await sleep(500); } throw new Error(`step ${n} never reached ${re}`); };
+// press a guided step's button (waits until it is enabled), then wait until the page itself marks the step done; skipped if already done, so a retry is safe
+const doStep = async (act, n) => {
+  if (/done/.test(await rowCls(n))) return;
+  await ev(`document.querySelector(${JSON.stringify(flowBtn(act))}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+  for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(flowBtn(act))});return !!b&&!b.disabled})()`)); i++) await sleep(500);
+  await click(flowBtn(act)); await waitRow(n, /done/);
+};
+
+await narrate(N.hook, async () => {
+  await sleep(2500); await point("h1", 0.4, 0.5); await sleep(8500); await point("#intro", 0.5, 0.3); await sleep(12000); await point("#hero-bars", 0.5, 0.35);
 });
 
-await narrate("Up in the corner, you can connect a NEAR testnet wallet. It opens the wallet selector, with MyNearWallet and Meteor, and the app never asks for a key. Every action you take here is approved in your own wallet.", async () => {
-  await point("#wallet-btn", 0.5, 0.5); await sleep(1500); await click("#wallet-btn"); await sleep(5200); await closeModal(); await sleep(500);
-});
-
-await scrollTo("#cap");
-await narrate("Next, the cap table. Every figure comes from a deterministic engine, never from an AI model, and each one links back to its definition in the rules file.", async () => {
-  await point("#cap-table", 0.5, 0.3); await sleep(2500); await point("#cap-table", 0.5, 0.75, 1000);
+await narrate(N.basics, async () => {
+  await ev(`document.getElementById("intro").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1300);
+  await point(".gloss summary", 0.3, 0.5); await click(".gloss summary"); await sleep(4500); await click(".gloss summary"); await sleep(600);
+  await scrollTo("#cap"); await point("#cap-table", 0.5, 0.3);
 });
 
 await scrollTo("#model");
-await narrate("The round modeler is where you can play with the numbers. Change an input, say a bigger cheque from the fund, and the engine instantly re-solves the SAFE conversions, the option pool and the price, and reports every rounding remainder. Then make the option pool larger, and the price drops, because the pool dilutes the existing holders, not the new investor.", async () => {
-  await point("#form", 0.5, 0.1); await sleep(2800); await typeInto("#raise", 12000000); await point("#model-out", 0.5, 0.25); await sleep(5200); await typeInto("#pool", 15); await sleep(1500);
+await narrate(N.modeler, async () => {
+  await point("#form", 0.5, 0.08); await sleep(4000); await point("#ada", 0.5, 0.5); await sleep(5000); await point("#model-out", 0.5, 0.25);
 });
 
-await narrate("Each round becomes a plan with its own SHA-256 hash. The board approves that hash, and the contract only runs a plan that matches it. And here is the button for it. With a wallet connected, this sends the round to the contract. Only an officer account is allowed to propose it, and after that the board votes on the hash.", async () => {
-  await point("#plan-card", 0.5, 0.15); await sleep(5200);
-  await ev(`document.getElementById("propose-btn").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
-  await point("#propose-btn", 0.5, 0.5); await sleep(1200);
-  await point("#propose-btn", 0.45, 0.55, 500); await point("#propose-btn", 0.55, 0.45, 500);
-});
-
-await scrollTo("#people");
-await narrate("Investors and employees get a personal view. Employee options vest over forty eight months, with a twelve month cliff, and as you drag through time, the vested amount is computed exactly.", async () => {
-  await point("#investor", 0.5, 0.5); await sleep(3000); await point("#month", 0.1, 0.5); await sleep(600); await drag("#month", 0.05, 0.6);
-});
-
-await scrollTo("#exit");
-await narrate("The exit simulator shows how proceeds are split. Preferred shareholders take their preference, or convert to common, whichever pays more. At a low exit the investor is paid first, and at a high exit everyone converts, and the payouts always add up to the proceeds.", async () => {
-  await sleep(2500); await drag("#proceeds", 0.05, 0.2, 18); await sleep(3500); await drag("#proceeds", 0.2, 0.9, 30);
+await scrollTo("#try");
+await narrate(N.flow, async () => { await point("#flow", 0.5, 0.08); await sleep(6000); await point("#flow .flow-row:nth-child(1) .flow-n", 0.5, 0.5); });
+await narrate(N.usdc, async () => { await doStep("faucet", 2); });
+await narrate(N.officer, async () => { await doStep("officer", 3); });
+await narrate(N.propose, async () => { await doStep("propose", 5); });
+await narrate(N.fund, async () => { await doStep("deposit", 6); });
+await narrate(N.approve, async () => { await doStep("approve", 7); });
+await narrate(N.close, async () => { await doStep("close", 8); });
+await narrate(N.result, async () => {
+  await ev(`document.querySelector("#flow .flow-result").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+  for (let i = 0; i < 120 && !/Series A Preferred/.test(await ev(`document.querySelector("#flow .flow-result").innerText`)); i++) await sleep(500);
+  await point("#flow .flow-result", 0.3, 0.5);
 });
 
 await scrollTo("#verify");
-await narrate("Now, the part that matters: checking everything against the real chain. You can paste any Rounds contract on testnet. This one is our demo contract, and the app reads the cap table, the rounds and the exits straight from the chain. Each round's plan is hashed again, right here in your browser, and compared with the hash the chain holds. A pass means they are identical, and every round has its own link, so an investor can open a single address that proves their round.", async () => {
-  await point("#contract", 0.4, 0.5); await sleep(2500); await click("#chain-btn");
-  for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("#chain-out .chain-tbl")`)); i++) await sleep(500);
-  await point("#chain-out .chain-tbl", 0.5, 0.5); await sleep(4000);
+await narrate(N.verify, async () => {
+  await point("#pre-sandbox", 0.5, 0.5); await click("#pre-sandbox");
+  for (let i = 0; i < 90 && !(await ev(`!!document.querySelector("#chain-out .chain-tbl")`)); i++) await sleep(500);
   await ev(`document.querySelectorAll("#chain-out .chain-tbl")[1].scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
-  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(3)", 0.6, 0.5); await sleep(4500);
-  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(3)", 0.95, 0.5);
+  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.6, 0.5); await sleep(7000);
+  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.95, 0.5);
 });
+const chainTxt = await ev(`document.getElementById("chain-out").innerText`);
+console.log(chainTxt.split("\n").filter((l) => /PASS|FAIL|Round/.test(l)).join("\n"));
+if (/FAIL/.test(chainTxt) || !/PASS/.test(chainTxt)) throw new Error("the on-chain check did not pass; not encoding");
 
-await narrate("Once a wallet is connected, this panel shows what your account can do on the contract: get test tokens, fund a round, close it, pay out an exit, or vote if you are on the board. And the Verify button recomputes everything against the engine and the chain one more time.", async () => {
-  await ev(`document.getElementById("chain-actions").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
-  await point("#chain-actions", 0.3, 0.5); await sleep(6500);
-  await ev(`document.getElementById("verify-btn").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
-  await click("#verify-btn");
-  for (let i = 0; i < 60; i++) { const t = await ev(`document.getElementById("verify-out").textContent`); if (/failed/.test(t)) break; await sleep(500); }
-});
-await ev(`document.getElementById("verify-out").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1200);
-const outTxt = await ev(`document.getElementById("verify-out").textContent`);
-console.log(outTxt);
-if (!/0 failed/.test(outTxt)) throw new Error("Verify did not finish with 0 failed; not encoding");
-await narrate("Every check passes, and the hashes match the chain. Rounds is testnet only, with an exact equity engine, a second implementation, and a verifier anyone can run. Thanks for watching.", async () => {
-  await point("#verify-out", 0.3, 0.3);
-});
+await scrollTo("#exit");
+await narrate(N.exit, async () => { await sleep(5000); await drag("#proceeds", 0.05, 0.2, 18); await sleep(4000); await drag("#proceeds", 0.2, 0.9, 30); });
+
+await ev(`window.scrollTo({top:0,behavior:"smooth"})`); await sleep(1200);
+await narrate(N.close2, async () => { await point("h1", 0.4, 0.5); });
 await sleep(800);
 
 // ---- encode ----

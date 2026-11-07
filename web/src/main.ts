@@ -281,6 +281,7 @@ async function initChain() {
   pool.forEach((c) => c.rounds && sandboxContracts.add(c.rounds));
   let sb: Sb | null = pool.length ? pool[pool.length - 1] : null;
   for (const c of pool) { try { if ((await call(dep.rpc, c.rounds!, "round", { round_id: 4 })) === null) { sb = c; break; } } catch { /* unreadable: skip */ } }
+  const forced = qs.get("sandbox"); if (forced) { const f = pool.find((c) => c.rounds === forced); if (f) sb = f; } // ?sandbox=<rounds account> pins one sandbox of the pool
   if (sb?.rounds) {
     $("chain-presets").innerHTML = `<p class="note" style="margin:10px 0 0">Two contracts to try: the <b>demo</b> run (history of a finished Series A and exit; its board is fixed demo accounts) and an <b>open sandbox</b> (founders and two SAFEs closed, the Series A is yours; anyone may propose and vote, testnet, no value).</p><div style="display:flex;gap:8px;margin:8px 0 4px"><button class="btn sm" id="pre-demo">Load the demo contract</button><button class="btn primary sm" id="pre-sandbox">Load the open sandbox</button></div>`;
     $("pre-demo").onclick = () => { input.value = dep.rounds ?? ""; void run(); };
