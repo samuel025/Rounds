@@ -4,7 +4,7 @@ import { demoPlans, type Accounts } from "./plans";
 
 const rd = (f: string) => JSON.parse(readFileSync(`results/${f}`, "utf8"));
 const addr = rd("demo-addresses.json"), txs: { step: string; tx: string; what: string }[] = rd("demo-txs.json"), events: { name: string; tx: string; data: any; plan?: string }[] = rd("demo-events.json"), plans = rd("demo-plans.json");
-const EX = "https://explorer.testnet.near.org/transactions/";
+const EX = "https://testnet.nearblocks.io/txns/";
 const short = (a: string) => a.replace(`-${addr.suffix}.testnet`, "").replace(/^rounds-/, "");
 const usd = (m: bigint) => "$" + (Number((m + 5_000n) / 10_000n) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 let total = 0, failed = 0;

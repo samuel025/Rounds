@@ -6,6 +6,8 @@ Cap tables live in spreadsheets and PDFs, and nobody can check them. Rounds is a
 
 ## Why this matters
 
+*New to cap tables? The page opens with a plain-English box and a glossary (cap table, SAFE, Series A, option pool, plan hash and the rest).*
+
 When a startup raises money, one spreadsheet says who owns what: founders, investors and employees' stock options. It is usually a private file, and it goes wrong in familiar ways: different people compute different numbers, an investor cannot check that what they were promised is what was recorded, and nobody can prove afterwards that a payout at a sale followed the agreed rules.
 
 Rounds makes the math checkable:
@@ -45,7 +47,7 @@ Every number below is checked against `results/summary.json` by `make check-read
 | `make test-contract` | Builds the contract and mock token, then the sandbox tests pass (about a minute; downloads the sandbox binary the first time) |
 | `make web-dev` | The app on a local port: dilution chart, cap table, round modeler, investor and employee views, exit simulator, events and Verify. `make web` builds a static site into `dist/`. The repo includes a `vercel.json`, so connecting it to Vercel builds and hosts the app. |
 | `make demo` | Scripted testnet run (needs `near` CLI, network and the faucet; see the note below) |
-| `make sandbox` | `near` CLI, network, faucet or spare testnet NEAR (`SANDBOX_FUND_FROM`): deploys a fresh open sandbox (founders and two SAFEs closed, Series A left to try); writes `web/public/sandbox.json` |
+| `make sandbox` | `near` CLI, network, faucet or spare testnet NEAR (`SANDBOX_FUND_FROM`): deploys a fresh open sandbox (founders and two SAFEs closed, Series A left to try) and adds it to the pool in `web/public/sandboxes.json` |
 | `make e2e-wallet` | needs `make web-dev` running, the `near` CLI, Chrome and the throwaway demo keys on this machine: drives the app's real wallet buttons against testnet with a test signer (with `E2E_SANDBOX=<a throwaway sandbox instance>` it also plays all eight guided steps and checks that the page height stays stable); last line `PASS summary: <n> checks, 0 failed` |
 | `make check-readme` | Fails if a number in this README differs from `results/summary.json` |
 
@@ -64,7 +66,7 @@ Buttons your account cannot use are shown disabled or answered with the contract
 
 **Open sandbox (try the whole flow yourself).** The page has a section **Run a round on testnet** (nav: "Run it") that walks through eight steps in order: connect a wallet, get test USDC, make yourself an officer, set the round (the modeler above), propose it, fund it, approve it as the board, and close it. Each step shows whether it is done, current or waiting, and the layout never moves while chain data refreshes. It runs on a second, separate Rounds contract on testnet with the founders and two SAFEs already closed and the Series A left for you; "Load the open sandbox" in the contract box shows the same contract's cap table and re-checks its hashes.
 
-Its board is `contract/open-board`, a tiny contract that lets anyone ask it to act as the board for that one contract (it forwards only a short list of board methods). Sputnik DAO cannot give every visitor a vote: its "Everyone" role fails with `ERR_UNSUPPORTED_ROLE` when votes are counted, so the sandbox deliberately uses this open board instead; the demo run keeps its real 2-of-3 Sputnik DAO. At the end you hold your Series A shares and the SAFEs have converted. A sandbox can only run one Series A (the SAFEs convert once), and anyone else can use it too, so it may already be used when you open it; `make sandbox` deploys a fresh one. Testnet, no value, never use an open board for real money.
+Its board is `contract/open-board`, a tiny contract that lets anyone ask it to act as the board for that one contract (it forwards only a short list of board methods). Sputnik DAO cannot give every visitor a vote: its "Everyone" role fails with `ERR_UNSUPPORTED_ROLE` when votes are counted, so the sandbox deliberately uses this open board instead; the demo run keeps its real 2-of-3 Sputnik DAO. The modeler is tied to the sandbox: its founders, pool and SAFEs are read from the chain and locked, so you choose only the round's terms and what you model is exactly what gets proposed. At the end you hold your Series A shares and the SAFEs have converted. A sandbox can run only one Series A (the SAFEs convert once), so there is a pool of sandboxes (`web/public/sandboxes.json`) and each visitor gets the first one that is still unused; if all are used the guided steps say so. `make sandbox` adds a fresh one to the pool. Testnet, no value, never use an open board for real money.
 
 The Verify button reads the live contract named in `web/public/deployment.json`.
 
@@ -89,16 +91,16 @@ Network: NEAR testnet. Throwaway accounts, no value.
 
 | Demo step | Key transaction |
 |---|---|
-| DAO board created (2-of-3 council) | [Frxub4Ep…](https://explorer.testnet.near.org/transactions/Frxub4EpmcLzKRhfMz4PE5a67vZ8uk9HFUBYCfWv3peF) |
-| Founders and pool closed (after a board vote) | [4EGkrJuJ…](https://explorer.testnet.near.org/transactions/4EGkrJuJ6DfoXdkBskvZr7jerjLwu7DLPz6wsd8FHR6R) |
-| SAFE 1 closed, SAFE 2 closed | [F7LtPCu6…](https://explorer.testnet.near.org/transactions/F7LtPCu6FNjhuxibxYc324aKyNYMjyBhkCXs1ccQMZrh), [7r8cfcGR…](https://explorer.testnet.near.org/transactions/7r8cfcGRutnoaXsjinhomdRSNrtanXVuMrxdo2tFMaqk) |
-| Fund pays $9,000,000 into escrow | [87fHfShf…](https://explorer.testnet.near.org/transactions/87fHfShfPqeM27x76rqCEsv2zRNQ1PJyQTZQLWU9kwwX) |
-| Series A closed, holdings credited | [2e6T7saS…](https://explorer.testnet.near.org/transactions/2e6T7saSYGhTrhQmCdr5pz3etab5MUmL4L3NuzcSxzoS) |
-| Attack: a stranger calls `approve_round` (**fails on chain**: only the board) | [7Zqxt28B…](https://explorer.testnet.near.org/transactions/7Zqxt28BLWyag7Tk5ABUGuADrJJNrmBMtBkuKrHnndb9) |
-| Wrong-token deposit (refunded in full) | [tnqvmdcE…](https://explorer.testnet.near.org/transactions/tnqvmdcE3oNWYuaiKWLqvc6mHXZca5yLn9ZGKSvXTWD) |
-| Attack: `close_round` a second time (**fails on chain**: already closing/closed) | [GQqAyzex…](https://explorer.testnet.near.org/transactions/GQqAyzexEEJ1YFeu2mSWNwGxnZDwfUwQTfz5YZEJbQfJ) |
-| Board executes the option grant for Efe | [Guwiz3eW…](https://explorer.testnet.near.org/transactions/Guwiz3eWhDpEDQCU9MbcB5M6bLGbHLsRzSCpkVYiXRP4) |
-| Zed funds the $20M exit; board approves; distribute | [EadSjTmj…](https://explorer.testnet.near.org/transactions/EadSjTmjWVJmV3vDgzUA6WwwoawifQwHFGSSA1nct5is), [4qCL2hpB…](https://explorer.testnet.near.org/transactions/4qCL2hpBZvSkc81M7c2W11UHQLtojeSkSRppN8Wq5DHK), [B1V9GV2W…](https://explorer.testnet.near.org/transactions/B1V9GV2WYS2RTfvHcLRri2ctMMwDAmUMkmK3mgTgVKqz) |
+| DAO board created (2-of-3 council) | [Frxub4Ep…](https://testnet.nearblocks.io/txns/Frxub4EpmcLzKRhfMz4PE5a67vZ8uk9HFUBYCfWv3peF) |
+| Founders and pool closed (after a board vote) | [4EGkrJuJ…](https://testnet.nearblocks.io/txns/4EGkrJuJ6DfoXdkBskvZr7jerjLwu7DLPz6wsd8FHR6R) |
+| SAFE 1 closed, SAFE 2 closed | [F7LtPCu6…](https://testnet.nearblocks.io/txns/F7LtPCu6FNjhuxibxYc324aKyNYMjyBhkCXs1ccQMZrh), [7r8cfcGR…](https://testnet.nearblocks.io/txns/7r8cfcGRutnoaXsjinhomdRSNrtanXVuMrxdo2tFMaqk) |
+| Fund pays $9,000,000 into escrow | [87fHfShf…](https://testnet.nearblocks.io/txns/87fHfShfPqeM27x76rqCEsv2zRNQ1PJyQTZQLWU9kwwX) |
+| Series A closed, holdings credited | [2e6T7saS…](https://testnet.nearblocks.io/txns/2e6T7saSYGhTrhQmCdr5pz3etab5MUmL4L3NuzcSxzoS) |
+| Attack: a stranger calls `approve_round` (**fails on chain**: only the board) | [7Zqxt28B…](https://testnet.nearblocks.io/txns/7Zqxt28BLWyag7Tk5ABUGuADrJJNrmBMtBkuKrHnndb9) |
+| Wrong-token deposit (refunded in full) | [tnqvmdcE…](https://testnet.nearblocks.io/txns/tnqvmdcE3oNWYuaiKWLqvc6mHXZca5yLn9ZGKSvXTWD) |
+| Attack: `close_round` a second time (**fails on chain**: already closing/closed) | [GQqAyzex…](https://testnet.nearblocks.io/txns/GQqAyzexEEJ1YFeu2mSWNwGxnZDwfUwQTfz5YZEJbQfJ) |
+| Board executes the option grant for Efe | [Guwiz3eW…](https://testnet.nearblocks.io/txns/Guwiz3eWhDpEDQCU9MbcB5M6bLGbHLsRzSCpkVYiXRP4) |
+| Zed funds the $20M exit; board approves; distribute | [EadSjTmj…](https://testnet.nearblocks.io/txns/EadSjTmjWVJmV3vDgzUA6WwwoawifQwHFGSSA1nct5is), [4qCL2hpB…](https://testnet.nearblocks.io/txns/4qCL2hpBZvSkc81M7c2W11UHQLtojeSkSRppN8Wq5DHK), [B1V9GV2W…](https://testnet.nearblocks.io/txns/B1V9GV2WYS2RTfvHcLRri2ctMMwDAmUMkmK3mgTgVKqz) |
 
 All transactions of the final run are in `results/demo-txs.json`, and every event in `results/demo-events.json`.
 

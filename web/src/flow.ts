@@ -10,6 +10,7 @@ export interface FlowDeps {
   modelSummary: () => string; raiseMicro: () => bigint;
   propose: (contract: string) => Promise<{ hash: string | null; value: unknown }>;
   showResult: () => void;
+  onChain?: (v: ChainView) => void;
 }
 const M = 1_000_000n;
 const usd = (micro: bigint) => "$" + (Number(micro) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 });
@@ -24,7 +25,7 @@ export function mountFlow(host: HTMLElement, d: FlowDeps) {
   const foreignDone = () => (v ? v.rounds.find((r) => r.kind === "Priced" && r.status === "Closed" && !r.raise.some(([w]) => w === acct)) ?? null : null);
 
   async function refresh() {
-    try { v = await loadChain(d.rpc, d.contract); readError = ""; } catch (e) { readError = (e as Error).message; }
+    try { v = await loadChain(d.rpc, d.contract); readError = ""; d.onChain?.(v); } catch (e) { readError = (e as Error).message; }
     acct = account();
     if (acct && v) { try { bal = BigInt(await call(d.rpc, d.token, "ft_balance_of", { account_id: acct })); } catch { /* keep old */ } }
     draw();

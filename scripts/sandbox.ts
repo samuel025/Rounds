@@ -3,10 +3,10 @@
 // (Sputnik cannot give every visitor a vote: its "Everyone" role fails with ERR_UNSUPPORTED_ROLE when votes are counted.) Testnet only; the token has no value.
 // Creates throwaway accounts (faucet first; SANDBOX_FUND_FROM=acct1,acct2 funds from spare testnet accounts if the faucet refuses).
 import { spawnSync } from "node:child_process";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { canonicalJson, planHash } from "../src/engine/index";
 
-const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://explorer.testnet.near.org";
+const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://testnet.nearblocks.io";
 const M = 1_000_000n;
 const S = process.env.SANDBOX_SUFFIX ?? String(Date.now()).slice(-6);
 const id = (n: string) => `rsbx-${n}-${S}.testnet`;
@@ -121,7 +121,10 @@ async function main() {
   mkdirSync("results", { recursive: true });
   const dep = { network: NET, rpc: RPC, explorer: EXPLORER, rounds: A.rounds, board: A.board, token: A.usdc, openBoard: true, note: "OPEN SANDBOX: anyone may become an officer and act as the board. Founders and two SAFEs are closed; the Series A is yours to run. Testnet, no value." };
   writeFileSync("results/sandbox.json", JSON.stringify({ suffix: S, accounts: A, deployment: dep, txs }, null, 2));
-  writeFileSync("web/public/sandbox.json", JSON.stringify(dep, null, 2));
+  writeFileSync("web/public/sandbox.json", JSON.stringify(dep, null, 2)); // the newest sandbox, kept for older readers
+  // the pool: the app gives each visitor the first sandbox whose Series A has not been run yet (a sandbox can run only one)
+  const pool: any[] = existsSync("web/public/sandboxes.json") ? JSON.parse(readFileSync("web/public/sandboxes.json", "utf8")) : [];
+  pool.push(dep); writeFileSync("web/public/sandboxes.json", JSON.stringify(pool.slice(-12), null, 2));
   log(`done. sandbox contract ${A.rounds}, open board ${A.board}, token ${A.usdc}`);
 }
 main().catch((e) => { console.error(e); process.exit(1); });

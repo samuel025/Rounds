@@ -11,7 +11,7 @@ export function toast(html: string, kind: "ok" | "fail" | "info" = "info") {
   t.className = `toast ${kind}`; t.innerHTML = `${html} <button class="x" aria-label="Dismiss">×</button>`; t.style.display = "block";
   t.querySelector("button")!.onclick = () => { t!.style.display = "none"; };
 }
-export const txLink = (explorer: string, hash: string) => `<a class="mono" href="${esc(explorer)}/transactions/${esc(hash)}" target="_blank" rel="noopener">${esc(hash.slice(0, 10))}… ↗</a>`;
+export const txLink = (explorer: string, hash: string) => `<a class="mono" href="${esc(explorer)}/txns/${esc(hash)}" target="_blank" rel="noopener">${esc(hash.slice(0, 10))}… ↗</a>`;
 
 /** Nav button + the return trip from a browser wallet. */
 export function initWalletUi(explorer: string) {

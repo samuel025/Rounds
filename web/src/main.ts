@@ -1,7 +1,7 @@
 import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { send, account } from "./wallet";
-import { call, loadChain, checkRound, validAccount, esc } from "./chain";
+import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -19,12 +19,14 @@ const RULES = (id: string) => `<a class="q" href="rules.html#${id}" title="Defin
 
 // ---------- state ----------
 let reloadChain: () => void = () => {};
-let defaultContract = "", defaultRpc = "https://test.rpc.fastnear.com", explorerBase = "https://explorer.testnet.near.org";
+const sandboxContracts = new Set<string>(); // contracts that the guided "Run a round on testnet" steps drive
+let defaultContract = "", defaultRpc = "https://test.rpc.fastnear.com", explorerBase = "https://testnet.nearblocks.io";
 const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
-  proceeds: 20_000_000, month: 18, filter: "All", investor: "fund" };
+  proceeds: 20_000_000, month: 18, filter: "All", investor: "fund", locked: false };
 const COLORS: Record<string, string> = { ada: "#fafafa", bayo: "#a1a1aa", safe1: "#44ffa4", safe2: "#2ca86c", fund: "#3080ff", unissued_pool: "#f99c00", efe: "#d946ef" };
-const label = (k: string) => ({ unissued_pool: "Option pool", fund: "Fund (Series A)", safe1: "SAFE 1 · chidi", safe2: "SAFE 2 · dayo", ada: "Ada", bayo: "Bayo", efe: "Efe (options)" } as Record<string, string>)[k] ?? k;
+const names: Record<string, string> = {}; // filled with the real account ids when the modeler is tied to a sandbox on chain
+const label = (k: string) => names[k] ?? ({ unissued_pool: "Option pool (unissued)", fund: "New investor (Series A)", safe1: "Chidi · early investor, SAFE 1", safe2: "Dayo · early investor, SAFE 2", ada: "Ada · founder", bayo: "Bayo · founder", efe: "Efe · employee (options)" } as Record<string, string>)[k] ?? k;
 const CLASS_OF: Record<string, string> = { ada: "Common", bayo: "Common", unissued_pool: "Common", fund: "Series A Preferred", safe1: "SAFE 1 shadow preferred", safe2: "SAFE 2 shadow preferred" };
 
 function input(): PricedRoundInput {
@@ -71,7 +73,8 @@ async function renderPlan(r: Res) {
   const canon = canonicalJson(plan); const h = await planHash(canon);
   $("plan-card").innerHTML = `<div class="card-h"><span class="mono muted">PLAN HASH · SHA-256 OF RFC 8785 JSON ${RULES("r9")}</span></div><div class="hash">${h}</div>
   <p class="note" style="margin-top:12px">This is the exact value the board votes on. Propose it with your wallet, or with the command below; either way the contract accepts it only from an officer account, and the DAO then approves it by this hash.</p>
-  <div style="margin:10px 0"><button class="btn primary sm" id="propose-btn">Propose on chain with my wallet</button> <span class="note" id="propose-note">Sends <span class="mono">propose_round</span> to the contract in the box under Events &amp; verify, with your account as the investor. Testnet only.</span></div>
+  <div id="propose-row" style="margin:10px 0"${state.locked ? " hidden" : ""}><button class="btn primary sm" id="propose-btn">Propose on chain with my wallet</button> <span class="note" id="propose-note">Sends <span class="mono">propose_round</span> to the contract in the box under Events &amp; verify, with your account as the investor. Testnet only.</span></div>
+  ${state.locked ? `<p class="note">Propose this exact plan in the guided steps below: <a href="#try" class="mono">Run a round on testnet</a>.</p>` : ""}
   <pre class="out" id="cli">near contract call-function as-transaction &lt;ROUNDS&gt; propose_round json-args '{"kind":"Priced","plan_hash":"${h}","plan_uri":"…","plan":${JSON.stringify(canon).replace(/&/g, "&amp;").replace(/</g, "&lt;")},"raise":[["fund.testnet","${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":…}' …</pre>`;
   $("propose-btn").onclick = async () => {
     const acct = account();
@@ -103,6 +106,21 @@ async function proposeModeled(contract: string) {
   return send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
 }
 const modelSummary = () => { const { r, err } = solve(); return r ? `Pre-money ${usd(BigInt(state.pre) * M)} · new money ${usd(BigInt(state.raise) * M)} · pool ${state.pool}% → price ${price4(r.priceMicro)} per share` : `No valid solution: ${err}`; };
+
+/** Make the modeler describe the sandbox company that is really on chain: founders, pool and SAFEs are read and locked. */
+async function syncModelToChain(v: ChainView, contract: string) {
+  const commons = v.holdings.filter(([h, c]) => c === "Common" && h !== "unissued_pool");
+  const pool = v.holdings.find(([h]) => h === "unissued_pool");
+  const sf = new Map<string, any>();
+  for (const s of state.safes) { try { const rec = await call(defaultRpc, contract, "safe", { id: s.id }); if (rec) sf.set(s.id, rec); } catch { /* no such SAFE */ } }
+  if (commons.length < 2 || !pool || sf.size < state.safes.length) return; // not a sandbox shaped like the example: leave the example numbers alone
+  state.ada = Number(commons[0][2]); state.bayo = Number(commons[1][2]); state.poolNow = Number(pool[2]);
+  names.ada = `${commons[0][0]} (founder)`; names.bayo = `${commons[1][0]} (founder)`;
+  for (const s of state.safes) { const rec = sf.get(s.id); s.amt = Number(BigInt(rec.amount) / M); s.cap = Number(BigInt(rec.post_money_cap) / M); s.disc = rec.discount_bps / 100; s.holder = rec.holder; names[s.id] = `${rec.holder} · early investor, ${s.id === "safe1" ? "SAFE 1" : "SAFE 2"}`; }
+  state.locked = true; renderForm(); renderModel();
+  const sub = document.querySelector("#model .sub"); if (sub) sub.textContent = "This is the open sandbox company on testnet: its founders, pool and SAFEs are read from the chain. Choose the round (valuation, new money, option pool) and see the price per share and everyone's ownership after it. When you propose it below, this is exactly the plan that is sent.";
+  document.getElementById("propose-row")?.setAttribute("hidden", "");
+}
 
 // ---------- cap table ----------
 function renderCap(r: Res) {
@@ -169,10 +187,16 @@ function renderExit(r: Res) {
 
 // ---------- form ----------
 function renderForm() {
-  const f = (id: string, lab: string, v: number, step = 1) => `<label for="${id}">${lab}</label><input type="number" id="${id}" value="${v}" step="${step}" min="0"/>`;
-  $("form").innerHTML = f("pre", "Pre-money valuation ($)", state.pre, 500_000) + f("raise", "New money from Fund ($)", state.raise, 500_000) + f("pool", "Pool target (% of post-round)", state.pool, 1) +
-    `<div class="row">${["ada", "bayo", "poolNow"].map((k) => `<div>${f(k, k === "poolNow" ? "Pool now" : k[0].toUpperCase() + k.slice(1) + " shares", (state as any)[k], 100_000)}</div>`).join("")}</div>` +
-    state.safes.map((s, i) => `<div class="safe"><label>SAFE ${i + 1} · ${s.holder} · post-money cap</label><div class="row">${[f(`sa${i}`, "Amount $", s.amt, 50_000), f(`sc${i}`, "Cap $", s.cap, 500_000), f(`sd${i}`, "Discount %", s.disc, 5)].map((x) => `<div>${x}</div>`).join("")}</div></div>`).join("");
+  const lk = state.locked ? " disabled" : "";
+  const f = (id: string, lab: string, v: number, step = 1, locked = false) => `<label for="${id}">${lab}</label><input type="number" id="${id}" value="${v}" step="${step}" min="0"${locked ? lk : ""}/>`;
+  const who = (k: string, dflt: string) => (names[k] ? names[k] : dflt);
+  $("form").innerHTML =
+    `<div class="form-h">THE ROUND · you choose these</div>` +
+    f("pre", "Valuation before the round ($)", state.pre, 500_000) + f("raise", state.locked ? "New money from you, the new investor ($)" : "New money from the new investor ($)", state.raise, 500_000) + f("pool", "Option pool wanted after the round (% of all shares)", state.pool, 1) +
+    `<div class="form-h">THE COMPANY TODAY · before the round${state.locked ? " · read from the sandbox on chain, locked" : ""}</div>` +
+    `<div class="row">${["ada", "bayo", "poolNow"].map((k) => `<div>${f(k, k === "poolNow" ? "Unissued option pool (shares)" : `${who(k, k === "ada" ? "Ada, founder" : "Bayo, founder")} (shares)`, (state as any)[k], 100_000, true)}</div>`).join("")}</div>` +
+    state.safes.map((s, i) => `<div class="safe"><label>SAFE ${i + 1} · ${esc(s.holder)} · early investor</label><div class="row">${[f(`sa${i}`, "Paid in ($)", s.amt, 50_000, true), f(`sc${i}`, "Valuation cap ($)", s.cap, 500_000, true), f(`sd${i}`, "Discount (%)", s.disc, 5, true)].map((x) => `<div>${x}</div>`).join("")}</div></div>`).join("") +
+    `<p class="note" style="margin-top:10px">${state.locked ? "These holdings are the sandbox's real ones, so only the round's terms are editable." : "Made-up example company: Ada and Bayo are founders; Chidi and Dayo bought SAFEs (early investment notes that turn into shares at the next priced round) at a valuation cap, with an optional discount."}</p>`;
   const bind = (id: string, set: (v: number) => void) => $<HTMLInputElement>(id).oninput = (e) => { set(+(e.target as HTMLInputElement).value); renderModel(); };
   bind("pre", (v) => (state.pre = v)); bind("raise", (v) => (state.raise = v)); bind("pool", (v) => (state.pool = v));
   for (const k of ["ada", "bayo", "poolNow"] as const) bind(k, (v) => ((state as any)[k] = v));
@@ -188,10 +212,10 @@ async function view(dep: Dep, method: string, args: object) {
   return JSON.parse(new TextDecoder().decode(new Uint8Array(j.result.result)));
 }
 async function initVerify() {
-  const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://explorer.testnet.near.org", rounds: null, board: null, token: null, network: "testnet" }));
+  const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://testnet.nearblocks.io", rounds: null, board: null, token: null, network: "testnet" }));
   const evs: Ev[] = await fetch("events.json").then((r) => r.json()).catch(() => []);
   $("verify-sub").innerHTML = dep.rounds ? `Contract <span class="mono">${dep.rounds}</span> on ${dep.network}, board <span class="mono">${dep.board}</span>. Verify recomputes each plan with the engine and compares it with the chain.` : `No contract is configured in <span class="mono">deployment.json</span> yet, so Verify runs the engine self-check against the golden vector only.`;
-  $("events").innerHTML = evs.length ? evs.map((e) => `<div class="ev"><b>${e.name}</b><span class="muted mono">${JSON.stringify(e.data)}</span><a class="mono" href="${dep.explorer}/transactions/${e.tx}" target="_blank" rel="noopener">tx ↗</a></div>`).join("") : `<p class="note">No events committed yet. After <span class="mono">make demo</span> they appear here, each with its transaction link.</p>`;
+  $("events").innerHTML = evs.length ? evs.map((e) => `<div class="ev"><b>${e.name}</b><span class="muted mono">${JSON.stringify(e.data)}</span><a class="mono" href="${dep.explorer}/txns/${e.tx}" target="_blank" rel="noopener">tx ↗</a></div>`).join("") : `<p class="note">No events committed yet. After <span class="mono">make demo</span> they appear here, each with its transaction link.</p>`;
   $<HTMLButtonElement>("verify-btn").onclick = async () => {
     const out = $("verify-out"); const lines: string[] = []; let failed = 0;
     const P = (ok: boolean, msg: string) => { lines.push(`<span class="${ok ? "pass" : "fail"}">${ok ? "PASS" : "FAIL"}</span> ${msg}`); if (!ok) failed++; out.innerHTML = lines.join("\n"); };
@@ -214,7 +238,7 @@ async function initVerify() {
 
 // ---------- any contract, straight from the chain ----------
 async function initChain() {
-  const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://explorer.testnet.near.org", rounds: null, board: null, token: null, network: "testnet" }));
+  const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://testnet.nearblocks.io", rounds: null, board: null, token: null, network: "testnet" }));
   defaultContract = dep.rounds ?? ""; defaultRpc = dep.rpc; explorerBase = dep.explorer; initWalletUi(dep.explorer);
   const qs = new URLSearchParams(location.search);
   const input = $<HTMLInputElement>("contract"); input.value = qs.get("contract") ?? dep.rounds ?? "";
@@ -232,20 +256,31 @@ async function initChain() {
       for (const r of v.rounds) {
         const c = await checkRound(r); if (!c.ok) failed++;
         const hl = only && +only === r.id ? ' style="background:rgba(68,255,164,.08)"' : "";
-        rows.push(`<tr id="round-${r.id}"${hl}><td>Round ${r.id}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td><td>${esc(r.status)}</td><td><span class="${c.ok ? "pass" : "fail"}">${c.ok ? "PASS" : "FAIL"}</span> <span class="mono muted">${esc(r.plan_hash.slice(0, 16))}…</span></td><td><a class="mono" href="${esc(link(id, "verify/round-" + r.id))}">link</a></td></tr>`);
+        rows.push(`<tr id="round-${r.id}"${hl}><td>Round ${r.id}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td><td>${esc(r.status)}</td><td><span class="${c.ok ? "pass" : "fail"}">${c.ok ? "PASS" : "FAIL"}</span> <span class="mono muted">${esc(r.plan_hash.slice(0, 16))}…</span></td><td><button class="linkbtn" data-copy="${esc(link(id, "verify/round-" + r.id))}" data-r="${r.id}">Copy link</button></td></tr>`);
       }
       const hold = v.holdings.map(([h, cl, sh]) => `<tr><td class="mono">${esc(h)}</td><td>${esc(cl)}</td><td class="n">${esc(BigInt(sh).toLocaleString("en-US"))}</td></tr>`).join("");
       const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.approved ? "approved" : "pending"}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc((Number(BigInt(e.total)) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 }))} USDC</td></tr>`).join("");
       out.innerHTML = `<div class="chain-h"><span class="mono muted">CONTRACT <b>${esc(v.contract)}</b> · BOARD ${esc(v.board)} · TOKEN ${esc(v.token)}</span></div>
         <table class="chain-tbl"><tr><th>HOLDER</th><th>CLASS</th><th class="n">SHARES (ON CHAIN)</th></tr>${hold || `<tr><td colspan="3" class="muted">no shares issued yet</td></tr>`}</table>
-        <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th></th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>
+        <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th>SHARE</th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>
         ${exits ? `<table class="chain-tbl"><tr><th>EXIT</th><th>STATE</th><th>PLAN HASH</th><th class="n">FUNDED</th></tr>${exits}</table><p class="note">Exit plan text is not stored on chain, only its hash and URI, so exit hashes are shown, not recomputed here.</p>` : ""}
         <pre class="out"><span class="${failed ? "fail" : "pass"}">${failed ? "FAIL" : "PASS"}</span> ${v.rounds.length} round plan(s) re-hashed in this browser; ${failed} mismatch(es)\nEverything above was read live from the chain; nothing came from this site's files.</pre>`;
-      void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, reloadChain);
+      out.querySelectorAll<HTMLButtonElement>("button[data-copy]").forEach((b) => (b.onclick = async () => {
+        try { await navigator.clipboard.writeText(b.dataset.copy!); toast(`Link copied. Anyone who opens it sees this contract with round ${esc(b.dataset.r!)} highlighted, and its hash re-checked.`, "ok"); }
+        catch { toast(`Copy this link: <span class="mono">${esc(b.dataset.copy!)}</span>`, "info"); }
+      }));
+      if (sandboxContracts.has(v.contract)) $("chain-actions").innerHTML = `<div class="chain-h"><span class="mono muted">YOUR ACTIONS</span></div><p class="note">This is an open sandbox. Everything you can do on it is in the guided steps: <a href="#try" class="mono">Run a round on testnet</a>.</p>`;
+      else void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, reloadChain);
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };
-  const sb: { rounds?: string; board?: string; token?: string } | null = await fetch("sandbox.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  type Sb = { rounds?: string; board?: string; token?: string };
+  const pool: Sb[] = await fetch("sandboxes.json").then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  if (!pool.length) { const one: Sb | null = await fetch("sandbox.json").then((r) => (r.ok ? r.json() : null)).catch(() => null); if (one) pool.push(one); }
+  // each visitor gets the first sandbox whose Series A has not been run yet; if all are used, show the newest (the guided steps then say so)
+  pool.forEach((c) => c.rounds && sandboxContracts.add(c.rounds));
+  let sb: Sb | null = pool.length ? pool[pool.length - 1] : null;
+  for (const c of pool) { try { if ((await call(dep.rpc, c.rounds!, "round", { round_id: 4 })) === null) { sb = c; break; } } catch { /* unreadable: skip */ } }
   if (sb?.rounds) {
     $("chain-presets").innerHTML = `<p class="note" style="margin:10px 0 0">Two contracts to try: the <b>demo</b> run (history of a finished Series A and exit; its board is fixed demo accounts) and an <b>open sandbox</b> (founders and two SAFEs closed, the Series A is yours; anyone may propose and vote, testnet, no value).</p><div style="display:flex;gap:8px;margin:8px 0 4px"><button class="btn sm" id="pre-demo">Load the demo contract</button><button class="btn primary sm" id="pre-sandbox">Load the open sandbox</button></div>`;
     $("pre-demo").onclick = () => { input.value = dep.rounds ?? ""; void run(); };
@@ -255,6 +290,7 @@ async function initChain() {
   if (sb?.rounds && sb.board && sb.token) {
     $("try").hidden = false; $("nav-try").hidden = false;
     mountFlow($("flow"), { rpc: dep.rpc, explorer: dep.explorer, contract: sb.rounds, board: sb.board, token: sb.token, modelSummary, raiseMicro: () => BigInt(state.raise) * M, propose: (c) => proposeModeled(c),
+      onChain: (v) => { if (!state.locked && !v.rounds.some((r) => r.kind === "Priced")) void syncModelToChain(v, sb.rounds!); },
       showResult: () => { input.value = sb.rounds!; void run(); document.getElementById("verify")?.scrollIntoView({ behavior: "smooth" }); } });
   }
   $("chain-btn").onclick = () => void run();

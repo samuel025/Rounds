@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { priceRound, waterfall, vested, canonicalJson, planHash, pricedRoundPlan } from "../src/engine/index";
 
-const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://explorer.testnet.near.org";
+const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://testnet.nearblocks.io";
 const M = 1_000_000n;
 const S = process.env.DEMO_SUFFIX ?? String(Date.now()).slice(-6);
 const id = (n: string) => `rounds-${n}-${S}.testnet`;

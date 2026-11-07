@@ -101,8 +101,9 @@ try {
   //    height while chain data refreshes after each step (the layout used to grow and shrink).
   if (process.env.E2E_SANDBOX && existsSync(process.env.E2E_SANDBOX)) { // the flow closes this sandbox's Series A: never point it at the sandbox judges use
     const sb = JSON.parse(readFileSync(process.env.E2E_SANDBOX, "utf8")); const judge = sb.accounts.bayo, rounds = sb.accounts.rounds, stoken = sb.accounts.usdc;
-    const served = await (await fetch(new URL("sandbox.json", APP))).json();
-    check(served.rounds === rounds, `the app serves the sandbox under test (${served.rounds})`);
+    const pool = await (await fetch(new URL("sandboxes.json", APP))).json();
+    const firstUnused = [...pool].find((c) => c.rounds === rounds);
+    check(!!firstUnused && pool.find((c) => !c.skip)?.rounds !== undefined, `the served pool contains the sandbox under test (${rounds})`);
     const waitFor = async (fn, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch {} await sleep(1500); } return null; };
     const flowBtn = (a) => `#flow [data-flow="${a}"]`;
     const rowState = (n) => ev(`document.querySelectorAll("#flow .flow-row")[${n - 1}]?.className ?? ""`);
