@@ -4,6 +4,26 @@
 
 Cap tables live in spreadsheets and PDFs, and nobody can check them. Rounds is a cap-table tool where a pure, exact equity engine does the math (common and preferred shares, option pool, post-money SAFEs, priced rounds with pool top-up, vesting, exit waterfall), a Sputnik DAO board approves each round and exit **by plan hash**, and anyone can re-verify the result against the chain.
 
+## Why this matters
+
+When a startup raises money, one spreadsheet says who owns what: founders, investors and employees' stock options. It is usually a private file, and it goes wrong in familiar ways: different people compute different numbers, an investor cannot check that what they were promised is what was recorded, and nobody can prove afterwards that a payout at a sale followed the agreed rules.
+
+Rounds makes the math checkable:
+
+1. **One set of exact rules.** [RULES.md](RULES.md) defines every number (share price, SAFE conversion, option pool, exit payouts). The engine follows it with exact integer arithmetic and reports every rounding remainder.
+2. **An approval that cannot be swapped.** A round is written as a plan with a SHA-256 fingerprint. The company's board (a DAO vote on NEAR) approves that fingerprint, and the contract refuses to run any plan that does not match it. Investor money sits in escrow until the board approves.
+3. **Anyone can re-check.** An investor, employee or board member can recompute the plan in their own browser and compare it with the chain (the app's Verify button).
+
+Who it is for: a **founder** modelling and running a round; an **investor** verifying the shares they paid for; an **employee** checking vesting and exit value; a **board member** approving one exact plan.
+
+## How another person can use it today
+
+This is a hackathon prototype on NEAR **testnet**: fake money only, no hosted site, no wallet in the app. Three levels of use:
+
+1. **Look and verify (about five minutes, no accounts).** `git clone`, `npm install`, `make web-dev`, open the local address. Click **Verify** to check the live testnet contract. `make replay` (offline) and `make verify-onchain` (read-only) check the committed demo run.
+2. **Run your own test round.** Install the `near` CLI (near-cli-rs) and run `make demo`. It creates throwaway testnet accounts, a 2-of-3 board DAO, a test token and the Rounds contract, then runs the rounds, three attacks and an exit.
+3. **Use it for a real company: not possible yet.** It would need a wallet connection in the app, a hosted site, a mainnet deployment (deliberately not done), and legal documents. A SAFE and a share issuance are legal acts that Rounds does not replace.
+
 ## Headline results
 
 Every number below is checked against `results/summary.json` by `make check-readme`.
@@ -82,7 +102,7 @@ Be aware of what this run does and does not show:
 ## Simplifications and limits
 
 - Not legal advice; no legal validity for any instrument.
-- Simplified post-money SAFE: no MFN, no pro-rata side letters, no liquidity-event or dissolution mechanics beyond the exit waterfall. The cap-table and conversion definitions in RULES.md are my reading of the standard SAFE; **the SAFE clause citations in RULES.md are not written yet** because the YC document text has not been read.
+- Simplified post-money SAFE: no MFN, no pro-rata side letters, no liquidity-event or dissolution mechanics beyond the exit waterfall. RULES.md now maps each SAFE rule to the clause in the YC post-money forms (Valuation Cap Only, Discount Only, MFN Only; downloaded 2026-11-07). Three things go beyond or differ from those forms: a SAFE with both a cap and a discount is Rounds' own extension, Promised Options are not modelled, and exits before a SAFE converts are not modelled. The mapping is not legal advice.
 - Preferred is 1x non-participating only; no convertible notes, participating preferred, pro-rata rights, transfers or confidential mode.
 - Holdings, deposits and payouts are public on chain.
 - The contract credits the issuances in the approved plan; it does not recompute the equity math. The safety argument is the board's approval of the plan hash plus anyone re-verifying with the engine.

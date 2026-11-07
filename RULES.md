@@ -1,6 +1,6 @@
 # RULES.md — Rounds equity math
 
-Code follows this file. Change the rules here first. Status: DRAFT (M0). The SAFE clause citations are TODO until the YC post-money SAFE text is read (open question 1).
+Code follows this file. Change the rules here first. Status: SAFE clauses cited below against the three YC post-money SAFE documents (see "SAFE source mapping"). Not legal advice.
 
 ## R1 Units
 - Shares: integers (BigInt). Money: integer micro-dollars (1 USD = 1_000_000). Ratios: exact rationals {num, den} in BigInt. No floating point.
@@ -51,3 +51,24 @@ Cap_pre depends on which SAFEs convert at cap vs discount; A_i/C_i of the pre-ro
 - R8: when proceeds fall short of the preferences, preferences are paid by rank, pro rata within a rank, rounded down; the rounding dust is reported as the remainder and is NOT given to common (otherwise common's payout is non-monotone in proceeds, found by P7). Option payouts are reported net of the strike; options are taken lowest-strike first and exercise only while per-share payout > strike.
 - Display: vector amounts "to the cent" round half up from micro-dollars (GV-2 SAFE 2 at $20M: 305,555.5556 -> 305,555.56). The engine itself floors in micro-dollars.
 - GV-4 (hand-checked): 100,000 options at $2.00 are unexercised at a $20M exit and exercised at $60M (pps = 60.2M/13.6M = $4.42647; Ada $22,132,352.94; Efe net $242,647.06).
+
+## SAFE source mapping (YC post-money SAFE forms)
+
+Read from the three files in `ref/` (YC "Postmoney Safe": Valuation Cap Only, Discount Only, MFN Only; all FINAL versions as downloaded 2026-11-07). Section numbers are those of the forms. This maps each Rounds rule to the clause it follows; it does not claim legal validity.
+
+| Rounds rule | YC clause | Status |
+|---|---|---|
+| R3 conversion price = cap / capitalization (cap-only) | Valuation Cap form s.1(a)(2) and s.2 "Safe Price" = Post-Money Valuation Cap / Company Capitalization | follows |
+| R2 capitalization before the round: issued shares, granted options, unissued pool, and all converting SAFEs (so `Cap_pre = N / (1 - sum p_i)`) | s.2 "Company Capitalization" and "Converting Securities" (includes this Safe and other Safes) | follows |
+| Pool top-up excluded from the SAFE's capitalization (R2, R6) | s.2 "Company Capitalization", last bullet: an increase to the Unissued Option Pool in connection with the Equity Financing is included only to the extent Promised Options exceed the pre-increase pool | follows; **Promised Options are not modelled** (no input for them), so the "only to the extent" exception never applies |
+| Cap-only SAFE converts at the lower of cap price and round price | Valuation Cap form s.1(a): the greater of (1) Purchase Amount / lowest Standard Preferred price and (2) Purchase Amount / Safe Price. Greater share count = lower price. GV-7 (round priced below the cap) exercises this | follows |
+| R4 discount-only SAFE converts at round price x (1 - discount) | Discount form s.1(a) and s.2 "Discount Price" = lowest Standard Preferred price x Discount Rate (Discount Rate = 100 minus the discount, in percent) | follows; Rounds floors the price to a multiple of 100 micro-dollars (R1) |
+| R4 SAFE with both a cap and a discount: lower of the two prices | **Not in the YC forms provided.** The Cap form has no discount and the Discount form has no cap. This is Rounds' own extension (GV-5) | extension, not sourced |
+| R5 converted SAFE becomes its own preferred class, 1x non-participating, original issue price = conversion price | s.2 "Safe Preferred Stock": identical to Standard Preferred except price-based preferences are based on the Safe Price (or Discount Price in the Discount form); s.1(d) intended to operate like non-participating Preferred | follows |
+| R8 exit waterfall: cash-out amount senior to common, pro rata with other Safes and Preferred; conversion on par with common | s.1(b) and s.1(d)(ii)-(iii) | follows for converted SAFEs (see next row) |
+| Exit before a priced round (Safe still outstanding): greater of Purchase Amount or Purchase Amount / Liquidity Price | s.1(b), s.2 "Liquidity Price" and "Liquidity Capitalization" (excludes the Unissued Option Pool) | **not modelled**. Rounds only runs exits after a SAFE has converted; s.1(e) terminates the Safe on conversion |
+| Dissolution Event (Cash-Out Amount only) | s.1(c) | not modelled |
+| Dividend Amount, tax-free reorganization cash reduction, convertible notes as Converting Securities | s.2 "Dividend Amount", s.1(b) second paragraph, s.2 "Converting Securities" | not modelled |
+| MFN SAFE | MFN form | not modelled (out of scope) |
+
+Source files are third-party documents kept in `ref/` for checking only; they are not part of the Rounds code or license.

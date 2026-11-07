@@ -43,4 +43,4 @@ Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet.
 
 - The Python reference and the TypeScript engine were written by the same author in one session.
 - The committed demo run reads 27,083 vested (engine's month-13 value), not 25,000; see README.
-- The SAFE clause citations in `RULES.md` are not written yet.
+- The SAFE clause citations in `RULES.md` map each rule to the YC post-money forms in `ref/`. Cap-plus-discount SAFEs are Rounds' own extension (not in the YC forms); Promised Options, pre-round exits and MFN are not modelled.
