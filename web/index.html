@@ -33,6 +33,9 @@
     <section id="exit" class="wrap sec"><h2>Exit simulator</h2><p class="sub">Drag proceeds. Preferred takes its preference or converts, whichever pays more.</p>
       <div class="card" id="exit-card"></div></section>
     <section id="verify" class="wrap sec"><h2>Events &amp; verify</h2><p class="sub" id="verify-sub"></p>
+      <div class="card" id="chain-card"><div class="card-h"><span class="mono muted">ANY ROUNDS CONTRACT · READ FROM THE CHAIN</span></div>
+        <div style="display:flex;gap:10px;align-items:end;margin-top:6px"><div style="flex:1"><label for="contract">Contract account (NEAR testnet)</label><input type="text" id="contract" placeholder="rounds-core-052090.testnet" autocomplete="off" spellcheck="false"/></div><button class="btn primary sm" id="chain-btn">Load and verify</button></div>
+        <div id="chain-out"></div></div>
       <div class="card"><div class="card-h"><span class="mono muted">ON-CHAIN EVENTS</span><button class="btn primary sm" id="verify-btn">Verify</button></div><div id="events"></div><pre class="out" id="verify-out"></pre></div></section>
   </main>
   <footer class="wrap foot"><p>Rounds is a model and a testnet demo, not a securities offering, and it has no legal validity. Holdings on the demo contract are public on chain. Test dollars have no value.</p></footer>

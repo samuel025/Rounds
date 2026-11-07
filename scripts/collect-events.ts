@@ -1,7 +1,7 @@
 // Re-collects the contract events of a finished demo run from its transaction list (results/demo-txs.json).
 // Retries every RPC call and fails loudly instead of skipping a transaction. Read-only.
 import { readFileSync, writeFileSync } from "node:fs";
-const RPC = "https://rpc.testnet.near.org";
+const RPC = process.env.ARCHIVAL_RPC_URL ?? "https://archival-rpc.testnet.fastnear.com"; // old transactions need an archival node
 const txs: { step: string; tx: string; what: string; signer?: string }[] = JSON.parse(readFileSync("results/demo-txs.json", "utf8"));
 const plans = JSON.parse(readFileSync("results/demo-plans.json", "utf8"));
 async function status(tx: string, signer: string): Promise<any> {

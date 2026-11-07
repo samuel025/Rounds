@@ -42,5 +42,5 @@ Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet.
 ## Things to check skeptically
 
 - The Python reference and the TypeScript engine were written by the same author in one session.
-- The committed demo run reads 27,083 vested (engine's month-13 value), not 25,000; see README.
+- The committed demo run's vesting read is pinned to a block inside month 12 and equals the engine's 25,000. The failed attacks' transaction hashes are in `results/demo-attacks.json` and are re-checked by `make verify-onchain`.
 - The SAFE clause citations in `RULES.md` map each rule to the YC post-money forms in `ref/`. Cap-plus-discount SAFEs are Rounds' own extension (not in the YC forms); Promised Options, pre-round exits and MFN are not modelled.

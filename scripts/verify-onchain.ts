@@ -1,11 +1,11 @@
 // make verify-onchain: READ-ONLY. Recomputes the closed demo rounds and the exit from the engine, then compares
 // plan hashes, plan bytes and holdings with what the Rounds contract holds on testnet. Sends no transaction.
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { planHash, priceRound } from "../src/engine/index";
 import { demoPlans, type Accounts } from "./plans";
 
 const addr = JSON.parse(readFileSync("results/demo-addresses.json", "utf8"));
-const RPC = "https://rpc.testnet.near.org";
+const RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", ARCHIVAL = process.env.ARCHIVAL_RPC_URL ?? "https://archival-rpc.testnet.fastnear.com"; // state views: regular node; old transactions: archival
 const lines: string[] = []; let failed = 0, total = 0;
 const check = (ok: boolean, msg: string) => { total++; if (!ok) failed++; const l = `${ok ? "PASS" : "FAIL"} ${msg}`; lines.push(l); console.log(l); };
 
@@ -45,6 +45,13 @@ async function main() {
   check(x.plan_hash === await planHash(p.exit), `exit 1: on-chain plan hash equals sha256 of the recomputed waterfall plan`);
   check(x.payouts.length === 5 && x.payouts.every((q: any) => q.state === "Paid"), "exit 1: all 5 payouts Paid");
   check(x.payouts.every((q: any, i: number) => q.amount === JSON.parse(p.exit).payouts[i][1] && q.holder === JSON.parse(p.exit).payouts[i][0]), "exit 1: every payout equals the engine's waterfall to the micro-dollar");
+  if (existsSync("results/demo-attacks.json")) {
+    for (const t of JSON.parse(readFileSync("results/demo-attacks.json", "utf8")) as { what: string; signer: string; tx: string; error: string }[]) {
+      const res = await (await fetch(ARCHIVAL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tx", params: { tx_hash: t.tx, sender_account_id: t.signer, wait_until: "FINAL" } }) })).json() as any;
+      const fail = res.result?.status?.Failure;
+      check(!!fail && JSON.stringify(fail).includes(t.error), `attack "${t.what}": transaction ${t.tx.slice(0, 8)}… exists on chain and failed${t.error ? ` ("${t.error}")` : ""}`);
+    }
+  }
   const ledger = await view("ledger_total");
   check(ledger === "0", "ledger: nothing left in custody (ledger_total = 0)");
   void priceRound;

@@ -1,8 +1,8 @@
 {
   "network": "testnet",
-  "rpc": "https://rpc.testnet.near.org",
+  "rpc": "https://test.rpc.fastnear.com",
   "explorer": "https://explorer.testnet.near.org",
-  "rounds": "rounds-core-372231.testnet",
-  "board": "rounds-board-372231.sputnik-v2.testnet",
-  "token": "rounds-usdc-372231.testnet"
+  "rounds": "rounds-core-052090.testnet",
+  "board": "rounds-board-052090.sputnik-v2.testnet",
+  "token": "rounds-usdc-052090.testnet"
 }

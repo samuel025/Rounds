@@ -1,0 +1,16 @@
+[
+  {
+    "step": "6",
+    "what": "a stranger calls approve_round",
+    "signer": "rounds-efe-052090.testnet",
+    "tx": "7Zqxt28BLWyag7Tk5ABUGuADrJJNrmBMtBkuKrHnndb9",
+    "error": "only the board"
+  },
+  {
+    "step": "6",
+    "what": "close_round runs a second time",
+    "signer": "rounds-zed-052090.testnet",
+    "tx": "GQqAyzexEEJ1YFeu2mSWNwGxnZDwfUwQTfz5YZEJbQfJ",
+    "error": "already closing/closed"
+  }
+]

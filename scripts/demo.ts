@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { priceRound, waterfall, vested, canonicalJson, planHash, pricedRoundPlan } from "../src/engine/index";
 
-const NET = "testnet", RPC = "https://rpc.testnet.near.org", EXPLORER = "https://explorer.testnet.near.org";
+const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://explorer.testnet.near.org";
 const M = 1_000_000n;
 const S = process.env.DEMO_SUFFIX ?? String(Date.now()).slice(-6);
 const id = (n: string) => `rounds-${n}-${S}.testnet`;
@@ -19,6 +19,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log = (m: string) => console.log(`[demo] ${m}`);
 const txs: { step: string; tx: string; what: string; signer?: string }[] = [];
 const events: { name: string; tx: string; data: any; plan?: string }[] = [];
+const attacks: { step: string; what: string; signer: string; tx: string; error: string }[] = [];
 const planByRound: Record<string, string> = {};
 
 function near(args: string[]): string {
@@ -37,8 +38,8 @@ const parseRet = (o: string): any => {
   const rest = clean.slice(k + "printed to stdout):".length).trim(); const m = rest.match(/^(\{[\s\S]*?\n\}|\[[\s\S]*?\n\]|"[^"\n]*"|[^\s]+)/);
   try { return m ? JSON.parse(m[1]) : undefined; } catch { return undefined; }
 };
-function sendRaw(contract: string, method: string, args: object | string, signer: string, opts: { deposit?: string; gas?: string } = {}) {
-  return near(["contract", "call-function", "as-transaction", contract, method, "json-args", typeof args === "string" ? args : JSON.stringify(args), "prepaid-gas", opts.gas ?? "100 Tgas", "attached-deposit", opts.deposit ?? "0 NEAR", "sign-as", signer, "network-config", NET, "sign-with-legacy-keychain", "send"]);
+function sendRaw(contract: string, method: string, args: object | string, signer: string, opts: { deposit?: string; gas?: string; mode?: "send" | "display" } = {}) {
+  return near(["contract", "call-function", "as-transaction", contract, method, "json-args", typeof args === "string" ? args : JSON.stringify(args), "prepaid-gas", opts.gas ?? "100 Tgas", "attached-deposit", opts.deposit ?? "0 NEAR", "sign-as", signer, "network-config", NET, "sign-with-legacy-keychain", opts.mode ?? "send"]);
 }
 function call(step: string, what: string, contract: string, method: string, args: object | string, signer: string, opts: { deposit?: string; gas?: string } = {}) {
   const out = sendRaw(contract, method, args, signer, opts);
@@ -83,7 +84,16 @@ async function collectEvents() {
     }
   }
 }
-const expectFail = (label: string, fn: () => unknown) => { try { fn(); } catch { log(`ATTACK FAILED AS EXPECTED: ${label}`); return true; } throw new Error(`attack unexpectedly succeeded: ${label}`); };
+// A hostile call that must fail ON CHAIN: sign with the CLI, broadcast over RPC ourselves, so a failed transaction still gives us its hash.
+async function attackFail(step: string, what: string, contract: string, method: string, args: object, signer: string, expectMsg: string) {
+  const out = sendRaw(contract, method, args, signer, { mode: "display" }).replace(/\x1b\[[0-9;]*m/g, "");
+  const b64 = out.match(/serialized as base64\):\s*\n(\S+)/)?.[1]; if (!b64) throw new Error("no signed transaction in CLI output");
+  const res = await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "send_tx", params: { signed_tx_base64: b64, wait_until: "FINAL" } }) });
+  const j: any = await res.json(); const r = j.result; if (!r) throw new Error(`send_tx failed: ${JSON.stringify(j.error).slice(0, 200)}`);
+  const fail = r.status?.Failure; const msg = JSON.stringify(fail ?? "");
+  if (!fail || !msg.includes(expectMsg)) throw new Error(`attack "${what}" did not fail as expected: ${JSON.stringify(r.status).slice(0, 300)}`);
+  attacks.push({ step, what, signer, tx: r.transaction.hash, error: expectMsg }); log(`ATTACK FAILED AS EXPECTED: ${what} (${r.transaction.hash.slice(0, 8)}: ${expectMsg})`);
+}
 
 async function main() {
   log(`suffix ${S}`);
@@ -93,10 +103,26 @@ async function main() {
   const fallback: Record<string, [string, string]> = { zed: [A.chidi, "1.5 NEAR"], core: [A.bayo, "4.5 NEAR"], usdc: [A.efe, "3.5 NEAR"], fake: [A.dayo, "3 NEAR"] };
   // DEMO_FUND_FROM=<old suffix>: skip the faucet and fund every account from a previous run's leftover testnet NEAR
   const old = process.env.DEMO_FUND_FROM; const od = (n: string) => `rounds-${n}-${old}.testnet`;
-  const forced: Record<string, [string, string]> = old ? { ada: [od("indep"), "7.5 NEAR"], fund: [od("chidi"), "1.8 NEAR"], indep: [od("chidi"), "0.7 NEAR"], bayo: [od("dayo"), "0.8 NEAR"], chidi: [od("dayo"), "1 NEAR"], dayo: [od("efe"), "0.8 NEAR"], efe: [od("efe"), "0.8 NEAR"], zed: [od("efe"), "1.2 NEAR"], core: [od("fund"), "4.5 NEAR"], usdc: [od("fund"), "3.5 NEAR"], fake: [od("bayo"), "3 NEAR"] } : {};
+  const NEED: Record<string, number> = { ada: 7.5, fund: 1.8, indep: 0.7, bayo: 0.8, chidi: 1, dayo: 0.8, efe: 0.8, zed: 1.2, core: 4.5, usdc: 3.5, fake: 3 };
+  // DEMO_FUND_FROM may be a comma list of old suffixes; fund each new account from whichever old personal account is richest, topping up in several transfers
+  const sources = old ? old.split(",").flatMap((o) => ["ada", "fund", "indep", "bayo", "chidi", "dayo", "efe", "zed"].map((n) => `rounds-${n}-${o}.testnet`)) : [];
+  const nearBal = async (a: string) => { const r: any = await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "view_account", finality: "final", account_id: a } }) }).then((x) => x.json()); return r.result ? Number(BigInt(r.result.amount) / 10n ** 20n) / 1e4 : 0; };
+  const richest = async () => { let best = ["", 0] as [string, number]; for (const a of sources) { const b = await nearBal(a); if (b > best[1]) best = [a, b]; } return best; };
+  const forced: Record<string, [string, string]> = {};
+  async function fundFrom(k: string, acct: string) {
+    let remaining = NEED[k], created = false; const reserve = 0.35;
+    while (remaining > 0.001) {
+      const [src, bal] = await richest(); const give = Math.min(remaining, bal - reserve);
+      if (give < 0.05) throw new Error(`not enough leftover testnet NEAR in ${old} to fund ${k} (${remaining.toFixed(2)} NEAR short)`);
+      const amt = `${give.toFixed(2)} NEAR`;
+      if (!created) near(["account", "create-account", "fund-myself", acct, amt, "autogenerate-new-keypair", "save-to-legacy-keychain", "sign-as", src, "network-config", NET, "sign-with-legacy-keychain", "send"]);
+      else near(["tokens", src, "send-near", acct, amt, "network-config", NET, "sign-with-legacy-keychain", "send"]);
+      created = true; remaining -= Number(give.toFixed(2)); log(`${created ? "funded" : "created"} ${k} ${amt} from ${src}`);
+    }
+  }
   for (const [k, a] of Object.entries(A)) {
     if (await exists(a)) { log(`exists ${k}: ${a}`); continue; }
-    if (forced[k]) { near(["account", "create-account", "fund-myself", a, forced[k][1], "autogenerate-new-keypair", "save-to-legacy-keychain", "sign-as", forced[k][0], "network-config", NET, "sign-with-legacy-keychain", "send"]); log(`created ${k}: ${a} (funded ${forced[k][1]} from ${forced[k][0]})`); continue; }
+    if (old) { await fundFrom(k, a); log(`created ${k}: ${a}`); continue; }
     try { near(["account", "create-account", "sponsor-by-faucet-service", a, "autogenerate-new-keypair", "save-to-legacy-keychain", "network-config", NET, "create"]); }
     catch (e) {
       const fb = fallback[k]; if (!fb) throw e;
@@ -167,11 +193,11 @@ async function main() {
   for (const [n, got, want] of checks) { if (got !== want) throw new Error(`holding ${n}: ${got} != ${want}`); log(`holding ${n} = ${got} (GV-1 ok)`); }
 
   // ---- step 6: three attacks
-  expectFail("a stranger calls approve_round", () => sendRaw(A.core, "approve_round", { round_id: a.rid, plan_hash: a.hash }, A.efe));
+  await attackFail("6", "a stranger calls approve_round", A.core, "approve_round", { round_id: a.rid, plan_hash: a.hash }, A.efe, "only the board");
   const before = await bal(A.chidi, A.fake);
   ft(A.chidi, A.core, 50n * M, { action: "round", id: a.rid }, "6", "chidi deposits the WRONG token", A.fake);
   const after = await bal(A.chidi, A.fake); if (before !== after) throw new Error("wrong token not refunded"); log("wrong-token deposit refunded in full");
-  expectFail("close_round runs a second time", () => sendRaw(A.core, "close_round", { round_id: a.rid }, A.zed));
+  await attackFail("6", "close_round runs a second time", A.core, "close_round", { round_id: a.rid }, A.zed, "already closing/closed");
   if (await holding(A.fund, "Series A Preferred") !== 4_500_000n) throw new Error("double close changed holdings");
 
   // ---- step 7: grant and cliff
@@ -181,12 +207,21 @@ async function main() {
   const grant = { grantee: A.efe, shares: "100000", strike_micro: strike.toString(), start_ns: Number(startNs), term_months: 48, cliff_months: 12 };
   const gcanon = canonicalJson(grant); const ghash = await sha(gcanon);
   await dao("7", "board grants Efe 100,000 options at $2.00", A.core, "grant", { plan_hash: ghash, plan: gcanon });
-  const cliffAt = startMs + 12 * Number(MONTH_NS / 1_000_000n) + 6_000;
-  log(`waiting ${Math.max(0, Math.round((cliffAt - Date.now()) / 1000))} s for the demo clock to pass the cliff (12 'months' x 5 s)...`); await sleep(Math.max(0, cliffAt - Date.now()));
-  const v = BigInt(await view(A.core, "vested", { grant_id: 1 }));
-  const cliffV = vested({ totalShares: 100_000n, termMonths: 48, cliffMonths: 12 }, 12), nextV = vested({ totalShares: 100_000n, termMonths: 48, cliffMonths: 12 }, 13);
-  log(`vested just after the cliff: ${v} (engine: ${cliffV} at month 12, ${nextV} at month 13)`);
-  if (v !== cliffV && v !== nextV) throw new Error("on-chain vesting disagrees with the engine");
+  const cliffNs = startNs + 12n * MONTH_NS;
+  log("waiting for the chain clock to reach the 12-month cliff (12 'months' x 5 s)...");
+  let pin: { hash: string; ts: bigint } | undefined;
+  for (let i = 0; i < 400 && !pin; i++) {
+    const bj: any = await (await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "block", params: { finality: "final" } }) })).json();
+    const ts = BigInt(bj.result.header.timestamp); if (ts >= cliffNs) pin = { hash: bj.result.header.hash, ts }; else await sleep(500);
+  }
+  if (!pin) throw new Error("cliff never reached");
+  if (pin.ts >= startNs + 13n * MONTH_NS) throw new Error("block already past month 12; rerun (RPC was too slow)");
+  const vres: any = await (await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", block_id: pin.hash, account_id: A.core, method_name: "vested", args_base64: Buffer.from(JSON.stringify({ grant_id: 1 })).toString("base64") } }) })).json();
+  if (!vres.result?.result) throw new Error(`vested read failed: ${JSON.stringify(vres).slice(0, 200)}`);
+  const v = BigInt(JSON.parse(Buffer.from(vres.result.result).toString()));
+  const cliffV = vested({ totalShares: 100_000n, termMonths: 48, cliffMonths: 12 }, 12);
+  log(`vested at block ${pin.hash.slice(0, 8)} (chain time ${(Number(pin.ts - startNs) / Number(MONTH_NS)).toFixed(2)} months after grant start): ${v} (engine: ${cliffV} at month 12)`);
+  if (v !== cliffV) throw new Error(`on-chain vesting ${v} != engine month-12 value ${cliffV}`);
   // ---- step 8: exit at $20M (GV-2)
   const E = 20_000_000n * M;
   const w = waterfall({ classes: { safe1: { shares: 1_000_000n, preferenceMicro: 500_000n * M }, safe2: { shares: 250_000n, preferenceMicro: 250_000n * M }, fund: { shares: 4_500_000n, preferenceMicro: 9_000_000n * M } }, commonShares: { ada: 5_000_000n, bayo: 2_750_000n }, options: { efe: { shares: 100_000n, strikeMicro: strike } }, proceedsMicro: E });
@@ -221,6 +256,7 @@ async function main() {
   const addresses = { network: NET, suffix: S, dao: DAO, rounds: A.core, token: A.usdc, fakeToken: A.fake, accounts: A };
   writeFileSync("results/demo-addresses.json", JSON.stringify(addresses, null, 2));
   writeFileSync("results/demo-txs.json", JSON.stringify(txs, null, 2));
+  writeFileSync("results/demo-attacks.json", JSON.stringify(attacks, null, 2));
   writeFileSync("results/demo-plans.json", JSON.stringify({ rounds: planByRound, exit: { id: x.ret, plan: xcanon }, grant: { plan: gcanon } }, null, 2));
   writeFileSync("web/public/deployment.json", JSON.stringify({ network: NET, rpc: RPC, explorer: EXPLORER, rounds: A.core, board: DAO, token: A.usdc }, null, 2));
   await collectEvents();

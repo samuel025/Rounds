@@ -19,7 +19,7 @@
     "payouts": 5
   },
   "verify_onchain": {
-    "checks": 19,
+    "checks": 21,
     "failed": 0
   },
   "replay": {

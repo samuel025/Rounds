@@ -27,7 +27,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th{font:500 11px var(--
 td{padding:10px;border-bottom:1px solid var(--line)}tr:last-child td{border-bottom:0}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:13px}
 .tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}.tab{font:500 12px var(--mono);padding:5px 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}.tab.on{color:var(--bg);background:var(--fg);border-color:var(--fg)}
 .form label{display:block;font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:14px 0 6px}.form label:first-child{margin-top:0}
-input[type=number],select{width:100%;min-width:0;background:transparent;color:var(--fg);border:1px solid var(--line2);border-radius:8px;padding:9px 12px;font:400 14px var(--mono)}input:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px}
+input[type=number],input[type=text],select{width:100%;min-width:0;background:transparent;color:var(--fg);border:1px solid var(--line2);border-radius:8px;padding:9px 12px;font:400 14px var(--mono)}input:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px}
 .row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.row input{padding:9px 8px;font-size:13px}.row label{font-size:10px}.safe{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}
 input[type=range]{width:100%;accent-color:var(--fg)}
 .stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}.stat div{border:1px solid var(--line);border-radius:10px;padding:12px}.stat b{display:block;font:500 22px var(--sans);letter-spacing:-.03em}.stat span{font:500 11px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
@@ -40,3 +40,7 @@ pre.out{font:400 12.5px/1.6 var(--mono);color:var(--muted);margin:14px 0 0;white
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
 table{min-width:420px}.card:has(.stat) table,#investor table,#employee table{min-width:0}@media(max-width:600px){.hero{padding-top:56px}.card{padding:14px}.stat b{font-size:18px;overflow-wrap:anywhere}td,th{padding:8px 6px}.ev{grid-template-columns:1fr}}
+
+.chain-h{display:flex;justify-content:space-between;gap:10px;margin:18px 0 6px}
+.chain-tbl{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 14px}.chain-tbl td,.chain-tbl th{padding:7px 8px;border-top:1px solid var(--line2);text-align:left}.chain-tbl th{font-weight:500;color:var(--muted);font-size:11px}
+.chain-tbl .n{text-align:right;font-variant-numeric:tabular-nums}

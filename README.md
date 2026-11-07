@@ -32,7 +32,7 @@ Every number below is checked against `results/summary.json` by `make check-read
 - A second implementation in Python agrees with the TypeScript engine on <!--n:conformance.scenarios-->1000<!--/n--> seeded random scenarios (<!--n:conformance.mismatches-->0<!--/n--> mismatches; <!--n:conformance.rejected_inputs-->40<!--/n--> deliberately invalid inputs rejected by both).
 - The Rust contract passes <!--n:tests.sandbox-->6<!--/n--> near-workspaces sandbox tests (full round and exit, wrong-token refund, non-board approval, hash mismatch, double close, exact refunds, hostile token, failed-transfer retry, private callbacks, vesting and exercise).
 - On **testnet**, a Series A with two converting SAFEs closed through a 2-of-3 Sputnik DAO vote and an exit paid every holder. The final demo run recorded <!--n:demo.transactions-->57<!--/n--> transactions and <!--n:demo.events-->23<!--/n--> contract events, and <!--n:demo.rounds_closed-->4<!--/n--> rounds closed.
-- `make verify-onchain` (read-only) recomputes the demo from the engine and compares with the chain: <!--n:verify_onchain.checks-->19<!--/n--> checks, <!--n:verify_onchain.failed-->0<!--/n--> failed.
+- `make verify-onchain` (read-only) recomputes the demo from the engine and compares with the chain: <!--n:verify_onchain.checks-->21<!--/n--> checks, <!--n:verify_onchain.failed-->0<!--/n--> failed.
 - `make replay` (no network) rebuilds the cap table and exit from committed events: <!--n:replay.checks-->8<!--/n--> checks, <!--n:replay.failed-->0<!--/n--> failed.
 
 ## Try it
@@ -64,31 +64,32 @@ Network: NEAR testnet. Throwaway accounts, no value.
 
 | Thing | Account |
 |---|---|
-| Rounds contract | `rounds-core-372231.testnet` |
-| Board (Sputnik DAO v2.0.0, 2-of-3 council) | `rounds-board-372231.sputnik-v2.testnet` |
-| Test USDC (6 decimals, public faucet) | `rounds-usdc-372231.testnet` |
+| Rounds contract | `rounds-core-052090.testnet` |
+| Board (Sputnik DAO v2.0.0, 2-of-3 council) | `rounds-board-052090.sputnik-v2.testnet` |
+| Test USDC (6 decimals, public faucet) | `rounds-usdc-052090.testnet` |
 
 | Demo step | Key transaction |
 |---|---|
-| DAO board created (2-of-3 council) | [6NRaGpMx…](https://explorer.testnet.near.org/transactions/6NRaGpMx5sgqxTMTRGzRtJcM4whg7W5ZDgj6rW82D9wy) |
-| Founders and pool closed (after a board vote) | [FW4zh1Hn…](https://explorer.testnet.near.org/transactions/FW4zh1HnDJ9xEsFfkHC9eYJADS5Q7J1vR4m5SXj1M6yD) |
-| SAFE 1 closed, SAFE 2 closed | [Douq7RQ4…](https://explorer.testnet.near.org/transactions/Douq7RQ41o6gvr4onpcnuaCzcRUQomQsXV8czhz7EVck), [6w4cJZzy…](https://explorer.testnet.near.org/transactions/6w4cJZzy96ghpR7FSgqiPopSQWw8xKANhjuQwsZFBzLB) |
-| Fund pays $9,000,000 into escrow | [5GwcsfBf…](https://explorer.testnet.near.org/transactions/5GwcsfBfkRyCte3PEoG6M4yyFD1PofUBgw2dcauuZy8D) |
-| Series A closed, holdings credited | [FqqMy1sJ…](https://explorer.testnet.near.org/transactions/FqqMy1sJixYbXoYr3TWmpXay2MTbcoiTDgugFpCHVpks) |
-| Wrong-token deposit (refunded in full) | [C7nzqzCS…](https://explorer.testnet.near.org/transactions/C7nzqzCSUWAMdo5MEqVBg6G5RA7ZLSWScqiZ9iQ94ZB9) |
-| Board executes the option grant for Efe | [56JywYMR…](https://explorer.testnet.near.org/transactions/56JywYMRC4wm1boXy21npR4PHowATo5fy33jz73zukNy) |
-| Zed funds the $20M exit; board approves; distribute | [6y55zt8q…](https://explorer.testnet.near.org/transactions/6y55zt8qCo39ejJ73sojGfwDJWheENXugpFh3U9V5i7o), [6s46EHeT…](https://explorer.testnet.near.org/transactions/6s46EHeTX7WSTXju9WnB3NuYY6JecBnQWGzd3azYnUzp), [BuKGYvdy…](https://explorer.testnet.near.org/transactions/BuKGYvdyDENuKn2GjpfTt7WTxcLP1J9Ws5siXMpUEQmb) |
+| DAO board created (2-of-3 council) | [Frxub4Ep…](https://explorer.testnet.near.org/transactions/Frxub4EpmcLzKRhfMz4PE5a67vZ8uk9HFUBYCfWv3peF) |
+| Founders and pool closed (after a board vote) | [4EGkrJuJ…](https://explorer.testnet.near.org/transactions/4EGkrJuJ6DfoXdkBskvZr7jerjLwu7DLPz6wsd8FHR6R) |
+| SAFE 1 closed, SAFE 2 closed | [F7LtPCu6…](https://explorer.testnet.near.org/transactions/F7LtPCu6FNjhuxibxYc324aKyNYMjyBhkCXs1ccQMZrh), [7r8cfcGR…](https://explorer.testnet.near.org/transactions/7r8cfcGRutnoaXsjinhomdRSNrtanXVuMrxdo2tFMaqk) |
+| Fund pays $9,000,000 into escrow | [87fHfShf…](https://explorer.testnet.near.org/transactions/87fHfShfPqeM27x76rqCEsv2zRNQ1PJyQTZQLWU9kwwX) |
+| Series A closed, holdings credited | [2e6T7saS…](https://explorer.testnet.near.org/transactions/2e6T7saSYGhTrhQmCdr5pz3etab5MUmL4L3NuzcSxzoS) |
+| Attack: a stranger calls `approve_round` (**fails on chain**: only the board) | [7Zqxt28B…](https://explorer.testnet.near.org/transactions/7Zqxt28BLWyag7Tk5ABUGuADrJJNrmBMtBkuKrHnndb9) |
+| Wrong-token deposit (refunded in full) | [tnqvmdcE…](https://explorer.testnet.near.org/transactions/tnqvmdcE3oNWYuaiKWLqvc6mHXZca5yLn9ZGKSvXTWD) |
+| Attack: `close_round` a second time (**fails on chain**: already closing/closed) | [GQqAyzex…](https://explorer.testnet.near.org/transactions/GQqAyzexEEJ1YFeu2mSWNwGxnZDwfUwQTfz5YZEJbQfJ) |
+| Board executes the option grant for Efe | [Guwiz3eW…](https://explorer.testnet.near.org/transactions/Guwiz3eWhDpEDQCU9MbcB5M6bLGbHLsRzSCpkVYiXRP4) |
+| Zed funds the $20M exit; board approves; distribute | [EadSjTmj…](https://explorer.testnet.near.org/transactions/EadSjTmjWVJmV3vDgzUA6WwwoawifQwHFGSSA1nct5is), [4qCL2hpB…](https://explorer.testnet.near.org/transactions/4qCL2hpBZvSkc81M7c2W11UHQLtojeSkSRppN8Wq5DHK), [B1V9GV2W…](https://explorer.testnet.near.org/transactions/B1V9GV2WYS2RTfvHcLRri2ctMMwDAmUMkmK3mgTgVKqz) |
 
 All transactions of the final run are in `results/demo-txs.json`, and every event in `results/demo-events.json`.
 
 Be aware of what this run does and does not show:
 
-- **The failed attacks have no transaction links.** The stranger's `approve_round` and the second `close_round` were rejected; the script confirmed each rejection but did not record the failed transaction hashes. The wrong-token deposit is a real transaction whose refund the script verified by balance.
-- **This run went from fresh accounts to the end without being resumed.** An earlier run (accounts suffixed `012465`) also exists on testnet; it was resumed several times after script bugs and is superseded by this one.
-- **Vesting.** After the cliff the contract reported 27,083 vested for Efe, which is exactly the engine's value for month 13 (the script accepts month 12, 25,000, or month 13). It is month 13, not the cleaner 25% at month 12, because the script waits a few seconds past the cliff and one demo "month" lasts only 5 seconds, a contract parameter.
-- **Event collection.** Two of the <!--n:demo.events-->23<!--/n--> events (`exit_proposed`, `exit_approved`) were missed by the demo's own collector after an RPC hiccup and were re-collected afterwards from the same transactions with `scripts/collect-events.ts`.
+- **The failed attacks are on chain.** The demo signs each hostile call, broadcasts it over RPC itself, and requires the transaction to fail with the contract's own message; `make verify-onchain` re-reads both transactions from the chain and checks that they failed. The wrong-token deposit is a separate, successful transaction whose refund the script verified by balance.
+- **This run was resumed twice**, because the testnet faucet is rate-limited and the leftover test NEAR of earlier runs had to be pieced together (`DEMO_FUND_FROM`). The first attempt stopped while funding accounts and a second stopped while funding the last one; nothing had been deployed or run by then, and the full demo then ran from start to finish in one go. Earlier runs (suffixes `012465`, `372231`) also exist on testnet and are superseded.
+- **Vesting.** The script reads the contract's `vested` view at a specific block whose timestamp is 12.15 demo "months" after the grant start (the block is pinned, so a slow script cannot read a later month) and requires exactly the engine's month-12 value: 25,000 of 100,000. One demo "month" lasts 5 seconds, a contract parameter.
+- **RPC.** The old public endpoint `rpc.testnet.near.org` now rejects requests as deprecated, so the app, the demo and `make verify-onchain` use FastNear (`test.rpc.fastnear.com`; old transactions via `archival-rpc.testnet.fastnear.com`). Both can be overridden with `RPC_URL` and `ARCHIVAL_RPC_URL`.
 - **Exercise on chain** is covered by the sandbox tests, not by the testnet demo.
-- **Funding:** the testnet faucet was rate-limited, so the new accounts were funded from the leftover test NEAR of the earlier run's accounts (`DEMO_FUND_FROM`).
 
 `make demo` is the script that produced this run. It needs the `near` CLI (near-cli-rs), network access, and creates fresh throwaway testnet accounts through the public faucet (or a previous run's leftovers); it spends no real money. Each run creates fresh accounts; set `DEMO_SUFFIX=<suffix>` to resume a partly finished run, or `DEMO_FUND_FROM=<old suffix>` to fund the new accounts from a previous run's accounts when the faucet refuses.
 

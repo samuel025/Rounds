@@ -1,3 +1,4 @@
+import { loadChain, checkRound, validAccount, esc } from "./chain";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -10,7 +11,7 @@ const usd = (micro: bigint, cents = false) => {
 };
 const price4 = (micro: bigint) => "$" + (Number(micro) / 1e6).toFixed(4);
 const n = (x: bigint) => x.toLocaleString("en-US");
-const pct = (a: bigint, b: bigint) => b === 0n ? "0.00%" : (Number((a * 10000n) / b) / 100).toFixed(2) + "%";
+const pct = (a: bigint, b: bigint) => b === 0n ? "0.00%" : (Number((a * 20000n + b) / (2n * b)) / 100).toFixed(2) + "%"; // half-up, per RULES.md
 const RULES = (id: string) => `<a class="q" href="rules.html#${id}" title="Definition in RULES.md">?</a>`;
 
 // ---------- state ----------
@@ -70,7 +71,7 @@ async function renderPlan(r: Res) {
 // ---------- cap table ----------
 function renderCap(r: Res) {
   const filters = ["All", "Founders", "SAFEs", "Series A"];
-  $("cap-filter").innerHTML = filters.map((f) => `<button class="tab ${state.filter === f ? "on" : ""}" data-f="${f}">${f}</button>`).join("");
+  $("cap-filter").innerHTML = filters.map((f) => `<button class="tab ${state.filter === f ? "on" : ""}" data-f="${f}">${f}</button>`).join("") + `<button class="tab" id="csv-btn" style="margin-left:auto" title="Download this cap table as CSV">Export CSV</button>`;
   const fd = r.fullyDiluted;
   const rows: { k: string; round: string; price: string; shares: bigint }[] = [
     { k: "ada", round: "Founders", price: "$0.0000", shares: r.holdings.ada }, { k: "bayo", round: "Founders", price: "$0.0000", shares: r.holdings.bayo },
@@ -82,7 +83,12 @@ function renderCap(r: Res) {
   $("cap-table").innerHTML = `<tr><th>Holder</th><th>Class</th><th class="n">Shares</th><th class="n">Fully diluted ${RULES("r2")}</th><th class="n">Price paid</th></tr>` +
     show.map((x) => `<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;background:${COLORS[x.k]}"></i>${label(x.k)}</td><td>${CLASS_OF[x.k]}</td><td class="n">${n(x.shares)}</td><td class="n">${pct(x.shares, fd)}</td><td class="n">${x.price}</td></tr>`).join("") +
     `<tr><td><b>Total</b></td><td></td><td class="n"><b>${n(fd)}</b></td><td class="n">100.00%</td><td></td></tr>`;
-  document.querySelectorAll<HTMLButtonElement>("#cap-filter .tab").forEach((b) => b.onclick = () => { state.filter = b.dataset.f!; renderCap(r); });
+  $("csv-btn").onclick = () => {
+    const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = ["holder,class,shares,fully_diluted_pct,price_paid", ...rows.map((x) => [q(label(x.k)), q(CLASS_OF[x.k]), x.shares, pct(x.shares, fd).replace("%", ""), q(x.price)].join(",")), `"Total",,${fd},100.00,`].join("\n") + "\n";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "rounds-cap-table.csv"; a.click(); URL.revokeObjectURL(a.href);
+  };
+  document.querySelectorAll<HTMLButtonElement>("#cap-filter .tab:not(#csv-btn)").forEach((b) => b.onclick = () => { state.filter = b.dataset.f!; renderCap(r); });
 }
 
 // ---------- investor + employee ----------
@@ -146,7 +152,7 @@ async function view(dep: Dep, method: string, args: object) {
   return JSON.parse(new TextDecoder().decode(new Uint8Array(j.result.result)));
 }
 async function initVerify() {
-  const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://rpc.testnet.near.org", explorer: "https://explorer.testnet.near.org", rounds: null, board: null, token: null, network: "testnet" }));
+  const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://explorer.testnet.near.org", rounds: null, board: null, token: null, network: "testnet" }));
   const evs: Ev[] = await fetch("events.json").then((r) => r.json()).catch(() => []);
   $("verify-sub").innerHTML = dep.rounds ? `Contract <span class="mono">${dep.rounds}</span> on ${dep.network}, board <span class="mono">${dep.board}</span>. Verify recomputes each plan with the engine and compares it with the chain.` : `No contract is configured in <span class="mono">deployment.json</span> yet, so Verify runs the engine self-check against the golden vector only.`;
   $("events").innerHTML = evs.length ? evs.map((e) => `<div class="ev"><b>${e.name}</b><span class="muted mono">${JSON.stringify(e.data)}</span><a class="mono" href="${dep.explorer}/transactions/${e.tx}" target="_blank" rel="noopener">tx ↗</a></div>`).join("") : `<p class="note">No events committed yet. After <span class="mono">make demo</span> they appear here, each with its transaction link.</p>`;
@@ -170,4 +176,40 @@ async function initVerify() {
   };
 }
 
-renderForm(); renderModel(); void initVerify().then(() => { if (location.hash === "#verify-run") $<HTMLButtonElement>("verify-btn").click(); });
+// ---------- any contract, straight from the chain ----------
+async function initChain() {
+  const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://explorer.testnet.near.org", rounds: null, board: null, token: null, network: "testnet" }));
+  const qs = new URLSearchParams(location.search);
+  const input = $<HTMLInputElement>("contract"); input.value = qs.get("contract") ?? dep.rounds ?? "";
+  const out = $("chain-out");
+  const link = (contract: string, frag: string) => `${location.origin}${location.pathname}?contract=${encodeURIComponent(contract)}#${frag}`;
+  const run = async () => {
+    const id = input.value.trim().toLowerCase();
+    if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-052090.testnet</span></p>`; return; }
+    out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`;
+    try {
+      const v = await loadChain(dep.rpc, id);
+      const only = /^#verify\/round-(\d+)$/.exec(location.hash)?.[1];
+      let failed = 0;
+      const rows: string[] = [];
+      for (const r of v.rounds) {
+        const c = await checkRound(r); if (!c.ok) failed++;
+        const hl = only && +only === r.id ? ' style="background:rgba(68,255,164,.08)"' : "";
+        rows.push(`<tr id="round-${r.id}"${hl}><td>Round ${r.id}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td><td>${esc(r.status)}</td><td><span class="${c.ok ? "pass" : "fail"}">${c.ok ? "PASS" : "FAIL"}</span> <span class="mono muted">${esc(r.plan_hash.slice(0, 16))}…</span></td><td><a class="mono" href="${esc(link(id, "verify/round-" + r.id))}">link</a></td></tr>`);
+      }
+      const hold = v.holdings.map(([h, cl, sh]) => `<tr><td class="mono">${esc(h)}</td><td>${esc(cl)}</td><td class="n">${esc(BigInt(sh).toLocaleString("en-US"))}</td></tr>`).join("");
+      const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.approved ? "approved" : "pending"}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc((Number(BigInt(e.total)) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 }))} USDC</td></tr>`).join("");
+      out.innerHTML = `<div class="chain-h"><span class="mono muted">CONTRACT <b>${esc(v.contract)}</b> · BOARD ${esc(v.board)} · TOKEN ${esc(v.token)}</span></div>
+        <table class="chain-tbl"><tr><th>HOLDER</th><th>CLASS</th><th class="n">SHARES (ON CHAIN)</th></tr>${hold || `<tr><td colspan="3" class="muted">no shares issued yet</td></tr>`}</table>
+        <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th></th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>
+        ${exits ? `<table class="chain-tbl"><tr><th>EXIT</th><th>STATE</th><th>PLAN HASH</th><th class="n">FUNDED</th></tr>${exits}</table><p class="note">Exit plan text is not stored on chain, only its hash and URI, so exit hashes are shown, not recomputed here.</p>` : ""}
+        <pre class="out"><span class="${failed ? "fail" : "pass"}">${failed ? "FAIL" : "PASS"}</span> ${v.rounds.length} round plan(s) re-hashed in this browser; ${failed} mismatch(es)\nEverything above was read live from the chain; nothing came from this site's files.</pre>`;
+      if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
+    } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
+  };
+  $("chain-btn").onclick = run;
+  input.onkeydown = (e) => { if (e.key === "Enter") void run(); };
+  if (qs.get("contract") || /^#verify\//.test(location.hash)) { await run(); }
+}
+
+renderForm(); renderModel(); void initChain(); void initVerify().then(() => { if (location.hash === "#verify-run") $<HTMLButtonElement>("verify-btn").click(); });
