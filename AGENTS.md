@@ -10,6 +10,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 | `make test` | node, python3 | Vitest: 5 files, all tests pass (see `tests.engine` in `results/summary.json`); then `python3 -I ref/conformance.py 1000` prints `"mismatches": 0` |
 | `make replay` | node only, **no network** | step list with testnet transaction links, rebuilt cap table, exit payouts; last line `PASS summary: <n> checks, 0 failed` |
 | `make verify-onchain` | network (read-only RPC) | every line starts with `PASS`; last line `PASS summary: <n> checks, 0 failed`. A line starting `FAIL` means a mismatch with the chain or an unreachable RPC |
+| `make e2e-wallet` | `make web-dev` running, near CLI, Chrome, demo keys in `~/.near-credentials` | drives the app's wallet buttons on testnet via a DEV-only test signer; `PASS summary: 11 checks, 0 failed`. Writes a few testnet transactions on a superseded deployment |
 | `make check-readme` | node | `PASS summary: <n> tagged numbers checked, 0 failed` |
 | `make summary` | node, python-generated conformance files, cargo (to list sandbox tests) | rewrites `results/summary.json` |
 | `make web` / `make web-dev` | node | static site in `dist/` / dev server |
@@ -31,7 +32,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 
 ## Out of scope
 
-Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet. No wallet in the web app. No confidential mode. No NEAR AI Cloud assistant. SAFE terms not modelled: MFN, pro-rata side letters.
+Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet. The wallet is testnet-only; no mainnet. No confidential mode. No NEAR AI Cloud assistant. SAFE terms not modelled: MFN, pro-rata side letters.
 
 ## Known slow or flaky steps
 

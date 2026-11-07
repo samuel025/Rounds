@@ -1,3 +1,5 @@
+import { initWalletUi, renderActions, toast, txLink } from "./actions";
+import { send, account } from "./wallet";
 import { loadChain, checkRound, validAccount, esc } from "./chain";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
@@ -15,6 +17,7 @@ const pct = (a: bigint, b: bigint) => b === 0n ? "0.00%" : (Number((a * 20000n +
 const RULES = (id: string) => `<a class="q" href="rules.html#${id}" title="Definition in RULES.md">?</a>`;
 
 // ---------- state ----------
+let defaultContract = "", explorerBase = "https://explorer.testnet.near.org";
 const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
   proceeds: 20_000_000, month: 18, filter: "All", investor: "fund" };
@@ -64,8 +67,27 @@ async function renderPlan(r: Res) {
   const plan = pricedRoundPlan(input(), r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred" });
   const canon = canonicalJson(plan); const h = await planHash(canon);
   $("plan-card").innerHTML = `<div class="card-h"><span class="mono muted">PLAN HASH · SHA-256 OF RFC 8785 JSON ${RULES("r9")}</span></div><div class="hash">${h}</div>
-  <p class="note" style="margin-top:12px">This is the exact value the board votes on. The app cannot send transactions itself; propose it with the command below (officer account), fund the round, then the DAO approves by hash.</p>
+  <p class="note" style="margin-top:12px">This is the exact value the board votes on. Propose it with your wallet, or with the command below; either way the contract accepts it only from an officer account, and the DAO then approves it by this hash.</p>
+  <div style="margin:10px 0"><button class="btn primary sm" id="propose-btn">Propose on chain with my wallet</button> <span class="note" id="propose-note">Sends <span class="mono">propose_round</span> to the contract in the box under Events &amp; verify, with your account as the investor. Testnet only.</span></div>
   <pre class="out" id="cli">near contract call-function as-transaction &lt;ROUNDS&gt; propose_round json-args '{"kind":"Priced","plan_hash":"${h}","plan_uri":"…","plan":${JSON.stringify(canon).replace(/&/g, "&amp;").replace(/</g, "&lt;")},"raise":[["fund.testnet","${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":…}' …</pre>`;
+  $("propose-btn").onclick = async () => {
+    const acct = account();
+    if (!acct) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
+    const contract = ($("contract") as HTMLInputElement).value.trim().toLowerCase() || defaultContract;
+    if (!validAccount(contract)) { toast(`<span class="fail">FAIL</span> put a Rounds contract account in the box under Events &amp; verify first.`, "fail"); return; }
+    const mine = pricedRoundPlan(input(), r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct });
+    const c = canonicalJson(mine); const hh = await planHash(c);
+    const deadline = ((BigInt(Date.now()) + 7n * 86_400_000n) * 1_000_000n).toString(); // exact u64, 7 days out
+    const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":[[${JSON.stringify(acct)},"${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${deadline}}`;
+    try {
+      toast(`Waiting for your wallet to approve propose_round on ${esc(contract)} …`);
+      const res = await send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
+      if (res.hash) toast(`<span class="pass">DONE</span> round proposed${res.value !== null ? ` (#${esc(String(res.value))})` : ""}: ${txLink(explorerBase, res.hash)}. Next: the board approves hash <span class="mono">${esc(hh.slice(0, 12))}…</span> and the investor funds it.`, "ok");
+    } catch (e) {
+      const m = (e as Error).message;
+      toast(`<span class="fail">FAIL</span> the contract refused: ${esc(m)}.${/officer/i.test(m) ? " Your account is not an officer on that contract; its board must call set_officer for you first." : ""}`, "fail");
+    }
+  };
 }
 
 // ---------- cap table ----------
@@ -179,6 +201,7 @@ async function initVerify() {
 // ---------- any contract, straight from the chain ----------
 async function initChain() {
   const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://explorer.testnet.near.org", rounds: null, board: null, token: null, network: "testnet" }));
+  defaultContract = dep.rounds ?? ""; explorerBase = dep.explorer; initWalletUi(dep.explorer);
   const qs = new URLSearchParams(location.search);
   const input = $<HTMLInputElement>("contract"); input.value = qs.get("contract") ?? dep.rounds ?? "";
   const out = $("chain-out");
@@ -186,6 +209,7 @@ async function initChain() {
   const run = async () => {
     const id = input.value.trim().toLowerCase();
     if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-052090.testnet</span></p>`; return; }
+    $("chain-actions").innerHTML = "";
     out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`;
     try {
       const v = await loadChain(dep.rpc, id);
@@ -204,6 +228,7 @@ async function initChain() {
         <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th></th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>
         ${exits ? `<table class="chain-tbl"><tr><th>EXIT</th><th>STATE</th><th>PLAN HASH</th><th class="n">FUNDED</th></tr>${exits}</table><p class="note">Exit plan text is not stored on chain, only its hash and URI, so exit hashes are shown, not recomputed here.</p>` : ""}
         <pre class="out"><span class="${failed ? "fail" : "pass"}">${failed ? "FAIL" : "PASS"}</span> ${v.rounds.length} round plan(s) re-hashed in this browser; ${failed} mismatch(es)\nEverything above was read live from the chain; nothing came from this site's files.</pre>`;
+      void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, run);
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };

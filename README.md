@@ -18,11 +18,11 @@ Who it is for: a **founder** modelling and running a round; an **investor** veri
 
 ## How another person can use it today
 
-This is a hackathon prototype on NEAR **testnet**: fake money only, no wallet in the app. The app is a static site (`vercel.json` builds it on Vercel from this repo) and reads the testnet contract directly from the chain. Three levels of use:
+This is a hackathon prototype on NEAR **testnet**: fake money only. The app connects a NEAR **testnet** wallet (wallet-selector: MyNearWallet, Meteor) to sign real testnet transactions. The app is a static site (`vercel.json` builds it on Vercel from this repo) and reads the testnet contract directly from the chain. Three levels of use:
 
 1. **Look and verify.** Open the app, click **Verify**, or paste any Rounds contract account into the box under Events & verify. To run it yourself (about five minutes, no accounts): `git clone`, `npm install`, `make web-dev`, open the local address. Click **Verify** to check the live testnet contract. `make replay` (offline) and `make verify-onchain` (read-only) check the committed demo run.
 2. **Run your own test round.** Install the `near` CLI (near-cli-rs) and run `make demo`. It creates throwaway testnet accounts, a 2-of-3 board DAO, a test token and the Rounds contract, then runs the rounds, three attacks and an exit.
-3. **Use it for a real company: not possible yet.** It would need a wallet connection in the app, a mainnet deployment (deliberately not done), and legal documents. A SAFE and a share issuance are legal acts that Rounds does not replace.
+3. **Use it for a real company: not possible yet.** It would need a mainnet deployment (deliberately not done), and legal documents. A SAFE and a share issuance are legal acts that Rounds does not replace.
 
 ## Headline results
 
@@ -45,9 +45,20 @@ Every number below is checked against `results/summary.json` by `make check-read
 | `make test-contract` | Builds the contract and mock token, then the sandbox tests pass (about a minute; downloads the sandbox binary the first time) |
 | `make web-dev` | The app on a local port: dilution chart, cap table, round modeler, investor and employee views, exit simulator, events and Verify. `make web` builds a static site into `dist/`. The repo includes a `vercel.json`, so connecting it to Vercel builds and hosts the app. |
 | `make demo` | Scripted testnet run (needs `near` CLI, network and the faucet; see the note below) |
+| `make e2e-wallet` | needs `make web-dev` running, the `near` CLI, Chrome and the throwaway demo keys on this machine: drives the app's real wallet buttons against testnet with a test signer; last line `PASS summary: <n> checks, 0 failed` |
 | `make check-readme` | Fails if a number in this README differs from `results/summary.json` |
 
-The app has no wallet. "Propose on chain" shows the plan hash and the exact `near` command; "Run exit" is a simulation. The Verify button reads the live contract named in `web/public/deployment.json`.
+**Wallet.** "Connect wallet" (top right) lets you sign real testnet transactions; no access key is requested, so every action opens your wallet for approval. What each action needs:
+
+| Action in the app | Who can do it |
+|---|---|
+| Register for the test token and mint a fixed amount from its public faucet | any testnet account |
+| Deposit into a round's escrow | the investor named in that round's raise |
+| Close an approved, funded round; pay out an approved exit | anyone |
+| Approve a board proposal | a member of that contract's board DAO |
+| Propose the modeled round (`propose_round`, with your account as investor) | an officer of that contract |
+
+Buttons your account cannot use are shown disabled or answered with the contract's own refusal message. On the committed demo contract the board, officers and investors are throwaway demo accounts, so a visitor can use the faucet and see refusals but cannot vote or propose there; to try the full flow, deploy your own sandbox with `make demo`. "Run exit" in the modeler is a simulation; the on-chain exit is the "Pay out" button above. The Verify button reads the live contract named in `web/public/deployment.json`.
 
 ## The engine in brief
 

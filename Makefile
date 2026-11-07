@@ -34,3 +34,7 @@ summary:
 	node scripts/summary.mjs
 check-readme:
 	node scripts/check-readme.mjs
+
+# drives the app's wallet buttons on testnet with a DEV-only test signer (needs `make web-dev` running)
+e2e-wallet:
+	node scripts/e2e-wallet.mjs
