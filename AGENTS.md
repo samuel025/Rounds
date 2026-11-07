@@ -7,7 +7,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 | Command | Needs | Expected |
 |---|---|---|
 | `npm install` | network | installs TypeScript, Vitest, fast-check, Vite |
-| `make test` | node, python3 | Vitest: 5 files, all tests pass (see `tests.engine` in `results/summary.json`); then `python3 -I ref/conformance.py 1000` prints `"mismatches": 0` |
+| `make test` | node, python3 | Vitest: all test files pass (see `tests.engine` in `results/summary.json`); then `python3 -I ref/conformance.py 1000` prints `"mismatches": 0` |
 | `make replay` | node only, **no network** | step list with testnet transaction links, rebuilt cap table, exit payouts; last line `PASS summary: <n> checks, 0 failed` |
 | `make verify-onchain` | network (read-only RPC) | every line starts with `PASS`; last line `PASS summary: <n> checks, 0 failed`. A line starting `FAIL` means a mismatch with the chain or an unreachable RPC |
 | `make sandbox` | near CLI, network, faucet or `SANDBOX_FUND_FROM` | deploys a fresh open sandbox (testnet); `results/sandbox.json` lists it |

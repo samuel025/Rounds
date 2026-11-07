@@ -54,10 +54,7 @@ export async function send(receiverId: string, acts: Act[]): Promise<Sent> {
   if (tw) return interpret(await tw.send(receiverId, acts.map((a) => ({ method: a.method, args: a.args instanceof Uint8Array ? new TextDecoder().decode(a.args) : JSON.stringify(a.args), gasTgas: a.gasTgas ?? 100, depositYocto: a.depositYocto ?? "0" }))));
   const w = await selector!.wallet();
   const here = new URL(location.href); ["transactionHashes", "errorCode", "errorMessage"].forEach((k) => here.searchParams.delete(k));
-  const out: any = await (w as any).signAndSendTransaction({
-    receiverId, callbackUrl: here.toString(),
-    actions: acts.map((a) => ({ type: "FunctionCall", params: { methodName: a.method, args: a.args, gas: GAS(a.gasTgas ?? 100), deposit: a.depositYocto ?? "0" } })),
-  });
+  const out: any = await (w as any).signAndSendTransaction({ receiverId, callbackUrl: here.toString(), actions: await najActions(acts) });
   if (!out) return { hash: null, value: null }; // redirected to the wallet
   return interpret(out);
 }
@@ -68,6 +65,12 @@ function interpret(out: any): Sent {
   const sv = out.status?.SuccessValue; let value: unknown = null;
   try { value = sv ? JSON.parse(atob(sv)) : null; } catch { value = null; }
   return { hash: out.transaction?.hash ?? out.transaction_outcome?.id ?? null, value };
+}
+
+/** wallet-selector v10 takes NAJ actions (near-api-js action objects); plain {type, params} objects fail with "Unsupported NAJ action". */
+export async function najActions(acts: Act[]) {
+  const { actionCreators } = await import("@near-wallet-selector/core");
+  return acts.map((a) => actionCreators.functionCall(a.method, a.args, BigInt(GAS(a.gasTgas ?? 100)), BigInt(a.depositYocto ?? "0")));
 }
 
 export function describeFailure(f: any): string {
