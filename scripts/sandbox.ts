@@ -10,7 +10,7 @@ const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.c
 const M = 1_000_000n;
 const S = process.env.SANDBOX_SUFFIX ?? String(Date.now()).slice(-6);
 const id = (n: string) => `rsbx-${n}-${S}.testnet`;
-const A = { ada: id("ada"), bayo: id("bayo"), chidi: id("chidi"), dayo: id("dayo"), usdc: id("usdc"), rounds: id("rounds"), board: id("board") };
+const A = { ada: id("ada"), bayo: id("bayo"), chidi: id("chidi"), dayo: id("dayo"), usdc: process.env.SANDBOX_TOKEN ?? id("usdc"), rounds: id("rounds"), board: id("board") }; // SANDBOX_TOKEN reuses an already deployed test token (saves testnet NEAR)
 const MONTH_NS = 5_000_000_000n, WINDOW_NS = 15_000_000_000n; // demo clock: one "month" = 5 s
 const NEED: Record<string, number> = { ada: 1.5, rounds: 4.5, board: 1.5, usdc: 3.5, chidi: 0.8, dayo: 0.8, bayo: 0.5 }; // NEAR, only used for the fallback funding
 

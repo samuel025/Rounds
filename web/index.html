@@ -13,7 +13,7 @@
 <body>
   <header class="nav"><div class="wrap nav-in">
     <a class="brand" href="#top"><span class="dot"></span>Rounds</a>
-    <nav><a href="#cap">Cap table</a><a href="#model">Model a round</a><a href="#people">Investors &amp; employees</a><a href="#exit">Exit</a><a href="#verify">Verify</a></nav><button class="btn sm" id="wallet-btn">Connect wallet</button>
+    <nav><a href="#cap">Cap table</a><a href="#model">Model a round</a><a href="#try" id="nav-try" hidden>Run it</a><a href="#people">Investors &amp; employees</a><a href="#exit">Exit</a><a href="#verify">Verify</a></nav><button class="btn sm" id="wallet-btn">Connect wallet</button>
     <span class="net"><i></i>NEAR testnet</span>
   </div></header>
   <main id="top">
@@ -28,6 +28,8 @@
       <div class="tabs" id="cap-filter"></div><div class="card"><table id="cap-table"></table></div></section>
     <section id="model" class="wrap sec"><h2>Round modeler</h2><p class="sub">Change an input; the engine re-solves SAFE conversion, pool top-up and price exactly.</p>
       <div class="model-grid"><div class="card form" id="form"></div><div><div class="card" id="model-out"></div><div class="card" id="plan-card"></div></div></div></section>
+    <section id="try" class="wrap sec" hidden><h2>Run a round on testnet</h2><p class="sub">Eight steps on an open sandbox: connect a wallet, set the round above, propose it, fund it, approve it as the board, close it. Testnet, no value. The numbers you set in the modeler are the ones that get proposed.</p>
+      <div class="card" id="flow"></div></section>
     <section id="people" class="wrap sec"><h2>Investors &amp; employees</h2>
       <div class="grid2"><div class="card" id="investor"></div><div class="card" id="employee"></div></div></section>
     <section id="exit" class="wrap sec"><h2>Exit simulator</h2><p class="sub">Drag proceeds. Preferred takes its preference or converts, whichever pays more.</p>

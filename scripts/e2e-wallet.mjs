@@ -97,41 +97,48 @@ try {
   const t5 = await toastText(/DONE|FAIL/);
   check(/officer/i.test(t5), `non-officer propose_round is refused by the contract (${t5.replace(/\s+/g, " ").slice(0, 90)})`);
 
-  // 6. the judge path on the OPEN SANDBOX, only through the app's buttons: tokens, officer, propose, fund, board approval, close
-  if (process.env.E2E_SANDBOX && existsSync(process.env.E2E_SANDBOX)) { // a TEST sandbox instance: the flow closes its Series A, so never point this at the sandbox judges use
+  // 6. the judge path on the OPEN SANDBOX through the guided "Run a round on testnet" steps only. The page must also keep a stable
+  //    height while chain data refreshes after each step (the layout used to grow and shrink).
+  if (process.env.E2E_SANDBOX && existsSync(process.env.E2E_SANDBOX)) { // the flow closes this sandbox's Series A: never point it at the sandbox judges use
     const sb = JSON.parse(readFileSync(process.env.E2E_SANDBOX, "utf8")); const judge = sb.accounts.bayo, rounds = sb.accounts.rounds, stoken = sb.accounts.usdc;
+    const served = await (await fetch(new URL("sandbox.json", APP))).json();
+    check(served.rounds === rounds, `the app serves the sandbox under test (${served.rounds})`);
     const waitFor = async (fn, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch {} await sleep(1500); } return null; };
+    const flowBtn = (a) => `#flow [data-flow="${a}"]`;
+    const rowState = (n) => ev(`document.querySelectorAll("#flow .flow-row")[${n - 1}]?.className ?? ""`);
+    await send("Page.enable"); await send("Runtime.enable"); await send("Runtime.addBinding", { name: "nodeSend" });
+    await send("Page.addScriptToEvaluateOnNewDocument", { source: `window.__testWallet = { account: ${JSON.stringify(judge)}, send: (receiver, acts) => new Promise((res) => { const id = Math.random().toString(36).slice(2); (window.__p ||= {})[id] = res; window.nodeSend(JSON.stringify({ id, receiver, acts })); }) };` });
+    bindings.length = 0; await send("Page.navigate", { url: APP });
+    for (let i = 0; i < 60 && !(await ev(`document.querySelectorAll("#flow .flow-row").length === 8`)); i++) await sleep(500);
+    pump();
+    check(!!(await ev(`!document.getElementById("try").hidden`)), "the guided section is shown when a sandbox is configured");
+    check((await ev(`document.querySelectorAll("#flow .flow-row").length`)) === 8, "all eight steps are on screen from the start");
+    const heights = []; let sampling = true; (async () => { while (sampling) { try { heights.push(await ev(`document.getElementById("flow").offsetHeight`)); } catch {} await sleep(200); } })();
     const before6 = BigInt(await view(stoken, "ft_balance_of", { account_id: judge }));
-    await session(judge, rounds);
-    await clickBtn('#chain-actions [data-a="faucet"]');
-    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge gets test USDC from the faucet button");
-    check(BigInt(await view(stoken, "ft_balance_of", { account_id: judge })) - before6 === 10_000_000_000_000n, "sandbox: judge's token balance rose by $10,000,000");
-    await clickBtn('#chain-actions [data-a="officer"]');
-    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge asks the open board to make them an officer");
-    await session(judge, rounds);
-    await ev(`document.getElementById("propose-btn").click()`);
-    const tp = await toastText(/DONE|FAIL/);
-    check(/DONE/.test(tp), `sandbox: officer judge proposes the modeled Series A (${tp.replace(/\s+/g, " ").slice(0, 70)})`);
-    const rid = (await view(rounds, "round", { round_id: 4 })) ? 4 : null;
-    check(rid === 4, "sandbox: the chain now holds round 4 as Funding (" + ((await view(rounds, "round", { round_id: 4 }))?.status) + ")");
-    await session(judge, rounds);
-    check(!!(await ev(`document.querySelector('#chain-actions [data-a="deposit"][data-r="4"]')`)), "sandbox: the app offers the judge a deposit for round 4");
-    await clickBtn('#chain-actions [data-a="deposit"][data-r="4"]');
-    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge funds the round from their wallet");
-    const funded = await waitFor(async () => { const r = await view(rounds, "round", { round_id: 4 }); return r.deposits?.[0] && r.deposits[0][1] === r.raise[0][1] ? r : null; });
-    check(!!funded, "sandbox: the contract credited the full deposit");
-    await session(judge, rounds);
-    await clickBtn('#chain-actions [data-a="approve"][data-r="4"]');
-    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge approves round 4 as the open board, by its plan hash");
-    const approved = await waitFor(async () => (await view(rounds, "round", { round_id: 4 })).status === "Approved");
-    check(!!approved, "sandbox: round 4 is Approved on chain");
-    await session(judge, rounds);
-    await clickBtn('#chain-actions [data-a="close"][data-r="4"]');
-    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge closes the round");
-    const closed = await waitFor(async () => (await view(rounds, "round", { round_id: 4 })).status === "Closed");
-    check(!!closed, "sandbox: round 4 is Closed on chain");
+    for (let i = 0; i < 60 && !/current/.test(await rowState(2)); i++) await sleep(500); // the first chain read is asynchronous
+    check(/current/.test(await rowState(2)), "step 2 (test USDC) is the current step once the wallet is connected");
+    await clickBtn(flowBtn("faucet")); check(/DONE/.test(await toastText(/DONE|FAIL/)), "step 2: judge gets test USDC");
+    check(BigInt(await view(stoken, "ft_balance_of", { account_id: judge })) - before6 === 10_000_000_000_000n, "step 2: token balance rose by $10,000,000");
+    for (let i = 0; i < 40 && !/done/.test(await rowState(2)); i++) await sleep(500);
+    check(/done/.test(await rowState(2)) && /current/.test(await rowState(3)), "step 2 turns done and step 3 becomes current by itself");
+    await clickBtn(flowBtn("officer")); check(/DONE/.test(await toastText(/DONE|FAIL/)), "step 3: the open board makes the judge an officer");
+    for (let i = 0; i < 40 && !/current/.test(await rowState(5)); i++) await sleep(500);
+    await clickBtn(flowBtn("propose")); const tp = await toastText(/DONE|FAIL/);
+    check(/DONE/.test(tp), `step 5: the modeled Series A is proposed (${tp.replace(/\s+/g, " ").slice(0, 60)})`);
+    check(!!(await waitFor(async () => (await view(rounds, "round", { round_id: 4 }))?.status === "Funding")), "step 5: round 4 is Funding on chain");
+    await clickBtn(flowBtn("deposit")); check(/DONE/.test(await toastText(/DONE|FAIL/)), "step 6: the judge funds the round");
+    check(!!(await waitFor(async () => { const r = await view(rounds, "round", { round_id: 4 }); return r.deposits?.[0]?.[1] === r.raise[0][1]; })), "step 6: the contract credited the full deposit");
+    await clickBtn(flowBtn("approve")); check(/DONE/.test(await toastText(/DONE|FAIL/)), "step 7: the judge approves round 4 as the board");
+    check(!!(await waitFor(async () => (await view(rounds, "round", { round_id: 4 })).status === "Approved")), "step 7: round 4 is Approved on chain");
+    await clickBtn(flowBtn("close")); check(/DONE/.test(await toastText(/DONE|FAIL/)), "step 8: the judge closes the round");
+    check(!!(await waitFor(async () => (await view(rounds, "round", { round_id: 4 })).status === "Closed")), "step 8: round 4 is Closed on chain");
+    for (let i = 0; i < 40 && !/Series A Preferred/.test(await ev(`document.querySelector("#flow .flow-result").innerText`)); i++) await sleep(500);
+    check(/Series A Preferred/.test(await ev(`document.querySelector("#flow .flow-result").innerText`)), "the page shows the judge's new shares by itself");
     const held = await view(rounds, "holdings_of", { holder: judge });
-    check(held.some(([c, n]) => c === "Series A Preferred" && BigInt(n) > 0n), `sandbox: judge holds Series A Preferred shares (${JSON.stringify(held)})`);
+    check(held.some(([c, n]) => c === "Series A Preferred" && BigInt(n) === 4_500_000n), `on chain the judge holds 4,500,000 Series A Preferred (${JSON.stringify(held)})`);
+    sampling = false; await sleep(300);
+    const spread = Math.max(...heights) - Math.min(...heights);
+    check(heights.length > 20 && spread <= 6, `the flow's height stayed stable through every refresh (${heights.length} samples, spread ${spread}px)`);
   } else console.log("     (E2E_SANDBOX not set: sandbox judge-path skipped; it closes a Series A, so run it only on a throwaway sandbox instance)");
 } catch (e) { check(false, `e2e aborted: ${e.message}`); }
 pumping = false; try { ws.close(); } catch {} chrome.kill();

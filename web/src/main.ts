@@ -1,3 +1,4 @@
+import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { send, account } from "./wallet";
 import { call, loadChain, checkRound, validAccount, esc } from "./chain";
@@ -62,6 +63,7 @@ function renderModel() {
   <table style="margin-top:16px"><tr><th>SAFE</th><th>Regime</th><th class="n">Conv. price</th><th class="n">Shares</th><th class="n">Value at round</th></tr>${state.safes.map((s) => `<tr><td>${s.holder}</td><td>${r.safeRegime[s.id]}</td><td class="n">${price4(r.safeConversionPriceMicro[s.id])}</td><td class="n">${n(r.holdings[s.id])}</td><td class="n">${usd(r.holdings[s.id] * r.priceMicro)}</td></tr>`).join("")}</table>
   <p class="note" style="margin-top:12px">Fully diluted ${n(r.fullyDiluted)} × ${price4(r.priceMicro)} = ${usd(r.fullyDiluted * r.priceMicro)} vs post-money ${usd(post)}; the difference is price rounding, reported not hidden ${RULES("r1")}. SAFE shares are priced at the lower of the cap and discount prices ${RULES("r3")}.</p>`;
   void renderPlan(r);
+  window.dispatchEvent(new Event("rounds:model"));
   renderCap(r); renderPeople(r); renderExit(r);
 }
 async function renderPlan(r: Res) {
@@ -76,23 +78,31 @@ async function renderPlan(r: Res) {
     if (!acct) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
     const contract = ($("contract") as HTMLInputElement).value.trim().toLowerCase() || defaultContract;
     if (!validAccount(contract)) { toast(`<span class="fail">FAIL</span> put a Rounds contract account in the box under Events &amp; verify first.`, "fail"); return; }
-    const inp = input();
-    for (const sf of inp.safes) { try { const rec = await call(defaultRpc, contract, "safe", { id: sf.id }); if (rec?.holder) sf.holder = rec.holder; } catch { /* no such SAFE on this contract: keep the label */ } }
-    const mine = pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct });
-    const c = canonicalJson(mine); const hh = await planHash(c);
-    const deadline = ((BigInt(Date.now()) + 7n * 86_400_000n) * 1_000_000n).toString(); // exact u64, 7 days out
-    const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":[[${JSON.stringify(acct)},"${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${deadline}}`;
     try {
       toast(`Waiting for your wallet to approve propose_round on ${esc(contract)} …`);
-      const res = await send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
-      if (res.hash) toast(`<span class="pass">DONE</span> round proposed${res.value !== null ? ` (#${esc(String(res.value))})` : ""}: ${txLink(explorerBase, res.hash)}. Next: the board approves hash <span class="mono">${esc(hh.slice(0, 12))}…</span> and the investor funds it.`, "ok");
-      if (res.hash) reloadChain();
+      const res = await proposeModeled(contract);
+      if (res.hash) { toast(`<span class="pass">DONE</span> round proposed${res.value !== null ? ` (#${esc(String(res.value))})` : ""}: ${txLink(explorerBase, res.hash)}. Next: fund it, then the board approves its hash.`, "ok"); reloadChain(); }
     } catch (e) {
       const m = (e as Error).message;
       toast(`<span class="fail">FAIL</span> the contract refused: ${esc(m)}.${/officer/i.test(m) ? " Your account is not an officer on that contract; its board must call set_officer for you first." : ""}`, "fail");
     }
   };
 }
+
+
+/** Send the currently modeled Series A to a Rounds contract, with the connected account as the investor. Throws on refusal. */
+async function proposeModeled(contract: string) {
+  const acct = account(); if (!acct) throw new Error("connect a wallet first");
+  const { r } = solve(); if (!r) throw new Error("the modeled round has no valid solution; fix the inputs");
+  const inp = input();
+  for (const sf of inp.safes) { try { const rec = await call(defaultRpc, contract, "safe", { id: sf.id }); if (rec?.holder) sf.holder = rec.holder; } catch { /* no such SAFE on this contract: keep the label */ } }
+  const mine = pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct });
+  const c = canonicalJson(mine); const hh = await planHash(c);
+  const deadline = ((BigInt(Date.now()) + 7n * 86_400_000n) * 1_000_000n).toString(); // exact u64, 7 days out
+  const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":[[${JSON.stringify(acct)},"${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${deadline}}`;
+  return send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
+}
+const modelSummary = () => { const { r, err } = solve(); return r ? `Pre-money ${usd(BigInt(state.pre) * M)} · new money ${usd(BigInt(state.raise) * M)} · pool ${state.pool}% → price ${price4(r.priceMicro)} per share` : `No valid solution: ${err}`; };
 
 // ---------- cap table ----------
 function renderCap(r: Res) {
@@ -210,11 +220,10 @@ async function initChain() {
   const input = $<HTMLInputElement>("contract"); input.value = qs.get("contract") ?? dep.rounds ?? "";
   const out = $("chain-out");
   const link = (contract: string, frag: string) => `${location.origin}${location.pathname}?contract=${encodeURIComponent(contract)}#${frag}`;
-  const run = async () => {
+  const run = async (quiet = false) => {
     const id = input.value.trim().toLowerCase();
     if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-052090.testnet</span></p>`; return; }
-    $("chain-actions").innerHTML = "";
-    out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`;
+    if (!quiet) { $("chain-actions").innerHTML = ""; out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`; }
     try {
       const v = await loadChain(dep.rpc, id);
       const only = /^#verify\/round-(\d+)$/.exec(location.hash)?.[1];
@@ -236,14 +245,19 @@ async function initChain() {
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };
-  const sb: { rounds?: string; board?: string } | null = await fetch("sandbox.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const sb: { rounds?: string; board?: string; token?: string } | null = await fetch("sandbox.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (sb?.rounds) {
     $("chain-presets").innerHTML = `<p class="note" style="margin:10px 0 0">Two contracts to try: the <b>demo</b> run (history of a finished Series A and exit; its board is fixed demo accounts) and an <b>open sandbox</b> (founders and two SAFEs closed, the Series A is yours; anyone may propose and vote, testnet, no value).</p><div style="display:flex;gap:8px;margin:8px 0 4px"><button class="btn sm" id="pre-demo">Load the demo contract</button><button class="btn primary sm" id="pre-sandbox">Load the open sandbox</button></div>`;
     $("pre-demo").onclick = () => { input.value = dep.rounds ?? ""; void run(); };
     $("pre-sandbox").onclick = () => { input.value = sb.rounds!; void run(); };
   }
-  reloadChain = () => { setTimeout(() => void run(), 2500); }; // let the transaction finalise, then refresh the tables and the actions panel
-  $("chain-btn").onclick = run;
+  reloadChain = () => { setTimeout(() => void run(true), 2500); }; // let the transaction finalise, then refresh the tables and the actions panel
+  if (sb?.rounds && sb.board && sb.token) {
+    $("try").hidden = false; $("nav-try").hidden = false;
+    mountFlow($("flow"), { rpc: dep.rpc, explorer: dep.explorer, contract: sb.rounds, board: sb.board, token: sb.token, modelSummary, raiseMicro: () => BigInt(state.raise) * M, propose: (c) => proposeModeled(c),
+      showResult: () => { input.value = sb.rounds!; void run(); document.getElementById("verify")?.scrollIntoView({ behavior: "smooth" }); } });
+  }
+  $("chain-btn").onclick = () => void run();
   input.onkeydown = (e) => { if (e.key === "Enter") void run(); };
   if (qs.get("contract") || /^#verify\//.test(location.hash)) { await run(); }
 }

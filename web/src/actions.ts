@@ -94,7 +94,7 @@ let unsub: (() => void) | null = null;
 function onAccountOnce(f: (a: string | null) => void | Promise<void>) { unsub?.(); unsub = onAccount((a) => { void f(a); }); }
 
 /** Ask the open board to call the Rounds contract. One call from the visitor's wallet; the Rounds contract sees the board as the caller. */
-async function boardAct(explorer: string, board: string, method: string, args: object, what: string, after: () => void) {
+export async function boardAct(explorer: string, board: string, method: string, args: object, what: string, after: () => void) {
   try {
     toast(`Waiting for your wallet to approve: ${esc(what)} (asks the open board to act) …`);
     const r = await send(board, [{ method: "act", args: { method_name: method, args: JSON.stringify(args), gas_tgas: 60 }, gasTgas: 150 }]);
