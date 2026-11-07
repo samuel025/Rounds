@@ -17,6 +17,7 @@ const pct = (a: bigint, b: bigint) => b === 0n ? "0.00%" : (Number((a * 20000n +
 const RULES = (id: string) => `<a class="q" href="rules.html#${id}" title="Definition in RULES.md">?</a>`;
 
 // ---------- state ----------
+let reloadChain: () => void = () => {};
 let defaultContract = "", defaultRpc = "https://test.rpc.fastnear.com", explorerBase = "https://explorer.testnet.near.org";
 const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
@@ -85,6 +86,7 @@ async function renderPlan(r: Res) {
       toast(`Waiting for your wallet to approve propose_round on ${esc(contract)} …`);
       const res = await send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
       if (res.hash) toast(`<span class="pass">DONE</span> round proposed${res.value !== null ? ` (#${esc(String(res.value))})` : ""}: ${txLink(explorerBase, res.hash)}. Next: the board approves hash <span class="mono">${esc(hh.slice(0, 12))}…</span> and the investor funds it.`, "ok");
+      if (res.hash) reloadChain();
     } catch (e) {
       const m = (e as Error).message;
       toast(`<span class="fail">FAIL</span> the contract refused: ${esc(m)}.${/officer/i.test(m) ? " Your account is not an officer on that contract; its board must call set_officer for you first." : ""}`, "fail");
@@ -230,7 +232,7 @@ async function initChain() {
         <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th></th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>
         ${exits ? `<table class="chain-tbl"><tr><th>EXIT</th><th>STATE</th><th>PLAN HASH</th><th class="n">FUNDED</th></tr>${exits}</table><p class="note">Exit plan text is not stored on chain, only its hash and URI, so exit hashes are shown, not recomputed here.</p>` : ""}
         <pre class="out"><span class="${failed ? "fail" : "pass"}">${failed ? "FAIL" : "PASS"}</span> ${v.rounds.length} round plan(s) re-hashed in this browser; ${failed} mismatch(es)\nEverything above was read live from the chain; nothing came from this site's files.</pre>`;
-      void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, run);
+      void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, reloadChain);
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };
@@ -240,6 +242,7 @@ async function initChain() {
     $("pre-demo").onclick = () => { input.value = dep.rounds ?? ""; void run(); };
     $("pre-sandbox").onclick = () => { input.value = sb.rounds!; void run(); };
   }
+  reloadChain = () => { setTimeout(() => void run(), 2500); }; // let the transaction finalise, then refresh the tables and the actions panel
   $("chain-btn").onclick = run;
   input.onkeydown = (e) => { if (e.key === "Enter") void run(); };
   if (qs.get("contract") || /^#verify\//.test(location.hash)) { await run(); }
