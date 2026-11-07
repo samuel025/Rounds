@@ -139,6 +139,12 @@ Be aware of what this run does and does not show:
 - *What is weak?* Public holdings (a real cap table is confidential), no legal status, simplified SAFE terms, and an off-chain engine whose correctness rests on tests, not proofs.
 - *Why build it anyway?* The failure it targets is real: nobody can check a cap table. A reproducible engine, a board vote on a hash and a read-only verifier are a small, honest step toward fixing that.
 
+## Tracks
+
+- **Social Money.** A group's shared ownership record is approved by its board by exact plan hash (the demo run uses a real 2-of-3 Sputnik DAO), investors' money waits in escrow until approval, and exit payouts are made by the contract. See "Testnet addresses and transactions" and the `make verify-onchain` output for the proof.
+- **Open Innovation.** An exact equity engine, a second implementation that agrees with it on seeded random scenarios, and a read-only verifier that anyone can run; the live app lets you run a whole round yourself on testnet.
+- **Not entered:** Privacy (holdings are public on chain and there is no confidential mode) and the AI and agent tracks (NEAR AI Cloud and NEAR Intents are not used).
+
 ## Hackathon disclosures
 
 - **Code window:** all code in this repository was written starting 2026-11-06.
