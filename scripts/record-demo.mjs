@@ -133,7 +133,9 @@ const doStep = async (act, n) => {
 };
 
 await narrate(N.hook, async () => {
-  await sleep(2500); await point("h1", 0.4, 0.5); await sleep(8500); await point("#intro", 0.5, 0.3); await sleep(12000); await point("#hero-bars", 0.5, 0.35);
+  await sleep(2000); await point("h1", 0.4, 0.5); await sleep(7500);
+  await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
+  await point("#hero-bars", 0.3, 0.3); await sleep(4500); await point("#hero-bars", 0.7, 0.8);
 });
 
 await narrate(N.basics, async () => {

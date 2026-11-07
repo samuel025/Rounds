@@ -145,6 +145,16 @@ Be aware of what this run does and does not show:
 - **Open Innovation.** An exact equity engine, a second implementation that agrees with it on seeded random scenarios, and a read-only verifier that anyone can run; the live app lets you run a whole round yourself on testnet.
 - **Not entered:** Privacy (holdings are public on chain and there is no confidential mode) and the AI and agent tracks (NEAR AI Cloud and NEAR Intents are not used).
 
+## Path to privacy (not built)
+
+Holdings, deposits and payouts are public on chain today, so this is not a confidential product. What would change that, in order of what it would hide:
+
+1. **Hash commitments for holdings and round plans.** The chain would store a salted fingerprint per holding instead of holder names and share counts, and each holder would keep a receipt that proves their holding. This hides who holds how many shares, but deposits and exit payouts are ordinary token transfers, so an investor's payment and an exit payout would still be visible; the plan would also no longer be re-checkable by someone without the plan file.
+2. **Zero-knowledge proofs** (for example that a round's class totals add up) in place of reading a plan, which would remove most of the leaks of a commitment tree. This needs circuits, a proving setup and an on-chain verifier.
+3. **Shielded payments** so that deposits and payouts are private too. NEAR has announced Confidential Intents for private transfers; the details here come from news reports not checked against NEAR's own documentation, and NEAR Intents has no testnet, so none of it is used in this project.
+
+Until then, holder IDs can be pseudonymous NEAR accounts, with the link to real identities kept off chain.
+
 ## Hackathon disclosures
 
 - **Code window:** all code in this repository was written starting 2026-11-06.
