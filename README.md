@@ -18,11 +18,11 @@ Who it is for: a **founder** modelling and running a round; an **investor** veri
 
 ## How another person can use it today
 
-This is a hackathon prototype on NEAR **testnet**: fake money only, no hosted site, no wallet in the app. Three levels of use:
+This is a hackathon prototype on NEAR **testnet**: fake money only, no wallet in the app. **Live app: https://rounds-cap-table.vercel.app** (static site on Vercel; it reads the testnet contract directly from the chain). Three levels of use:
 
-1. **Look and verify (about five minutes, no accounts).** `git clone`, `npm install`, `make web-dev`, open the local address. Click **Verify** to check the live testnet contract. `make replay` (offline) and `make verify-onchain` (read-only) check the committed demo run.
+1. **Look and verify.** Open the live app, click **Verify**, or paste any Rounds contract account into the box under Events & verify. To run it yourself (about five minutes, no accounts): `git clone`, `npm install`, `make web-dev`, open the local address. Click **Verify** to check the live testnet contract. `make replay` (offline) and `make verify-onchain` (read-only) check the committed demo run.
 2. **Run your own test round.** Install the `near` CLI (near-cli-rs) and run `make demo`. It creates throwaway testnet accounts, a 2-of-3 board DAO, a test token and the Rounds contract, then runs the rounds, three attacks and an exit.
-3. **Use it for a real company: not possible yet.** It would need a wallet connection in the app, a hosted site, a mainnet deployment (deliberately not done), and legal documents. A SAFE and a share issuance are legal acts that Rounds does not replace.
+3. **Use it for a real company: not possible yet.** It would need a wallet connection in the app, a mainnet deployment (deliberately not done), and legal documents. A SAFE and a share issuance are legal acts that Rounds does not replace.
 
 ## Headline results
 
@@ -43,7 +43,7 @@ Every number below is checked against `results/summary.json` by `make check-read
 | `make replay` | Offline: the step list with transaction links, the rebuilt cap table, the exit payouts, and a last line `PASS summary: … 0 failed` |
 | `make verify-onchain` | Read-only, needs network: every line starts with `PASS`; the last line ends with `0 failed` |
 | `make test-contract` | Builds the contract and mock token, then the sandbox tests pass (about a minute; downloads the sandbox binary the first time) |
-| `make web-dev` | The app on a local port: dilution chart, cap table, round modeler, investor and employee views, exit simulator, events and Verify. `make web` builds a static site into `dist/`. **There is no hosted instance yet.** |
+| `make web-dev` | The app on a local port: dilution chart, cap table, round modeler, investor and employee views, exit simulator, events and Verify. `make web` builds a static site into `dist/`. The live build is at https://rounds-cap-table.vercel.app (`make deploy` rebuilds and pushes `dist/` with the Vercel CLI). |
 | `make demo` | Scripted testnet run (needs `near` CLI, network and the faucet; see the note below) |
 | `make check-readme` | Fails if a number in this README differs from `results/summary.json` |
 

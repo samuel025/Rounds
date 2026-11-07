@@ -34,3 +34,7 @@ summary:
 	node scripts/summary.mjs
 check-readme:
 	node scripts/check-readme.mjs
+
+# static deploy of the built app to Vercel (needs `vercel login`); publishes only dist/ plus deploy/vercel.json, never the repo
+deploy: web
+	rm -rf .deploy && mkdir -p .deploy/rounds-cap-table && cp -r dist/. .deploy/rounds-cap-table/ && cp deploy/vercel.json .deploy/rounds-cap-table/ && cd .deploy/rounds-cap-table && vercel deploy --prod --yes

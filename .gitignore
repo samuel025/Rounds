@@ -9,3 +9,5 @@ results/conformance-ts.json
 
 # third-party YC SAFE forms, kept locally for checking only
 ref/*.docx
+.deploy/
+.vercel/
