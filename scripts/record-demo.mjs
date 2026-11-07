@@ -56,14 +56,17 @@ await ev(`(() => {
 await send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
 
 const voice = []; let t0 = null;
-const EDGE = process.env.EDGE_TTS ?? "edge-tts", VOICE = process.env.VOICE ?? "en-US-AndrewNeural";
-const say = async (text, ms) => { // narration only; no on-screen captions
+const EDGE = process.env.EDGE_TTS ?? "edge-tts", VOICE = process.env.VOICE ?? "en-US-AndrewMultilingualNeural";
+// One continuous voice clip per scene; the cursor actions run WHILE it plays, so the speech never stops and restarts.
+const narrate = async (text, actions = async () => {}) => {
   const cache = join(process.env.REC_DIR ?? tmpdir(), "tts-cache"); mkdirSync(cache, { recursive: true });
   const mp3 = join(cache, createHash("sha1").update(VOICE + text).digest("hex") + ".mp3");
-  if (!existsSync(mp3)) execFileSync(EDGE, ["--voice", VOICE, "--rate=-4%", "--text", text, "--write-media", mp3], { stdio: "ignore" });
+  if (!existsSync(mp3)) execFileSync(EDGE, ["--voice", VOICE, "--rate=-2%", "--text", text, "--write-media", mp3], { stdio: "ignore" });
   const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp3]).toString()) * 1000;
   voice.push({ wav: mp3, at: (performance.now() - (frames[0]?.t ?? performance.now())) / 1000 });
-  await sleep(Math.max(ms * 0.6, dur + 400));
+  const t0 = performance.now();
+  await actions();
+  await sleep(Math.max(300, dur - (performance.now() - t0)) + 350); // let the sentence finish, then a natural beat
 };
 const quiet = async () => {};
 const rect = async (sel, fx = 0.5, fy = 0.5) => { for (let i = 0; i < 20 && !(await ev(`!!document.querySelector(${JSON.stringify(sel)})`)); i++) await sleep(250); return rect0(sel, fx, fy); };
@@ -92,67 +95,73 @@ process.on("uncaughtException", async (e) => { try { console.log("DIAG", await e
 // ---- script ----
 await sleep(2200);
 await ev(`document.getElementById("title").style.opacity=0`); await sleep(900); await ev(`document.getElementById("title").remove()`);
+// warm up the wallet selector (it loads lazily) so the modal opens instantly during the narration
+await click("#wallet-btn");
+for (let i = 0; i < 40 && !(await ev(`[...document.querySelectorAll("*")].some(e=>e.children.length===0&&/Connect Your Wallet/.test(e.textContent)&&e.offsetParent!==null)`)); i++) await sleep(500);
+await ev(`(()=>{const c=[...document.querySelectorAll('[class*="close"]')].find(e=>e.offsetParent!==null);if(c)c.click()})()`); await sleep(1200);
+await ev(`window.scrollTo(0,0)`); await sleep(600);
+const closeModal = () => ev(`(()=>{const c=[...document.querySelectorAll('[class*="close"]')].find(e=>e.offsetParent!==null);if(c)c.click()})()`);
 
-await say("Rounds is a cap table and fundraising tool. It runs on NEAR testnet only: no real money, no mainnet.", 4200);
-await point("h1", 0.4, 0.5); await say("The idea: every number on a cap table should come with a way to check it.", 4000);
-await point("#hero-bars", 0.5, 0.35);
-await say("This is a Series A. Each bar is who owns what, before and after the round.", 4200);
-await point("#hero-price", 0.5, 0.5); await say("The price per share is solved exactly, with whole shares and no floating point.", 4200);
+await narrate("This is Rounds, a cap table and fundraising tool built on NEAR testnet, so there is no real money involved. The idea is simple: every number on a cap table should come with a way to check it. What you are looking at is a Series A, showing who owns what before and after the round, along with the price per share, which is solved exactly, in whole shares, with no floating point.", async () => {
+  await sleep(3000); await point("h1", 0.4, 0.5); await sleep(5200); await point("#hero-bars", 0.5, 0.35); await sleep(5200); await point("#hero-price", 0.5, 0.5);
+});
+
+await narrate("Up in the corner, you can connect a NEAR testnet wallet. It opens the wallet selector, with MyNearWallet and Meteor, and the app never asks for a key. Every action you take here is approved in your own wallet.", async () => {
+  await point("#wallet-btn", 0.5, 0.5); await sleep(1500); await click("#wallet-btn"); await sleep(5200); await closeModal(); await sleep(500);
+});
 
 await scrollTo("#cap");
-await say("Cap table: founders, SAFE holders, the investor, and the option pool.", 3600);
-await point("#cap-table", 0.5, 0.25);
-await point("#cap-table", 0.5, 0.6, 1000);
-await say("Every figure comes from a deterministic engine, never from an AI model. RULES.md defines each rule.", 4600);
-await click("#cap-filter .tab:nth-child(2)"); await say("Filter by holder class.", 2200);
-await click("#cap-filter .tab:nth-child(1)");
+await narrate("Next, the cap table. Every figure comes from a deterministic engine, never from an AI model, and each one links back to its definition in the rules file.", async () => {
+  await point("#cap-table", 0.5, 0.3); await sleep(2500); await point("#cap-table", 0.5, 0.75, 1000);
+});
 
 await scrollTo("#model");
-await say("Round modeler: change an input and the engine re-solves SAFE conversion, pool top-up and price.", 4600);
-await point("#form", 0.5, 0.1);
-await say("Let's say the fund puts in a bigger cheque.", 2400);
-await typeInto("#raise", 12000000);
-await point("#model-out", 0.5, 0.25);
-await say("New price per share and new ownership appear instantly. Every rounding remainder is reported.", 4800);
-await typeInto("#pool", 15);
-await say("A larger option pool: the price drops, because the pool dilutes the existing holders, not the new investor.", 5000);
-await point("#plan-card", 0.5, 0.2);
-await say("The round becomes a plan with a SHA-256 hash. The board approves that hash, and the contract only executes a plan that matches it.", 5600);
-await point("#cli", 0.3, 0.4);
-await say("This is the exact NEAR call a proposer would send. This app has no wallet; it only prepares it.", 4600);
+await narrate("The round modeler is where you can play with the numbers. Change an input, say a bigger cheque from the fund, and the engine instantly re-solves the SAFE conversions, the option pool and the price, and reports every rounding remainder. Then make the option pool larger, and the price drops, because the pool dilutes the existing holders, not the new investor.", async () => {
+  await point("#form", 0.5, 0.1); await sleep(2800); await typeInto("#raise", 12000000); await point("#model-out", 0.5, 0.25); await sleep(5200); await typeInto("#pool", 15); await sleep(1500);
+});
+
+await narrate("Each round becomes a plan with its own SHA-256 hash. The board approves that hash, and the contract only runs a plan that matches it. And here is the button for it. With a wallet connected, this sends the round to the contract. Only an officer account is allowed to propose it, and after that the board votes on the hash.", async () => {
+  await point("#plan-card", 0.5, 0.15); await sleep(5200);
+  await ev(`document.getElementById("propose-btn").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
+  await point("#propose-btn", 0.5, 0.5); await sleep(1200);
+  await point("#propose-btn", 0.45, 0.55, 500); await point("#propose-btn", 0.55, 0.45, 500);
+});
 
 await scrollTo("#people");
-await say("Investor and employee views.", 2400);
-await click("#inv"); await sleep(400); await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape" });
-await point("#investor", 0.5, 0.5);
-await say("What each holder owns, what it is worth, and what they'd receive.", 3600);
-await point("#month", 0.1, 0.5);
-await say("Employee options vest over 48 months with a 12-month cliff. Drag the slider.", 3200);
-await drag("#month", 0.05, 0.6);
-await say("The vested amount is computed exactly. Nothing before month 12, then it accrues monthly.", 4200);
+await narrate("Investors and employees get a personal view. Employee options vest over forty eight months, with a twelve month cliff, and as you drag through time, the vested amount is computed exactly.", async () => {
+  await point("#investor", 0.5, 0.5); await sleep(3000); await point("#month", 0.1, 0.5); await sleep(600); await drag("#month", 0.05, 0.6);
+});
 
 await scrollTo("#exit");
-await say("Exit simulator: preferred shareholders take their 1x preference or convert to common, whichever pays more.", 4800);
-await drag("#proceeds", 0.05, 0.2, 18);
-await say("At a low exit, the investor takes its preference first.", 3600);
-await drag("#proceeds", 0.2, 0.9, 30);
-await say("At a high exit, everyone converts and shares pro rata. The payouts always add up to the proceeds.", 4600);
+await narrate("The exit simulator shows how proceeds are split. Preferred shareholders take their preference, or convert to common, whichever pays more. At a low exit the investor is paid first, and at a high exit everyone converts, and the payouts always add up to the proceeds.", async () => {
+  await sleep(2500); await drag("#proceeds", 0.05, 0.2, 18); await sleep(3500); await drag("#proceeds", 0.2, 0.9, 30);
+});
 
 await scrollTo("#verify");
-await say("The part that matters: verification against the real chain.", 3400);
-await point("#events", 0.5, 0.2);
-await say("These are real events from a scripted testnet run: four rounds closed and an exit paid out.", 4400);
-await click("#verify-btn");
-await say("Verify reads the NEAR testnet contract, recomputes every plan hash in your browser, and compares.", 4600);
-for (let i = 0; i < 40; i++) { const t = await ev(`document.getElementById("verify-out").textContent`); if (/failed/.test(t)) break; await sleep(500); }
-await ev(`document.getElementById("verify-out").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
-await point("#verify-out", 0.3, 0.3);
+await narrate("Now, the part that matters: checking everything against the real chain. You can paste any Rounds contract on testnet. This one is our demo contract, and the app reads the cap table, the rounds and the exits straight from the chain. Each round's plan is hashed again, right here in your browser, and compared with the hash the chain holds. A pass means they are identical, and every round has its own link, so an investor can open a single address that proves their round.", async () => {
+  await point("#contract", 0.4, 0.5); await sleep(2500); await click("#chain-btn");
+  for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("#chain-out .chain-tbl")`)); i++) await sleep(500);
+  await point("#chain-out .chain-tbl", 0.5, 0.5); await sleep(4000);
+  await ev(`document.querySelectorAll("#chain-out .chain-tbl")[1].scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
+  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(3)", 0.6, 0.5); await sleep(4500);
+  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(3)", 0.95, 0.5);
+});
+
+await narrate("Once a wallet is connected, this panel shows what your account can do on the contract: get test tokens, fund a round, close it, pay out an exit, or vote if you are on the board. And the Verify button recomputes everything against the engine and the chain one more time.", async () => {
+  await ev(`document.getElementById("chain-actions").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
+  await point("#chain-actions", 0.3, 0.5); await sleep(6500);
+  await ev(`document.getElementById("verify-btn").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
+  await click("#verify-btn");
+  for (let i = 0; i < 60; i++) { const t = await ev(`document.getElementById("verify-out").textContent`); if (/failed/.test(t)) break; await sleep(500); }
+});
+await ev(`document.getElementById("verify-out").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1200);
 const outTxt = await ev(`document.getElementById("verify-out").textContent`);
 console.log(outTxt);
-await say("Every check passes: the hashes match what the chain holds. Anyone can repeat this.", 4600);
-await quiet(); await sleep(400);
-await say("Rounds: testnet only, tested against golden vectors and a second implementation. Code and tests are in the repo.", 5200);
-await quiet(); await sleep(800);
+if (!/0 failed/.test(outTxt)) throw new Error("Verify did not finish with 0 failed; not encoding");
+await narrate("Every check passes, and the hashes match the chain. Rounds is testnet only, with an exact equity engine, a second implementation, and a verifier anyone can run. Thanks for watching.", async () => {
+  await point("#verify-out", 0.3, 0.3);
+});
+await sleep(800);
 
 // ---- encode ----
 await send("Page.stopScreencast"); await sleep(300); ws.close(); chrome.kill();

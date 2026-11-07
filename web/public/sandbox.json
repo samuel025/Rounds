@@ -1,0 +1,10 @@
+{
+  "network": "testnet",
+  "rpc": "https://test.rpc.fastnear.com",
+  "explorer": "https://explorer.testnet.near.org",
+  "rounds": "rsbx-rounds-104629.testnet",
+  "board": "rsbx-board-104629.testnet",
+  "token": "rsbx-usdc-104629.testnet",
+  "openBoard": true,
+  "note": "OPEN SANDBOX: anyone may become an officer and act as the board. Founders and two SAFEs are closed; the Series A is yours to run. Testnet, no value."
+}

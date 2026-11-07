@@ -1,6 +1,6 @@
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { send, account } from "./wallet";
-import { loadChain, checkRound, validAccount, esc } from "./chain";
+import { call, loadChain, checkRound, validAccount, esc } from "./chain";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -17,7 +17,7 @@ const pct = (a: bigint, b: bigint) => b === 0n ? "0.00%" : (Number((a * 20000n +
 const RULES = (id: string) => `<a class="q" href="rules.html#${id}" title="Definition in RULES.md">?</a>`;
 
 // ---------- state ----------
-let defaultContract = "", explorerBase = "https://explorer.testnet.near.org";
+let defaultContract = "", defaultRpc = "https://test.rpc.fastnear.com", explorerBase = "https://explorer.testnet.near.org";
 const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
   proceeds: 20_000_000, month: 18, filter: "All", investor: "fund" };
@@ -75,7 +75,9 @@ async function renderPlan(r: Res) {
     if (!acct) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
     const contract = ($("contract") as HTMLInputElement).value.trim().toLowerCase() || defaultContract;
     if (!validAccount(contract)) { toast(`<span class="fail">FAIL</span> put a Rounds contract account in the box under Events &amp; verify first.`, "fail"); return; }
-    const mine = pricedRoundPlan(input(), r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct });
+    const inp = input();
+    for (const sf of inp.safes) { try { const rec = await call(defaultRpc, contract, "safe", { id: sf.id }); if (rec?.holder) sf.holder = rec.holder; } catch { /* no such SAFE on this contract: keep the label */ } }
+    const mine = pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct });
     const c = canonicalJson(mine); const hh = await planHash(c);
     const deadline = ((BigInt(Date.now()) + 7n * 86_400_000n) * 1_000_000n).toString(); // exact u64, 7 days out
     const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":[[${JSON.stringify(acct)},"${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${deadline}}`;
@@ -201,7 +203,7 @@ async function initVerify() {
 // ---------- any contract, straight from the chain ----------
 async function initChain() {
   const dep: Dep = await fetch("deployment.json").then((r) => r.json()).catch(() => ({ rpc: "https://test.rpc.fastnear.com", explorer: "https://explorer.testnet.near.org", rounds: null, board: null, token: null, network: "testnet" }));
-  defaultContract = dep.rounds ?? ""; explorerBase = dep.explorer; initWalletUi(dep.explorer);
+  defaultContract = dep.rounds ?? ""; defaultRpc = dep.rpc; explorerBase = dep.explorer; initWalletUi(dep.explorer);
   const qs = new URLSearchParams(location.search);
   const input = $<HTMLInputElement>("contract"); input.value = qs.get("contract") ?? dep.rounds ?? "";
   const out = $("chain-out");
@@ -232,6 +234,12 @@ async function initChain() {
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };
+  const sb: { rounds?: string; board?: string } | null = await fetch("sandbox.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (sb?.rounds) {
+    $("chain-presets").innerHTML = `<p class="note" style="margin:10px 0 0">Two contracts to try: the <b>demo</b> run (history of a finished Series A and exit; its board is fixed demo accounts) and an <b>open sandbox</b> (founders and two SAFEs closed, the Series A is yours; anyone may propose and vote, testnet, no value).</p><div style="display:flex;gap:8px;margin:8px 0 4px"><button class="btn sm" id="pre-demo">Load the demo contract</button><button class="btn primary sm" id="pre-sandbox">Load the open sandbox</button></div>`;
+    $("pre-demo").onclick = () => { input.value = dep.rounds ?? ""; void run(); };
+    $("pre-sandbox").onclick = () => { input.value = sb.rounds!; void run(); };
+  }
   $("chain-btn").onclick = run;
   input.onkeydown = (e) => { if (e.key === "Enter") void run(); };
   if (qs.get("contract") || /^#verify\//.test(location.hash)) { await run(); }

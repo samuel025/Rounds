@@ -10,6 +10,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 | `make test` | node, python3 | Vitest: 5 files, all tests pass (see `tests.engine` in `results/summary.json`); then `python3 -I ref/conformance.py 1000` prints `"mismatches": 0` |
 | `make replay` | node only, **no network** | step list with testnet transaction links, rebuilt cap table, exit payouts; last line `PASS summary: <n> checks, 0 failed` |
 | `make verify-onchain` | network (read-only RPC) | every line starts with `PASS`; last line `PASS summary: <n> checks, 0 failed`. A line starting `FAIL` means a mismatch with the chain or an unreachable RPC |
+| `make sandbox` | near CLI, network, faucet or `SANDBOX_FUND_FROM` | deploys a fresh open sandbox (testnet); `results/sandbox.json` lists it |
 | `make e2e-wallet` | `make web-dev` running, near CLI, Chrome, demo keys in `~/.near-credentials` | drives the app's wallet buttons on testnet via a DEV-only test signer; `PASS summary: 11 checks, 0 failed`. Writes a few testnet transactions on a superseded deployment |
 | `make check-readme` | node | `PASS summary: <n> tagged numbers checked, 0 failed` |
 | `make summary` | node, python-generated conformance files, cargo (to list sandbox tests) | rewrites `results/summary.json` |
@@ -25,7 +26,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 - `src/engine/` — pure TypeScript engine: `index.ts` (SAFE conversion, priced round), `waterfall.ts`, `vesting.ts`, `plan.ts` (RFC 8785 canonical JSON, sha256 plan hash), `rat.ts` (exact rationals).
 - `test/` — golden vectors (GV-1..GV-4), properties P1–P9 (fast-check), plan hashing. `vectors/` — GV-1 and GV-2 data.
 - `ref/` — Python reference (`rounds_ref.py`) and conformance harness; `scripts/conformance-ts.ts` runs the TS side.
-- `contract/` — Rust Rounds contract; `contract/mock-ft` test token; `contract/it` sandbox tests; `spike/stub` the Sputnik spike contract.
+- `contract/` — Rust Rounds contract; `contract/mock-ft` test token; `contract/open-board` the open board used only by the judge sandbox (no unit tests; exercised by `make e2e-wallet`); `contract/it` sandbox tests; `spike/stub` the Sputnik spike contract.
 - `scripts/` — `demo.ts` (testnet run), `plans.ts` (rebuilds every plan from the engine), `verify-onchain.ts`, `replay.ts`, `summary.mjs`, `check-readme.mjs`, `rules-html.mjs`.
 - `web/` — static app (Vite, vanilla TypeScript); reads `web/public/deployment.json` and `events.json`.
 - `results/` — committed outputs of real runs (demo log, transactions, events, plans, conformance and verify output, `summary.json`).

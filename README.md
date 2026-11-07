@@ -45,6 +45,7 @@ Every number below is checked against `results/summary.json` by `make check-read
 | `make test-contract` | Builds the contract and mock token, then the sandbox tests pass (about a minute; downloads the sandbox binary the first time) |
 | `make web-dev` | The app on a local port: dilution chart, cap table, round modeler, investor and employee views, exit simulator, events and Verify. `make web` builds a static site into `dist/`. The repo includes a `vercel.json`, so connecting it to Vercel builds and hosts the app. |
 | `make demo` | Scripted testnet run (needs `near` CLI, network and the faucet; see the note below) |
+| `make sandbox` | `near` CLI, network, faucet or spare testnet NEAR (`SANDBOX_FUND_FROM`): deploys a fresh open sandbox (founders and two SAFEs closed, Series A left to try); writes `web/public/sandbox.json` |
 | `make e2e-wallet` | needs `make web-dev` running, the `near` CLI, Chrome and the throwaway demo keys on this machine: drives the app's real wallet buttons against testnet with a test signer; last line `PASS summary: <n> checks, 0 failed` |
 | `make check-readme` | Fails if a number in this README differs from `results/summary.json` |
 
@@ -55,10 +56,15 @@ Every number below is checked against `results/summary.json` by `make check-read
 | Register for the test token and mint a fixed amount from its public faucet | any testnet account |
 | Deposit into a round's escrow | the investor named in that round's raise |
 | Close an approved, funded round; pay out an approved exit | anyone |
-| Approve a board proposal | a member of that contract's board DAO |
+| Approve a board proposal (Sputnik DAO board) | a member of that contract's board DAO |
+| Make yourself an officer; approve a round as the board (open sandbox only) | any testnet account |
 | Propose the modeled round (`propose_round`, with your account as investor) | an officer of that contract |
 
-Buttons your account cannot use are shown disabled or answered with the contract's own refusal message. On the committed demo contract the board, officers and investors are throwaway demo accounts, so a visitor can use the faucet and see refusals but cannot vote or propose there; to try the full flow, deploy your own sandbox with `make demo`. "Run exit" in the modeler is a simulation; the on-chain exit is the "Pay out" button above. The Verify button reads the live contract named in `web/public/deployment.json`.
+Buttons your account cannot use are shown disabled or answered with the contract's own refusal message. On the committed **demo contract** the board, officers and investors are throwaway demo accounts, so a visitor can use the faucet and see refusals but cannot vote or propose there.
+
+**Open sandbox (try the whole flow yourself).** The contract box has a "Load the open sandbox" button. That sandbox is a second, separate Rounds contract on testnet with the founders and two SAFEs already closed and the Series A left for you. Its board is `contract/open-board`, a tiny contract that lets anyone ask it to act as the board for that one contract (it forwards only a short list of board methods). Sputnik DAO cannot give every visitor a vote: its "Everyone" role fails with `ERR_UNSUPPORTED_ROLE` when votes are counted, so the sandbox deliberately uses this open board instead; the demo run keeps its real 2-of-3 Sputnik DAO. With a testnet wallet you can: get test USDC, **make yourself an officer**, model a round and **propose it**, **fund it** from your wallet, **approve it as the board** (by its plan hash), and **close** it, then see your shares in the cap table. Anyone else can do the same on the same sandbox, so it can end up in any state; `make sandbox` deploys a fresh one. Testnet, no value, never use an open board for real money.
+
+The Verify button reads the live contract named in `web/public/deployment.json`.
 
 ## The engine in brief
 

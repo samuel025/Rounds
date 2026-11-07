@@ -10,6 +10,7 @@ conformance:
 build-contract:
 	cd contract && cargo near build non-reproducible-wasm
 	cd contract/mock-ft && cargo near build non-reproducible-wasm
+	cd contract/open-board && cargo near build non-reproducible-wasm
 test-contract: build-contract
 	cd contract/it && cargo test -- --test-threads=2
 
@@ -38,3 +39,8 @@ check-readme:
 # drives the app's wallet buttons on testnet with a DEV-only test signer (needs `make web-dev` running)
 e2e-wallet:
 	node scripts/e2e-wallet.mjs
+
+# deploys a fresh OPEN sandbox on testnet for judges (needs the near CLI; see scripts/sandbox.ts)
+sandbox:
+	npx vite-node scripts/sandbox.ts
+

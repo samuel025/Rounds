@@ -2,8 +2,9 @@
 // ~/.near-credentials (never in the repo). The app (vite dev server, DEV only) is given a test signer instead of a wallet
 // popup; everything else (button logic, the transactions it builds, the contract's answers) is the real thing.
 //   node scripts/e2e-wallet.mjs [app url]      (needs `make web-dev` running, the near CLI, Chrome)
+//   E2E_SANDBOX=path/to/sandbox-instance.json also plays the whole judge path on that (throwaway) sandbox instance.
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -48,7 +49,7 @@ async function session(account, contract, hash = "") {
 let pumping = false;
 async function pump() { if (pumping) return; pumping = true; for (;;) { while (bindings.length) { const b = bindings.shift(); const { id, receiver, acts } = JSON.parse(b.payload); const signer = await ev(`window.__testWallet.account`); let out; try { out = await execActs(signer, receiver, acts); } catch (e) { out = { status: { Failure: String(e.message) }, transaction: { hash: null } }; } await ev(`window.__p[${JSON.stringify(id)}](${JSON.stringify(out)})`); } await sleep(150); if (!pumping) return; } }
 const toastText = async (re, ms = 90000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const t = await ev(`document.getElementById("toast")?.innerText ?? ""`); if (re.test(t)) return t; await sleep(500); } return await ev(`document.getElementById("toast")?.innerText ?? "(no toast)"`); };
-const clickBtn = (sel) => ev(`document.querySelector(${JSON.stringify(sel)}).click()`);
+const clickBtn = async (sel) => { for (let i = 0; i < 90 && !(await ev(`!!document.querySelector(${JSON.stringify(sel)}) && !document.querySelector(${JSON.stringify(sel)}).disabled`)); i++) await sleep(500); return ev(`document.querySelector(${JSON.stringify(sel)}).click()`); };
 
 try {
   await open();
@@ -63,7 +64,7 @@ try {
   const t1 = await toastText(/DONE|FAIL/);
   check(/DONE/.test(t1), `faucet transaction succeeded (${t1.replace(/\s+/g, " ").slice(0, 90)})`);
   const after = BigInt(await view(token, "ft_balance_of", { account_id: efe }));
-  check(after - before === 1_000_000_000n, `on-chain balance rose by exactly $1,000 (${before} -> ${after})`);
+  check(after - before === 10_000_000_000_000n, `on-chain balance rose by exactly $10,000,000 of test USDC (${before} -> ${after})`);
 
   // 2. a non-council account sees the board but cannot vote. Superseded deployment, so the open proposal below pollutes nothing current.
   const oldCore = acct("core", OLD), oldBoard = `rounds-board-${OLD}.sputnik-v2.testnet`;
@@ -95,6 +96,43 @@ try {
   await ev(`document.getElementById("propose-btn").click()`);
   const t5 = await toastText(/DONE|FAIL/);
   check(/officer/i.test(t5), `non-officer propose_round is refused by the contract (${t5.replace(/\s+/g, " ").slice(0, 90)})`);
+
+  // 6. the judge path on the OPEN SANDBOX, only through the app's buttons: tokens, officer, propose, fund, board approval, close
+  if (process.env.E2E_SANDBOX && existsSync(process.env.E2E_SANDBOX)) { // a TEST sandbox instance: the flow closes its Series A, so never point this at the sandbox judges use
+    const sb = JSON.parse(readFileSync(process.env.E2E_SANDBOX, "utf8")); const judge = sb.accounts.bayo, rounds = sb.accounts.rounds, stoken = sb.accounts.usdc;
+    const waitFor = async (fn, ms = 60000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch {} await sleep(1500); } return null; };
+    const before6 = BigInt(await view(stoken, "ft_balance_of", { account_id: judge }));
+    await session(judge, rounds);
+    await clickBtn('#chain-actions [data-a="faucet"]');
+    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge gets test USDC from the faucet button");
+    check(BigInt(await view(stoken, "ft_balance_of", { account_id: judge })) - before6 === 10_000_000_000_000n, "sandbox: judge's token balance rose by $10,000,000");
+    await clickBtn('#chain-actions [data-a="officer"]');
+    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge asks the open board to make them an officer");
+    await session(judge, rounds);
+    await ev(`document.getElementById("propose-btn").click()`);
+    const tp = await toastText(/DONE|FAIL/);
+    check(/DONE/.test(tp), `sandbox: officer judge proposes the modeled Series A (${tp.replace(/\s+/g, " ").slice(0, 70)})`);
+    const rid = (await view(rounds, "round", { round_id: 4 })) ? 4 : null;
+    check(rid === 4, "sandbox: the chain now holds round 4 as Funding (" + ((await view(rounds, "round", { round_id: 4 }))?.status) + ")");
+    await session(judge, rounds);
+    check(!!(await ev(`document.querySelector('#chain-actions [data-a="deposit"][data-r="4"]')`)), "sandbox: the app offers the judge a deposit for round 4");
+    await clickBtn('#chain-actions [data-a="deposit"][data-r="4"]');
+    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge funds the round from their wallet");
+    const funded = await waitFor(async () => { const r = await view(rounds, "round", { round_id: 4 }); return r.deposits?.[0] && r.deposits[0][1] === r.raise[0][1] ? r : null; });
+    check(!!funded, "sandbox: the contract credited the full deposit");
+    await session(judge, rounds);
+    await clickBtn('#chain-actions [data-a="approve"][data-r="4"]');
+    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge approves round 4 as the open board, by its plan hash");
+    const approved = await waitFor(async () => (await view(rounds, "round", { round_id: 4 })).status === "Approved");
+    check(!!approved, "sandbox: round 4 is Approved on chain");
+    await session(judge, rounds);
+    await clickBtn('#chain-actions [data-a="close"][data-r="4"]');
+    check(/DONE/.test(await toastText(/DONE|FAIL/)), "sandbox: judge closes the round");
+    const closed = await waitFor(async () => (await view(rounds, "round", { round_id: 4 })).status === "Closed");
+    check(!!closed, "sandbox: round 4 is Closed on chain");
+    const held = await view(rounds, "holdings_of", { holder: judge });
+    check(held.some(([c, n]) => c === "Series A Preferred" && BigInt(n) > 0n), `sandbox: judge holds Series A Preferred shares (${JSON.stringify(held)})`);
+  } else console.log("     (E2E_SANDBOX not set: sandbox judge-path skipped; it closes a Series A, so run it only on a throwaway sandbox instance)");
 } catch (e) { check(false, `e2e aborted: ${e.message}`); }
 pumping = false; try { ws.close(); } catch {} chrome.kill();
 console.log(`${failed ? "FAIL" : "PASS"} summary: ${total} checks, ${failed} failed`);
