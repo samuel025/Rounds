@@ -68,6 +68,16 @@ impl Env {
     async fn status(&self, round: u64) -> String {
         self.rounds.view("round").args_json(json!({"round_id": round})).await.unwrap().json::<Value>().unwrap()["status"].as_str().unwrap().to_string()
     }
+    async fn number(&self, method: &str) -> u128 {
+        u128::from_str_radix(&self.rounds.view(method).await.unwrap().json::<String>().unwrap(), 10).unwrap()
+    }
+    async fn grant(&self, shares: u128, start_ns: u64, term: u32, cliff: u32) -> bool {
+        let plan = json!({"grantee": self.efe.id(), "shares": shares.to_string(), "strike_micro": "1", "start_ns": start_ns, "term_months": term, "cliff_months": cliff}).to_string();
+        self.board.call(self.rounds.id(), "grant").args_json(json!({"plan_hash": h(&plan), "plan": plan})).transact().await.unwrap().is_success()
+    }
+    async fn terminate(&self, id: u64) {
+        self.board.call(self.rounds.id(), "terminate").args_json(json!({"grant_id": id})).transact().await.unwrap().into_result().unwrap();
+    }
 }
 
 const FOUNDER: &str = r#"{"issuances":[{"class":"Common","holder":"ada","shares":"5000000"},{"class":"Common","holder":"bayo","shares":"2750000"},{"class":"Common","holder":"unissued_pool","shares":"1000000"}]}"#;
@@ -257,6 +267,38 @@ async fn grant_vesting_exercise_and_termination() -> anyhow::Result<()> {
     e.board.call(e.rounds.id(), "withdraw_strikes").args_json(json!({"amount": (2_000_000u128 * 1000).to_string()})).max_gas().transact().await?.into_result()?;
     assert_eq!(balance(&e.ft, e.treasury.id()).await - t0, 2_000_000 * 1000, "strike reaches the treasury");
     assert_eq!(u128::from_str_radix(&e.rounds.view("ledger_total").await?.json::<String>()?, 10)?, 0, "ledger drained after the strike sweep");
+    Ok(())
+}
+
+/// Overlapping grants are claims on the same pool: they must not promise more shares than exist, and a
+/// termination must free the unvested part while keeping the vested part claimable until its window ends.
+#[tokio::test]
+async fn grants_cannot_overcommit_the_pool() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let r = e.propose("Founder", FOUNDER, json!([])).await;
+    assert!(e.approve(r, FOUNDER).await); assert!(e.close(r).await);
+    let now = e.w.view_block().await?.timestamp();
+    assert!(e.grant(600_000, now, 48, 12).await, "first claim fits");
+    assert!(!e.grant(500_000, now, 48, 12).await, "a second claim cannot exceed the pool");
+    assert_eq!(e.number("open_claims").await, 600_000);
+    assert_eq!(e.number("pool_available").await, 400_000);
+    assert!(e.grant(400_000, now, 48, 12).await, "the remaining pool can be claimed");
+    assert!(!e.grant(1, now, 48, 12).await, "the pool is fully claimed");
+    assert_eq!(e.number("open_claims").await, 1_000_000);
+    // all of grant 1 is unvested at termination, so its claim lapses immediately and can be reused
+    e.terminate(1).await;
+    assert_eq!(e.number("open_claims").await, 400_000);
+    assert!(e.grant(600_000, now, 48, 12).await, "lapsed shares can be granted again");
+    e.terminate(3).await;
+    assert_eq!(e.number("open_claims").await, 400_000);
+    // a fully vested grant keeps its claim for the exercise window, then lapses
+    let past = now.saturating_sub(1_000_000_000_000);
+    assert!(e.grant(100_000, past, 1, 0).await);
+    assert_eq!(e.number("open_claims").await, 500_000);
+    e.terminate(4).await;
+    assert_eq!(e.number("open_claims").await, 500_000, "vested shares stay claimable during the window");
+    e.w.fast_forward(400).await?;
+    assert_eq!(e.number("open_claims").await, 400_000, "the expired claim lapses; the active grant remains");
     Ok(())
 }
 

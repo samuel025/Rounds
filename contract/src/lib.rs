@@ -358,7 +358,11 @@ impl Rounds {
         self.only_board(); require!(plan.len() <= 65_536, "plan too large"); check_hash(&plan, &plan_hash);
         let g: GrantPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad grant"));
         require!(g.cliff_months <= g.term_months && g.term_months > 0, "bad vesting terms");
-        require!(self.shares_of(POOL, "Common") >= g.shares.0, "option pool too small");
+        require!(g.shares.0 > 0, "grant needs shares");
+        // Existing grants are a claim on the same pool: do not promise the same shares twice.
+        let claimed = self.open_claim_shares();
+        let wanted = claimed.checked_add(g.shares.0).unwrap_or_else(|| env::panic_str("claim overflow"));
+        require!(self.shares_of(POOL, "Common") >= wanted, "option pool too small");
         let id = self.next_grant; self.next_grant += 1;
         self.grants.insert(id, Grant { id, grantee: g.grantee.clone(), shares: g.shares, exercised: U128(0), strike_micro: g.strike_micro, start_ns: g.start_ns, term_months: g.term_months, cliff_months: g.cliff_months, terminated_at_ns: None });
         event("grant_created", &format!("{{\"grant_id\":{},\"grantee\":\"{}\",\"shares\":\"{}\"}}", id, g.grantee, g.shares.0));
@@ -376,7 +380,24 @@ impl Rounds {
         let end = g.terminated_at_ns.unwrap_or(u64::MAX).min(env::block_timestamp());
         if end < g.start_ns { return 0 }
         let m = (end - g.start_ns) / self.month_ns;
-        if m < g.cliff_months as u64 { 0 } else if m >= g.term_months as u64 { g.shares.0 } else { g.shares.0 * m as u128 / g.term_months as u128 }
+        if m < g.cliff_months as u64 { 0 } else if m >= g.term_months as u64 { g.shares.0 }
+        else { g.shares.0.checked_mul(m as u128).unwrap_or_else(|| env::panic_str("vesting overflow")) / g.term_months as u128 }
+    }
+    /// Shares that grants may still exercise: all unexercised shares while active; after termination only
+    /// the vested-at-termination part, and only until the exercise window closes.
+    fn open_claim_shares(&self) -> u128 {
+        let now = env::block_timestamp();
+        self.grants.values().fold(0u128, |acc, g| {
+            let unexercised = g.shares.0.saturating_sub(g.exercised.0);
+            let claim = match g.terminated_at_ns {
+                None => unexercised,
+                Some(t) => {
+                    let end = t.checked_add(self.exercise_window_ns).unwrap_or(u64::MAX);
+                    if now > end { 0 } else { self.vested_of(g).saturating_sub(g.exercised.0).min(unexercised) }
+                }
+            };
+            acc.checked_add(claim).unwrap_or_else(|| env::panic_str("claim overflow"))
+        })
     }
     pub fn vested(&self, grant_id: u64) -> U128 { U128(self.vested_of(self.grants.get(&grant_id).unwrap_or_else(|| env::panic_str("no such grant")))) }
     fn exercise(&mut self, sender: &AccountId, amount: u128, grant_id: u64, shares: u128) -> u128 {
@@ -491,6 +512,9 @@ impl Rounds {
     }
     pub fn strike_balance(&self) -> U128 { U128(self.strike_balance) }
     pub fn treasury(&self) -> AccountId { self.treasury.clone() }
+    /// Shares promised to live grants, and the pool shares not yet promised.
+    pub fn open_claims(&self) -> U128 { U128(self.open_claim_shares()) }
+    pub fn pool_available(&self) -> U128 { U128(self.shares_of(POOL, "Common").saturating_sub(self.open_claim_shares())) }
     /// `config` keeps its original shape for existing readers; the treasury is a separate view.
     pub fn config(&self) -> (AccountId, AccountId, Vec<ClassDef>) { (self.board.clone(), self.payment_token.clone(), self.classes.values().cloned().collect()) }
 }
