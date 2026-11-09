@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "name": "priced-round plan",
+      "value": {
+        "converted_safes": ["safe1", "safe2"],
+        "issuances": [
+          { "class": "Common", "holder": "unissued_pool", "shares": "500000" },
+          { "class": "Series A Preferred", "holder": "fund.testnet", "shares": "4500000" },
+          { "class": "SAFE 1 shadow preferred", "holder": "chidi.testnet", "shares": "1000000" }
+        ]
+      }
+    },
+    {
+      "name": "key order and scalars",
+      "value": { "b": 1, "aa": 3, "a": 2, "A": 4, "_": 5, "null": null, "t": true, "f": false, "n": -12 }
+    },
+    {
+      "name": "nested arrays and strings",
+      "value": { "arr": [1, "2", { "y": "x", "x": "y" }, []], "s": "line\n\ttab\r\b\f" }
+    },
+    {
+      "name": "unicode and escaping",
+      "value": {
+        "e": "plain",
+        "é": "accent",
+        "\u2028": "line separator",
+        "😀": "emoji key",
+        "\uffff": "bmp high key",
+        "ctrl": "nul \u0000 and unit separator \u001f",
+        "quote": "a\"b\\c",
+        "del": "\u007f"
+      }
+    }
+  ]
+}

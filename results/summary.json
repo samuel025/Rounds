@@ -1,6 +1,6 @@
 {
   "tests": {
-    "engine": 43,
+    "engine": 45,
     "engine_failed": 0,
     "engine_files": 9,
     "properties": 9,
@@ -10,6 +10,10 @@
   "conformance": {
     "scenarios": 1000,
     "rejected_inputs": 40,
+    "mismatches": 0
+  },
+  "canonical": {
+    "cases": 4,
     "mismatches": 0
   },
   "demo": {

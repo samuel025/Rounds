@@ -13,6 +13,7 @@ const ver = tail("verify-onchain.txt"), rep = tail("replay.txt");
 const summary = {
   tests: { engine: v.numTotalTests, engine_failed: v.numFailedTests, engine_files: v.numTotalTestSuites ? v.testResults.length : 0, properties: titles.filter((x) => /^P\d /.test(x.t)).length, golden_vector_tests: titles.filter((x) => /GV-\d/.test(x.full)).length, sandbox },
   conformance: { scenarios: conf.scenarios, rejected_inputs: conf.rejected_inputs, mismatches: conf.mismatches },
+  canonical: { cases: conf.canonical_cases, mismatches: conf.canonical_mismatches },
   demo: { transactions: txs.length, events: ev.length, rounds_closed: ev.filter((e) => e.name === "round_closed").length, payouts: ev.filter((e) => e.name === "payout_sent").length },
   verify_onchain: ver, replay: rep,
 };

@@ -1,0 +1,22 @@
+[
+ {
+  "name": "priced-round plan",
+  "canonical": "{\"converted_safes\":[\"safe1\",\"safe2\"],\"issuances\":[{\"class\":\"Common\",\"holder\":\"unissued_pool\",\"shares\":\"500000\"},{\"class\":\"Series A Preferred\",\"holder\":\"fund.testnet\",\"shares\":\"4500000\"},{\"class\":\"SAFE 1 shadow preferred\",\"holder\":\"chidi.testnet\",\"shares\":\"1000000\"}]}",
+  "hash": "957de181668601913dfe4996c75d0785e5815dcbf1b16164de0ceca7972edfaf"
+ },
+ {
+  "name": "key order and scalars",
+  "canonical": "{\"A\":4,\"_\":5,\"a\":2,\"aa\":3,\"b\":1,\"f\":false,\"n\":-12,\"null\":null,\"t\":true}",
+  "hash": "7663549c061bdf08a84f3bfe4226ddedbeca6b92b175b2c9d1a23560db694391"
+ },
+ {
+  "name": "nested arrays and strings",
+  "canonical": "{\"arr\":[1,\"2\",{\"x\":\"y\",\"y\":\"x\"},[]],\"s\":\"line\\n\\ttab\\r\\b\\f\"}",
+  "hash": "470567d07afac7d0abbd3713da8d0b471786bacd820fb8a06125404d9fa7ce54"
+ },
+ {
+  "name": "unicode and escaping",
+  "canonical": "{\"ctrl\":\"nul \\u0000 and unit separator \\u001f\",\"del\":\"\",\"e\":\"plain\",\"quote\":\"a\\\"b\\\\c\",\"é\":\"accent\",\" \":\"line separator\",\"😀\":\"emoji key\",\"￿\":\"bmp high key\"}",
+  "hash": "1a8b5290dab4530cadcac5383d19c185246db43bf7744e5611818672a01662a3"
+ }
+]
