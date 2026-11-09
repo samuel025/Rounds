@@ -41,7 +41,7 @@ export function priceRound(inp: PricedRoundInput): PricedRoundResult {
   if (inp.unissuedPool < 0n) throw new Error("unissued pool must be non-negative");
   for (const [k, v] of Object.entries(inp.common)) if (v < 0n) throw new Error(`common shares for ${k} must be non-negative`);
   for (const [k, v] of Object.entries(inp.investors)) if (v < 0n) throw new Error(`investment by ${k} must be non-negative`);
-  if (inp.poolTarget.den === 0n) throw new Error("pool target denominator must be positive");
+  if (inp.poolTarget.den <= 0n) throw new Error("pool target denominator must be positive");
   if (inp.poolTarget.num < 0n || cmp(inp.poolTarget, rat(1n)) >= 0) throw new Error("pool target must be in [0, 1)");
   const seen = new Set<string>();
   for (const s of inp.safes) {

@@ -2,7 +2,7 @@ import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
-import { usd, price4 } from "./format";
+import { usd, usdExact, price4 } from "./format";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -255,7 +255,7 @@ async function initChain() {
         rows.push(`<tr id="round-${r.id}"${hl}><td>Round ${r.id}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td><td>${esc(r.status)}</td><td><span class="${c.ok ? "pass" : "fail"}">${c.ok ? "PASS" : "FAIL"}</span> <span class="mono muted">${esc(r.plan_hash.slice(0, 16))}…</span></td><td><button class="linkbtn" data-copy="${esc(link(id, "verify/round-" + r.id))}" data-r="${r.id}">Copy link</button></td></tr>`);
       }
       const hold = v.holdings.map(([h, cl, sh]) => `<tr><td class="mono">${esc(h)}</td><td>${esc(cl)}</td><td class="n">${esc(BigInt(sh).toLocaleString("en-US"))}</td></tr>`).join("");
-      const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.approved ? "approved" : "pending"}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc((Number(BigInt(e.total)) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 }))} USDC</td></tr>`).join("");
+      const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.approved ? "approved" : "pending"}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc(usdExact(BigInt(e.total)))} USDC</td></tr>`).join("");
       out.innerHTML = `<div class="chain-h"><span class="mono muted">CONTRACT <b>${esc(v.contract)}</b> · BOARD ${esc(v.board)} · TOKEN ${esc(v.token)}</span></div>
         <table class="chain-tbl"><tr><th>HOLDER</th><th>CLASS</th><th class="n">SHARES (ON CHAIN)</th></tr>${hold || `<tr><td colspan="3" class="muted">no shares issued yet</td></tr>`}</table>
         <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th>SHARE</th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>

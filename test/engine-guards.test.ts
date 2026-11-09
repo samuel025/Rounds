@@ -35,6 +35,9 @@ describe("priceRound input guards", () => {
   it("rejects a pool target of 100% or more", () => {
     expect(() => priceRound({ ...base(), poolTarget: { num: 1n, den: 1n } })).toThrow(/pool target/i);
   });
+  it("rejects a non-positive pool denominator", () => {
+    expect(() => priceRound({ ...base(), poolTarget: { num: 0n, den: -1n } })).toThrow(/denominator/i);
+  });
 });
 
 describe("waterfall input guards", () => {
