@@ -3,7 +3,7 @@
 import { account, onAccount, send, connect, disconnect, initWallet, readReturn, type Act } from "./wallet";
 import { call, esc, type ChainView } from "./chain";
 import { usdExact as usd } from "./format";
-import { MAX_DISTRIBUTE } from "./limits";
+import { DISTRIBUTE_GAS, MAX_DISTRIBUTE } from "./limits";
 
 const M = 1_000_000n;
 
@@ -82,7 +82,7 @@ export async function renderActions(host: HTMLElement, v: ChainView, rpc: string
       else if (a === "deposit") { const r = v.rounds.find((x) => String(x.id) === b.dataset.r)!; const i = r.raise.findIndex(([w]) => w === acct); const amt = BigInt(r.raise[i][1]) - BigInt(r.deposits[i]?.[1] ?? "0");
         void run(explorer, v.token, [{ method: "ft_transfer_call", args: { receiver_id: v.contract, amount: amt.toString(), msg: JSON.stringify({ action: "round", id: r.id }) }, gasTgas: 200, depositYocto: "1" }], `deposit ${usd(amt)} into round ${r.id}`, reload); }
       else if (a === "close") void run(explorer, v.contract, [{ method: "close_round", args: { round_id: Number(b.dataset.r) }, gasTgas: 150 }], `close round ${b.dataset.r}`, reload);
-      else if (a === "dist") void run(explorer, v.contract, [{ method: "distribute", args: { exit_id: Number(b.dataset.e), from: Number(b.dataset.from), limit: Number(b.dataset.n) }, gasTgas: 200 }], `pay out exit ${b.dataset.e}`, reload);
+      else if (a === "dist") void run(explorer, v.contract, [{ method: "distribute", args: { exit_id: Number(b.dataset.e), from: Number(b.dataset.from), limit: Number(b.dataset.n) }, gasTgas: DISTRIBUTE_GAS }], `pay out exit ${b.dataset.e}`, reload);
       else if (a === "officer") void boardAct(explorer, v.board, "set_officer", { account: acct, enabled: true }, `make ${acct} an officer`, reload);
       else if (a === "approve") { const r = v.rounds.find((x) => String(x.id) === b.dataset.r)!; void boardAct(explorer, v.board, "approve_round", { round_id: r.id, plan_hash: r.plan_hash }, `approve round ${r.id} by its plan hash`, reload); }
       else if (a === "vote") void run(explorer, v.board, [{ method: "act_proposal", args: { id: Number(b.dataset.p), action: "VoteApprove" }, gasTgas: 200 }], `approve board proposal #${b.dataset.p}`, reload);
