@@ -131,6 +131,7 @@ Be aware of what this run does and does not show:
 - Holdings, deposits and payouts are public on chain.
 - The contract credits the issuances in the approved plan; it does not recompute the equity math. The safety argument is the board's approval of the plan hash plus anyone re-verifying with the engine.
 - Payout receivers must already be registered with the token (NEP-145); otherwise their payout fails and stays retryable. `distribute` is capped per call by the contract constant `MAX_DISTRIBUTE` (an estimate, not a measured limit). Exercise strikes are held in `strike_balance` and the board forwards them to the treasury with `withdraw_strikes`; a failed transfer re-credits the balance.
+- Option grants are bounded by the pool when granted, but overlapping grants are not reserved against each other. If the board grants more than the pool, later exercises fail safely (no shares are minted); the board should re-check the pool. Unexercised shares of a terminated grant stay in the pool, since they were never moved.
 - The sandbox tests use a plain account as the board; the real DAO path was shown on testnet.
 - Tested limits: legal validity, tax treatment, real-world SAFE edge cases and behaviour at scale are **not** tested.
 
