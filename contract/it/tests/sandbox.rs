@@ -246,6 +246,13 @@ async fn grant_vesting_exercise_and_termination() -> anyhow::Result<()> {
     assert_eq!(e.holding("unissued_pool", "Common").await + e.holding(&e.efe.id().to_string(), "Common").await, 1_000_000, "total common shares are unchanged by an exercise");
     let strike: String = e.rounds.view("strike_balance").await?.json()?;
     assert_eq!(strike.parse::<u128>()?, 2_000_000 * 1000, "strike is held until swept");
+    // a failed sweep must leave the balance and the tokens in the contract, then be retryable
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": true})).transact().await?.into_result()?;
+    let held = balance(&e.ft, e.rounds.id()).await;
+    let _ = e.board.call(e.rounds.id(), "withdraw_strikes").args_json(json!({"amount": (2_000_000u128 * 1000).to_string()})).max_gas().transact().await?;
+    assert_eq!(e.rounds.view("strike_balance").await?.json::<String>()?.parse::<u128>()?, 2_000_000 * 1000, "failed sweep is re-credited");
+    assert_eq!(balance(&e.ft, e.rounds.id()).await, held, "failed sweep moves no tokens");
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": false})).transact().await?.into_result()?;
     let t0 = balance(&e.ft, e.treasury.id()).await;
     e.board.call(e.rounds.id(), "withdraw_strikes").args_json(json!({"amount": (2_000_000u128 * 1000).to_string()})).max_gas().transact().await?.into_result()?;
     assert_eq!(balance(&e.ft, e.treasury.id()).await - t0, 2_000_000 * 1000, "strike reaches the treasury");
