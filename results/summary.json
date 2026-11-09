@@ -1,8 +1,8 @@
 {
   "tests": {
-    "engine": 40,
+    "engine": 43,
     "engine_failed": 0,
-    "engine_files": 8,
+    "engine_files": 9,
     "properties": 9,
     "golden_vector_tests": 12,
     "sandbox": 9

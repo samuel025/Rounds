@@ -4,6 +4,7 @@
 import { account, onAccount, send, type Act } from "./wallet";
 import { call, esc, loadChain, type ChainView } from "./chain";
 import { toast, txLink, boardAct } from "./actions";
+import { usdExact as usd } from "./format";
 
 export interface FlowDeps {
   rpc: string; explorer: string; contract: string; board: string; token: string;
@@ -13,7 +14,6 @@ export interface FlowDeps {
   onChain?: (v: ChainView) => void;
 }
 const M = 1_000_000n;
-const usd = (micro: bigint) => "$" + (Number(micro) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 });
 
 type St = "done" | "current" | "wait";
 interface Row { n: number; title: string; help: string; st: St; label?: string; act?: string; off?: boolean; note?: string }

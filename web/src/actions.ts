@@ -2,9 +2,10 @@
 // testnet transaction; buttons that this account cannot use are explained, not hidden.
 import { account, onAccount, send, connect, disconnect, initWallet, readReturn, type Act } from "./wallet";
 import { call, esc, type ChainView } from "./chain";
+import { usdExact as usd } from "./format";
+import { MAX_DISTRIBUTE } from "./limits";
 
 const M = 1_000_000n;
-const usd = (micro: bigint) => "$" + (Number(micro) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 });
 
 export function toast(html: string, kind: "ok" | "fail" | "info" = "info") {
   let t = document.getElementById("toast"); if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
@@ -54,7 +55,7 @@ export async function renderActions(host: HTMLElement, v: ChainView, rpc: string
     }
     for (const e of v.exits) {
       const idx = e.payouts.findIndex((p: any) => p.state !== "Paid");
-      if (e.approved && BigInt(e.funded) === BigInt(e.total) && idx >= 0) parts.push(`<div class="act"><div><b>Exit ${e.id}</b> is approved and funded<br/><span class="muted">Anyone may run distribute; ${e.payouts.length - idx} payout(s) remain, up to 5 per transaction.</span></div><button class="btn sm" data-a="dist" data-e="${e.id}" data-from="${idx}" data-n="${Math.min(5, e.payouts.length - idx)}">Pay out exit ${e.id}</button></div>`);
+      if (e.approved && BigInt(e.funded) === BigInt(e.total) && idx >= 0) parts.push(`<div class="act"><div><b>Exit ${e.id}</b> is approved and funded<br/><span class="muted">Anyone may run distribute; ${e.payouts.length - idx} payout(s) remain, up to ${MAX_DISTRIBUTE} per transaction.</span></div><button class="btn sm" data-a="dist" data-e="${e.id}" data-from="${idx}" data-n="${Math.min(MAX_DISTRIBUTE, e.payouts.length - idx)}">Pay out exit ${e.id}</button></div>`);
     }
     // the open sandbox board (a tiny contract: anyone may ask it to act as the board for this one Rounds contract)
     let openBoard = false; try { openBoard = (await call(rpc, v.board, "open_board", {})) === true; } catch { /* a real DAO has no such method */ }

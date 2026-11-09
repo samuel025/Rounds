@@ -2,17 +2,11 @@ import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
+import { usd, price4 } from "./format";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const M = 1_000_000n;
-const usd = (micro: bigint, cents = false) => {
-  const neg = micro < 0n; const m = neg ? -micro : micro;
-  const whole = m / M; const c = ((m % M) + 5_000n) / 10_000n;
-  const w = (c >= 100n ? whole + 1n : whole).toLocaleString("en-US"); const cc = (c >= 100n ? 0n : c).toString().padStart(2, "0");
-  return (neg ? "-$" : "$") + w + (cents ? "." + cc : "");
-};
-const price4 = (micro: bigint) => "$" + (Number(micro) / 1e6).toFixed(4);
 const n = (x: bigint) => x.toLocaleString("en-US");
 const pct = (a: bigint, b: bigint) => b === 0n ? "0.00%" : (Number((a * 20000n + b) / (2n * b)) / 100).toFixed(2) + "%"; // half-up, per RULES.md
 const RULES = (id: string) => `<a class="q" href="rules.html#${id}" title="Definition in RULES.md">?</a>`;
