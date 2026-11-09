@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { usd, usdExact, price4 } from "../web/src/format";
+import { DISTRIBUTE_GAS, MAX_DISTRIBUTE } from "../web/src/limits";
 
 describe("web money formatting", () => {
   it("rounds headline dollars and cents", () => {
@@ -19,5 +20,8 @@ describe("web money formatting", () => {
     expect(price4(2_000_000n)).toBe("$2.0000");
     expect(price4(2_000_100n)).toBe("$2.0001");
     expect(price4(0n)).toBe("$0.0000");
+  });
+  it("attaches enough gas for a full distribute call", () => {
+    expect(DISTRIBUTE_GAS).toBeGreaterThanOrEqual(20 + 30 * MAX_DISTRIBUTE);
   });
 });
