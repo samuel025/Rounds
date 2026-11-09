@@ -137,7 +137,12 @@ impl Rounds {
         self.only_board();
         if enabled { self.officers.insert(account); } else { self.officers.remove(&account); }
     }
-    pub fn add_class(&mut self, class: ClassDef) { self.only_board(); self.classes.insert(class.id.clone(), class); }
+    pub fn add_class(&mut self, class: ClassDef) {
+        self.only_board();
+        require!(class.authorized.0 > 0, "class needs authorized shares");
+        require!(self.classes.get(&class.id).is_none(), "class id exists");
+        self.classes.insert(class.id.clone(), class);
+    }
 
     // ---------- rounds ----------
     pub fn propose_round(&mut self, kind: RoundKind, plan_hash: String, plan_uri: String, plan: String, raise: Vec<(AccountId, U128)>, deadline_ns: u64) -> u64 {
@@ -147,7 +152,12 @@ impl Rounds {
         let parsed: RoundPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad plan"));
         require!(raise.len() <= 32 && parsed.issuances.len() <= 64 && parsed.safes.len() <= 32, "plan too large");
         if kind == RoundKind::Founder { require!(raise.is_empty(), "founder rounds take no deposits"); }
-        else { require!(!raise.is_empty(), "round needs investors"); }
+        else {
+            require!(!raise.is_empty(), "round needs investors");
+            require!(raise.iter().all(|(_, a)| a.0 > 0), "raise must be positive");
+        }
+        let mut seen = std::collections::HashSet::new();
+        require!(raise.iter().all(|(a, _)| seen.insert(a.clone())), "duplicate investor");
         if kind == RoundKind::Safe { require!(!parsed.safes.is_empty(), "safe round needs safes"); }
         let id = self.next_round; self.next_round += 1;
         let deposits = raise.iter().map(|(a, _)| (a.clone(), U128(0))).collect();

@@ -118,6 +118,22 @@ async fn full_round_and_exit() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn rounds_reject_zero_raise_duplicate_investor_and_class_overwrite() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let plan = r#"{"issuances":[{"class":"Common","holder":"ada","shares":"1"}]}"#;
+    let propose = |raise: Value| e.ada.call(e.rounds.id(), "propose_round").args_json(json!({"kind":"Priced","plan_hash":h(plan),"plan_uri":"x","plan":plan,"raise":raise,"deadline_ns":u64::MAX})).transact();
+    let zero = propose(json!([[e.fund.id(), "0"]])).await?;
+    assert!(!zero.is_success(), "a zero raise must not close for free");
+    let dup = propose(json!([[e.fund.id(), "1"], [e.fund.id(), "1"]])).await?;
+    assert!(!dup.is_success(), "a duplicate investor must be refused");
+    let overwrite = e.board.call(e.rounds.id(), "add_class").args_json(json!({"class": {"id": "Common", "authorized": "1"}})).transact().await?;
+    assert!(!overwrite.is_success(), "an existing class cannot be overwritten");
+    let add = e.board.call(e.rounds.id(), "add_class").args_json(json!({"class": {"id": "New", "authorized": "1"}})).transact().await?;
+    assert!(add.is_success(), "a new class is accepted");
+    Ok(())
+}
+
+#[tokio::test]
 async fn wrong_token_deposit_is_refunded() -> anyhow::Result<()> {
     let e = setup().await?;
     let other = e.w.dev_deploy(&std::fs::read(FT_WASM)?).await?;

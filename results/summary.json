@@ -5,7 +5,7 @@
     "engine_files": 9,
     "properties": 9,
     "golden_vector_tests": 12,
-    "sandbox": 9
+    "sandbox": 10
   },
   "conformance": {
     "scenarios": 1000,
