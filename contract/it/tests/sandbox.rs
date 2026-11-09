@@ -11,7 +11,7 @@ fn h(s: &str) -> String { Sha256::digest(s.as_bytes()).iter().map(|b| format!("{
 
 struct Env {
     w: Worker<Sandbox>, ft: Contract, rounds: Contract,
-    board: Account, ada: Account, bayo: Account, chidi: Account, dayo: Account, fund: Account, efe: Account, zed: Account,
+    board: Account, treasury: Account, ada: Account, bayo: Account, chidi: Account, dayo: Account, fund: Account, efe: Account, zed: Account,
 }
 
 async fn register(ft: &Contract, who: &[&near_workspaces::AccountId]) {
@@ -30,17 +30,17 @@ async fn setup() -> anyhow::Result<Env> {
     let w = near_workspaces::sandbox().await?;
     let root = w.root_account()?;
     let mk = |n: &'static str| { let r = root.clone(); async move { r.create_subaccount(n).initial_balance(NearToken::from_near(20)).transact().await.unwrap().into_result().unwrap() } };
-    let (board, ada, bayo, chidi, dayo, fund, efe, zed) = (mk("board").await, mk("ada").await, mk("bayo").await, mk("chidi").await, mk("dayo").await, mk("fund").await, mk("efe").await, mk("zed").await);
+    let (board, treasury, ada, bayo, chidi, dayo, fund, efe, zed) = (mk("board").await, mk("treasury").await, mk("ada").await, mk("bayo").await, mk("chidi").await, mk("dayo").await, mk("fund").await, mk("efe").await, mk("zed").await);
     let ft = w.dev_deploy(&std::fs::read(FT_WASM)?).await?;
     ft.call("new").args_json(json!({"faucet_cap": (100_000_000u128 * USD).to_string()})).transact().await?.into_result()?;
     let rounds = w.dev_deploy(&std::fs::read(ROUNDS_WASM)?).await?;
     let classes: Vec<Value> = ["Common", "SeriesA", "safe1", "safe2"].iter().map(|c| json!({"id": c, "authorized": "100000000"})).collect();
-    rounds.call("new").args_json(json!({"board": board.id(), "payment_token": ft.id(), "classes": classes,
+    rounds.call("new").args_json(json!({"board": board.id(), "treasury": treasury.id(), "payment_token": ft.id(), "classes": classes,
         "month_ns": 1_000_000_000u64, "exercise_window_ns": 90_000_000_000u64})).transact().await?.into_result()?;
-    register(&ft, &[board.id(), ada.id(), bayo.id(), chidi.id(), dayo.id(), fund.id(), efe.id(), zed.id(), rounds.id()]).await;
+    register(&ft, &[board.id(), treasury.id(), ada.id(), bayo.id(), chidi.id(), dayo.id(), fund.id(), efe.id(), zed.id(), rounds.id()]).await;
     for (a, d) in [(&chidi, 1_000_000u128), (&dayo, 1_000_000), (&fund, 20_000_000), (&zed, 100_000_000), (&efe, 1_000_000)] { faucet(&ft, a, d).await; }
     board.call(rounds.id(), "set_officer").args_json(json!({"account": ada.id(), "enabled": true})).transact().await?.into_result()?;
-    Ok(Env { w, ft, rounds, board, ada, bayo, chidi, dayo, fund, efe, zed })
+    Ok(Env { w, ft, rounds, board, treasury, ada, bayo, chidi, dayo, fund, efe, zed })
 }
 
 impl Env {
@@ -56,7 +56,10 @@ impl Env {
         self.board.call(self.rounds.id(), "approve_round").args_json(json!({"round_id": round, "plan_hash": h(plan)})).transact().await.unwrap().is_success()
     }
     async fn close(&self, round: u64) -> bool {
-        self.efe.call(self.rounds.id(), "close_round").args_json(json!({"round_id": round})).gas(Gas::from_tgas(100)).transact().await.unwrap().is_success()
+        self.close_by(&self.efe, round).await
+    }
+    async fn close_by(&self, who: &Account, round: u64) -> bool {
+        who.call(self.rounds.id(), "close_round").args_json(json!({"round_id": round})).gas(Gas::from_tgas(100)).transact().await.unwrap().is_success()
     }
     async fn holding(&self, holder: &str, class: &str) -> u128 {
         let v: Vec<(String, String)> = self.rounds.view("holdings_of").args_json(json!({"holder": holder})).await.unwrap().json().unwrap();
@@ -83,7 +86,7 @@ async fn full_round_and_exit() -> anyhow::Result<()> {
     let (ra, rb) = (e.propose("Safe", s1, json!([[e.chidi.id(), "500000000000"]])).await, e.propose("Safe", s2, json!([[e.dayo.id(), "250000000000"]])).await);
     e.deposit(&e.chidi, ra, 500_000).await; e.deposit(&e.dayo, rb, 250_000).await;
     for (r, p) in [(ra, s1), (rb, s2)] { assert!(e.approve(r, p).await); assert!(e.close(r).await); }
-    assert_eq!(balance(&e.ft, e.board.id()).await, 750_000 * USD, "escrow forwarded to the treasury");
+    assert_eq!(balance(&e.ft, e.treasury.id()).await, 750_000 * USD, "escrow forwarded to the treasury, not the board");
     // Series A (GV-1)
     let a = r#"{"converted_safes":["safe1","safe2"],"issuances":[{"class":"safe1","holder":"chidi","shares":"1000000"},{"class":"safe2","holder":"dayo","shares":"250000"},{"class":"SeriesA","holder":"fund","shares":"4500000"},{"class":"Common","holder":"unissued_pool","shares":"500000"}]}"#;
     let rc = e.propose("Priced", a, json!([[e.fund.id(), "9000000000000"]])).await;
@@ -190,7 +193,7 @@ async fn distribution_resumes_after_failed_transfer() -> anyhow::Result<()> {
     e.zed.call(e.ft.id(), "ft_transfer_call").args_json(json!({"receiver_id": e.rounds.id(), "amount": "150000000", "msg": json!({"action":"exit","id":x}).to_string()})).deposit(ONE).max_gas().transact().await?.into_result()?;
     e.board.call(e.rounds.id(), "approve_exit").args_json(json!({"exit_id": x, "plan_hash": h(&plan)})).transact().await?.into_result()?;
     e.ft.call("set_fail_transfers").args_json(json!({"fail": true})).transact().await?.into_result()?;
-    e.zed.call(e.rounds.id(), "distribute").args_json(json!({"exit_id": x, "from": 0, "limit": 2})).max_gas().transact().await?;
+    let _ = e.zed.call(e.rounds.id(), "distribute").args_json(json!({"exit_id": x, "from": 0, "limit": 2})).max_gas().transact().await?;
     assert_eq!(balance(&e.ft, e.rounds.id()).await, 150 * USD, "nothing left custody");
     let ex: Value = e.rounds.view("exit").args_json(json!({"exit_id": x})).await?.json()?;
     assert!(ex["payouts"].as_array().unwrap().iter().all(|p| p["state"] == "Pending"), "failed payouts stay retryable");
@@ -223,6 +226,14 @@ async fn grant_vesting_exercise_and_termination() -> anyhow::Result<()> {
     let vested: u128 = v.parse()?; assert!(vested >= 12_000 && vested <= 48_000, "vested {}", vested);
     e.efe.call(e.ft.id(), "ft_transfer_call").args_json(json!({"receiver_id": e.rounds.id(), "amount": (2_000_000u128 * 1000).to_string(), "msg": json!({"action":"exercise","id":g,"shares":"1000"}).to_string()})).deposit(ONE).max_gas().transact().await?.into_result()?;
     assert_eq!(e.holding(&e.efe.id().to_string(), "Common").await, 1000, "exercise credits common");
+    assert_eq!(e.holding("unissued_pool", "Common").await, 1_000_000 - 1000, "exercise draws from the pool instead of minting");
+    assert_eq!(e.holding("unissued_pool", "Common").await + e.holding(&e.efe.id().to_string(), "Common").await, 1_000_000, "total common shares are unchanged by an exercise");
+    let strike: String = e.rounds.view("strike_balance").await?.json()?;
+    assert_eq!(strike.parse::<u128>()?, 2_000_000 * 1000, "strike is held until swept");
+    let t0 = balance(&e.ft, e.treasury.id()).await;
+    e.board.call(e.rounds.id(), "withdraw_strikes").args_json(json!({"amount": (2_000_000u128 * 1000).to_string()})).max_gas().transact().await?.into_result()?;
+    assert_eq!(balance(&e.ft, e.treasury.id()).await - t0, 2_000_000 * 1000, "strike reaches the treasury");
+    assert_eq!(u128::from_str_radix(&e.rounds.view("ledger_total").await?.json::<String>()?, 10)?, 0, "ledger drained after the strike sweep");
     Ok(())
 }
 
@@ -240,6 +251,31 @@ async fn large_funded_round_closes_and_credits_everything() -> anyhow::Result<()
     assert_eq!(e.status(r).await, "Closed", "the round must finish closing, not stay Closing");
     assert_eq!(e.holding("holder59", "Common").await, 1_000);
     assert_eq!(u128::from_str_radix(&e.rounds.view("ledger_total").await?.json::<String>()?, 10)?, 0);
+    Ok(())
+}
+
+/// Two separately approved, funded rounds that name the same SAFE id must not both move money and then have
+/// the second callback panic with the round stuck in Closing.
+#[tokio::test]
+async fn concurrent_close_cannot_convert_the_same_safe_twice() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let safe = r#"{"safes":[{"id":"safe1","holder":"chidi.test.near","amount":"500000000000","post_money_cap":"5000000000000","discount_bps":0,"converted":false}]}"#;
+    let r1 = e.propose("Safe", safe, json!([[e.chidi.id(), "500000000000"]])).await;
+    let r2 = e.propose("Safe", safe, json!([[e.chidi.id(), "500000000000"]])).await;
+    e.deposit(&e.chidi, r1, 500_000).await;
+    e.deposit(&e.chidi, r2, 500_000).await;
+    assert!(e.approve(r1, safe).await);
+    assert!(e.approve(r2, safe).await);
+    // two different signers close at once (close_round is permissionless)
+    let (a, b) = tokio::join!(e.close_by(&e.efe, r1), e.close_by(&e.zed, r2));
+    assert!(a ^ b, "exactly one close may win (got {a}, {b})");
+    let (wa, wb) = (e.status(r1).await, e.status(r2).await);
+    assert!(wa == "Closed" || wb == "Closed", "one round closed ({wa}, {wb})");
+    assert!(wa != "Closing" && wb != "Closing", "no round may stay stuck in Closing ({wa}, {wb})");
+    let rec: Value = e.rounds.view("safe").args_json(json!({"id": "safe1"})).await?.json()?;
+    assert_eq!(rec["holder"], e.chidi.id().to_string(), "safe1 was created exactly once");
+    assert_eq!(balance(&e.ft, e.treasury.id()).await, 500_000 * USD, "only one escrow was forwarded");
+    assert_eq!(u128::from_str_radix(&e.rounds.view("ledger_total").await?.json::<String>()?, 10)?, 500_000 * USD, "the losing deposit is still in custody");
     Ok(())
 }
 

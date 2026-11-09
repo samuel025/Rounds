@@ -143,7 +143,7 @@ async function main() {
   await deploy(A.usdc, "contract/mock-ft/target/near/mock_ft.wasm", "new", { faucet_cap: (100_000_000n * M).toString() }, "1", "deploy test USDC (6 decimals, public faucet, no value)");
   await deploy(A.fake, "contract/mock-ft/target/near/mock_ft.wasm", "new", { faucet_cap: (1_000_000n * M).toString() }, "1", "deploy a second token used only for the wrong-token attack");
   const classes = ["Common", "Series A Preferred", "SAFE 1 shadow preferred", "SAFE 2 shadow preferred"].map((c) => ({ id: c, authorized: "100000000" }));
-  await deploy(A.core, "contract/target/near/rounds.wasm", "new", { board: DAO, payment_token: A.usdc, classes, month_ns: Number(MONTH_NS), exercise_window_ns: Number(WINDOW_NS) }, "1", "deploy Rounds with the DAO as board");
+  await deploy(A.core, "contract/target/near/rounds.wasm", "new", { board: DAO, treasury: DAO, payment_token: A.usdc, classes, month_ns: Number(MONTH_NS), exercise_window_ns: Number(WINDOW_NS) }, "1", "deploy Rounds with the DAO as board and treasury");
   for (const a of [A.ada, A.fund, A.indep, A.bayo, A.chidi, A.dayo, A.efe, A.zed, A.core, DAO]) call("1", `register ${a} for test USDC`, A.usdc, "storage_deposit", { account_id: a }, A.ada);
   for (const a of [A.chidi, A.core]) call("1", `register ${a} for the fake token`, A.fake, "storage_deposit", { account_id: a }, A.ada);
   call("1", "faucet: fund $9,000,000 test USDC", A.usdc, "faucet", { account_id: A.fund, amount: (9_000_000n * M).toString() }, A.ada);

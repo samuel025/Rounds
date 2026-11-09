@@ -93,7 +93,7 @@ async function main() {
   await deploy(A.board, "contract/open-board/target/near/open_board.wasm", "new", { target: A.rounds }, "deployed the open board for the Rounds contract");
   await deploy(A.usdc, "contract/mock-ft/target/near/mock_ft.wasm", "new", { faucet_cap: (100_000_000n * M).toString() }, "deployed sandbox test USDC (public faucet, no value)");
   const classes = ["Common", "Series A Preferred", "SAFE 1 shadow preferred", "SAFE 2 shadow preferred"].map((c) => ({ id: c, authorized: "100000000" }));
-  await deploy(A.rounds, "contract/target/near/rounds.wasm", "new", { board: A.board, payment_token: A.usdc, classes, month_ns: Number(MONTH_NS), exercise_window_ns: Number(WINDOW_NS) }, "deployed Rounds with the open board as its board");
+  await deploy(A.rounds, "contract/target/near/rounds.wasm", "new", { board: A.board, treasury: A.ada, payment_token: A.usdc, classes, month_ns: Number(MONTH_NS), exercise_window_ns: Number(WINDOW_NS) }, "deployed Rounds with the open board as its board and a real treasury");
   for (const a of [A.ada, A.bayo, A.chidi, A.dayo, A.rounds, A.board]) call("1", `register ${a} for test USDC`, A.usdc, "storage_deposit", { account_id: a }, A.ada);
   call("1", "faucet: chidi $500,000", A.usdc, "faucet", { account_id: A.chidi, amount: (500_000n * M).toString() }, A.ada);
   call("1", "faucet: dayo $250,000", A.usdc, "faucet", { account_id: A.dayo, amount: (250_000n * M).toString() }, A.ada);
@@ -119,7 +119,7 @@ async function main() {
   const last = await view(A.rounds, "round", { round_id: 3 });
   if (last.status !== "Closed") throw new Error(`last SAFE round is ${last.status}`);
   mkdirSync("results", { recursive: true });
-  const dep = { network: NET, rpc: RPC, explorer: EXPLORER, rounds: A.rounds, board: A.board, token: A.usdc, openBoard: true, note: "OPEN SANDBOX: anyone may become an officer and act as the board. Founders and two SAFEs are closed; the Series A is yours to run. Testnet, no value." };
+  const dep = { network: NET, rpc: RPC, explorer: EXPLORER, rounds: A.rounds, board: A.board, treasury: A.ada, token: A.usdc, openBoard: true, note: "OPEN SANDBOX: anyone may become an officer and act as the board. Escrow goes to a real treasury account, not the open board. Founders and two SAFEs are closed; the Series A is yours to run. Testnet, no value." };
   writeFileSync("results/sandbox.json", JSON.stringify({ suffix: S, accounts: A, deployment: dep, txs }, null, 2));
   writeFileSync("web/public/sandbox.json", JSON.stringify(dep, null, 2)); // the newest sandbox, kept for older readers
   // the pool: the app gives each visitor the first sandbox whose Series A has not been run yet (a sandbox can run only one)

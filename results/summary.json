@@ -1,11 +1,11 @@
 {
   "tests": {
-    "engine": 28,
+    "engine": 40,
     "engine_failed": 0,
-    "engine_files": 7,
+    "engine_files": 8,
     "properties": 9,
     "golden_vector_tests": 12,
-    "sandbox": 8
+    "sandbox": 9
   },
   "conformance": {
     "scenarios": 1000,

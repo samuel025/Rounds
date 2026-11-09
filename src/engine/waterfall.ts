@@ -23,6 +23,16 @@ const sumV = (o: Record<string, bigint>) => Object.values(o).reduce((a, b) => a 
 /** R8. Exact; non-participating preferred; options exercise when per-share payout > strike. */
 export function waterfall(w: Waterfall): WaterfallResult {
   const E = w.proceedsMicro;
+  if (E < 0n) throw new Error("proceeds must be non-negative");
+  for (const [id, c] of Object.entries(w.classes)) {
+    if (c.shares <= 0n) throw new Error(`class ${id} must have shares`);
+    if (c.preferenceMicro < 0n) throw new Error(`class ${id} preference must be non-negative`);
+  }
+  for (const [id, o] of Object.entries(w.options ?? {})) {
+    if (o.shares <= 0n) throw new Error(`option ${id} must have shares`);
+    if (o.strikeMicro < 0n) throw new Error(`option ${id} strike must be non-negative`);
+  }
+  for (const [h, s] of Object.entries(w.commonShares)) if (s < 0n) throw new Error(`common shares for ${h} must be non-negative`);
   const ids = Object.keys(w.classes);
   const prefPS = (id: string) => rat(w.classes[id].preferenceMicro, w.classes[id].shares);
   // lowest preference per as-converted share first; ties broken by id for determinism
@@ -49,7 +59,7 @@ export function waterfall(w: Waterfall): WaterfallResult {
     const rem = short ? 0n : E - Object.values(pref).reduce((a, b) => a + b, 0n);
     const baseShares = commonTotal + [...converting].reduce((a, id) => a + w.classes[id].shares, 0n);
     // options: take the largest prefix (lowest strikes) that is in the money
-    let j = 0, pps = div(rat(rem), rat(baseShares));
+    let j = 0, pps = baseShares === 0n ? rat(0n) : div(rat(rem), rat(baseShares));
     for (let m = 1; m <= opts.length; m++) {
       const strikes = opts.slice(0, m).reduce((a, [, o]) => a + o.strikeMicro * o.shares, 0n);
       const sh = baseShares + opts.slice(0, m).reduce((a, [, o]) => a + o.shares, 0n);
@@ -61,14 +71,14 @@ export function waterfall(w: Waterfall): WaterfallResult {
 
   // choose the consistent k (largest wins ties; ties pay identically)
   let chosen = attempt(0);
-  let chosenK = 0;
+  let found = false;
   for (let k = 0; k <= sorted.length; k++) {
     const a = attempt(k);
     const convOk = sorted.slice(0, k).every((id) => cmp(a.pps, prefPS(id)) >= 0);
     const stayOk = k === sorted.length || cmp(attempt(k + 1).pps, prefPS(sorted[k])) <= 0;
-    if (convOk && stayOk) { chosen = a; chosenK = k; }
+    if (convOk && stayOk) { chosen = a; found = true; }
   }
-  void chosenK;
+  if (!found) throw new Error("no consistent preferred conversion set for these proceeds");
 
   const payouts: Record<string, bigint> = {};
   for (const [h, sh] of Object.entries(w.commonShares)) payouts[h] = floor(mul(rat(sh), chosen.pps));

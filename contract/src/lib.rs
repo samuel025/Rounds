@@ -1,7 +1,7 @@
 //! Rounds: escrow, holdings and payouts, acting only on plans the board approved by hash.
 //! Plans are canonical-JSON strings; plan_hash = hex(sha256(plan bytes)). See RULES.md R9.
 use near_sdk::json_types::U128;
-use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde::Deserialize;
 use near_sdk::store::{IterableMap, IterableSet};
 use near_sdk::{env, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError};
 
@@ -10,6 +10,9 @@ const GAS_CB: Gas = Gas::from_tgas(15);
 const GAS_CLOSE_MIN: Gas = Gas::from_tgas(60);
 pub const MAX_DISTRIBUTE: u64 = 8; // 8 payouts x 25 Tgas + overhead < 300 Tgas (open question 6)
 const YOCTO: NearToken = NearToken::from_yoctonear(1);
+/// Holder id under which a round's unissued option pool is credited. Options are a claim on this pool:
+/// exercising shares moves them out of the pool instead of minting new ones.
+const POOL: &str = "unissued_pool";
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Debug)]
@@ -74,13 +77,18 @@ struct Msg { action: String, id: u64, shares: Option<U128> }
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Rounds {
-    board: AccountId, payment_token: AccountId, month_ns: u64, exercise_window_ns: u64,
+    board: AccountId, treasury: AccountId, payment_token: AccountId, month_ns: u64, exercise_window_ns: u64,
     classes: IterableMap<String, ClassDef>, issued: IterableMap<String, u128>,
     holdings: IterableMap<String, u128>, officers: IterableSet<AccountId>,
     rounds: IterableMap<u64, Round>, safes: IterableMap<String, SafeRec>,
     grants: IterableMap<u64, Grant>, exits: IterableMap<u64, Exit>,
     next_round: u64, next_grant: u64, next_exit: u64,
-    escrow_total: u128, exit_funds_total: u128,
+    escrow_total: u128, exit_funds_total: u128, strike_balance: u128,
+    // Resources reserved by a round that is Closing, so two concurrent closes cannot both pass the
+    // pre-flight check and then have the second one panic in its callback with the escrow already moved.
+    pending_issued: IterableMap<String, u128>,
+    pending_safes: IterableSet<String>,
+    pending_converts: IterableSet<String>,
 }
 
 fn event(name: &str, data: &str) {
@@ -93,18 +101,37 @@ fn key(holder: &str, class: &str) -> String { format!("{}|{}", holder, class) }
 #[near]
 impl Rounds {
     #[init]
-    pub fn new(board: AccountId, payment_token: AccountId, classes: Vec<ClassDef>, month_ns: u64, exercise_window_ns: u64) -> Self {
+    pub fn new(board: AccountId, treasury: AccountId, payment_token: AccountId, classes: Vec<ClassDef>, month_ns: u64, exercise_window_ns: u64) -> Self {
+        require!(month_ns > 0, "month_ns must be positive");
         let mut c = IterableMap::new(b"c");
-        for d in classes { c.insert(d.id.clone(), d); }
+        for d in classes {
+            require!(d.authorized.0 > 0, "class needs authorized shares");
+            require!(c.get(&d.id).is_none(), "duplicate class id");
+            c.insert(d.id.clone(), d);
+        }
         Self {
-            board, payment_token, month_ns, exercise_window_ns, classes: c, issued: IterableMap::new(b"i"),
+            board, treasury, payment_token, month_ns, exercise_window_ns, classes: c, issued: IterableMap::new(b"i"),
             holdings: IterableMap::new(b"h"), officers: IterableSet::new(b"o"), rounds: IterableMap::new(b"r"),
             safes: IterableMap::new(b"s"), grants: IterableMap::new(b"g"), exits: IterableMap::new(b"x"),
-            next_round: 1, next_grant: 1, next_exit: 1, escrow_total: 0, exit_funds_total: 0,
+            next_round: 1, next_grant: 1, next_exit: 1, escrow_total: 0, exit_funds_total: 0, strike_balance: 0,
+            pending_issued: IterableMap::new(b"p"), pending_safes: IterableSet::new(b"P"), pending_converts: IterableSet::new(b"q"),
         }
     }
     fn only_board(&self) { require!(env::predecessor_account_id() == self.board, "only the board"); }
     fn only_officer(&self) { require!(self.officers.contains(&env::predecessor_account_id()), "only an officer"); }
+    fn shares_of(&self, holder: &str, class: &str) -> u128 { self.holdings.get(&key(holder, class)).copied().unwrap_or(0) }
+    /// Move shares within a class (used to hand option shares out of the unissued pool). `issued` is
+    /// unchanged, so exercising an option can never create new shares.
+    fn move_shares(&mut self, from: &str, to: &str, class: &str, shares: u128) -> bool {
+        let fk = key(from, class);
+        let cur = self.holdings.get(&fk).copied().unwrap_or(0);
+        if cur < shares { return false }
+        self.holdings.insert(fk, cur - shares);
+        let tk = key(to, class);
+        let tcur = self.holdings.get(&tk).copied().unwrap_or(0);
+        self.holdings.insert(tk, tcur.checked_add(shares).unwrap_or_else(|| env::panic_str("holding overflow")));
+        true
+    }
 
     pub fn set_officer(&mut self, account: AccountId, enabled: bool) {
         self.only_board();
@@ -147,10 +174,11 @@ impl Rounds {
         if env::block_timestamp() > r.deadline_ns { return 0 }
         let Some(want) = r.raise.iter().find(|(a, _)| a == sender).map(|(_, v)| v.0) else { return 0 };
         let Some(slot) = r.deposits.iter_mut().find(|(a, _)| a == sender) else { return 0 };
-        let take = amount.min(want - slot.1 .0);
+        let Some(room) = want.checked_sub(slot.1 .0) else { return 0 };
+        let take = amount.min(room);
         if take == 0 { return 0 }
-        slot.1 = U128(slot.1 .0 + take);
-        self.escrow_total += take;
+        slot.1 = U128(slot.1 .0.checked_add(take).unwrap_or_else(|| env::panic_str("deposit overflow")));
+        self.escrow_total = self.escrow_total.checked_add(take).unwrap_or_else(|| env::panic_str("escrow overflow"));
         self.rounds.insert(round_id, r);
         event("deposit_recorded", &format!("{{\"round_id\":{},\"investor\":\"{}\",\"amount\":\"{}\"}}", round_id, sender, take));
         take
@@ -170,9 +198,11 @@ impl Rounds {
         require!(r.status == RoundStatus::Approved, "round not approved or already closing/closed");
         require!(r.raise.iter().zip(r.deposits.iter()).all(|(a, b)| a.1 .0 == b.1 .0), "round not fully funded");
         self.check_creditable(&r); // refuse BEFORE any money moves if the plan can never be credited
-        let total: u128 = r.deposits.iter().map(|d| d.1 .0).sum();
+        self.reserve_plan(&r); // hold the capacity/SAFE ids until the callback, so a concurrent close cannot steal them
+        let total = r.deposits.iter().try_fold(0u128, |a, d| a.checked_add(d.1 .0)).unwrap_or_else(|| env::panic_str("deposit total overflow"));
         if total == 0 {
             self.credit_round(&r);
+            self.release_plan(&r);
             r.status = RoundStatus::Closed; self.rounds.insert(round_id, r);
             event("round_closed", &format!("{{\"round_id\":{}}}", round_id));
             return None;
@@ -180,16 +210,20 @@ impl Rounds {
         r.status = RoundStatus::Closing; // blocks a second close while the transfer is in flight
         self.rounds.insert(round_id, r);
         Some(Promise::new(self.payment_token.clone())
-            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", self.board, total).into_bytes(), YOCTO, GAS_FT)
+            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", self.treasury, total).into_bytes(), YOCTO, GAS_FT)
             .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_close(round_id, U128(total))))
     }
     #[private]
     pub fn on_close(&mut self, round_id: u64, total: U128, #[callback_result] res: Result<(), PromiseError>) -> bool {
         let mut r = self.rounds.get(&round_id).cloned().unwrap_or_else(|| env::panic_str("no such round"));
         if r.status != RoundStatus::Closing { return false }
-        if res.is_err() { r.status = RoundStatus::Approved; self.rounds.insert(round_id, r); return false } // retryable
+        if res.is_err() {
+            self.release_plan(&r);
+            r.status = RoundStatus::Approved; self.rounds.insert(round_id, r); return false // retryable
+        }
         self.credit_round(&r);
-        self.escrow_total -= total.0;
+        self.release_plan(&r);
+        self.escrow_total = self.escrow_total.checked_sub(total.0).unwrap_or_else(|| env::panic_str("escrow underflow"));
         r.status = RoundStatus::Closed; self.rounds.insert(round_id, r);
         event("round_closed", &format!("{{\"round_id\":{}}}", round_id));
         true
@@ -202,20 +236,59 @@ impl Rounds {
         let mut add: HashMap<&str, u128> = HashMap::new();
         for i in &p.issuances {
             require!(self.classes.get(i.class.as_str()).is_some(), "unknown class");
-            *add.entry(i.class.as_str()).or_insert(0) += i.shares.0;
+            let cur = add.get(i.class.as_str()).copied().unwrap_or(0);
+            add.insert(i.class.as_str(), cur.checked_add(i.shares.0).unwrap_or_else(|| env::panic_str("share overflow")));
         }
         for (class, extra) in add {
             let def = self.classes.get(class).unwrap_or_else(|| env::panic_str("unknown class"));
-            require!(self.issued.get(class).copied().unwrap_or(0) + extra <= def.authorized.0, "exceeds authorized shares");
+            let used = self.issued.get(class).copied().unwrap_or(0);
+            let reserved = self.pending_issued.get(class).copied().unwrap_or(0);
+            let fits = used.checked_add(reserved).and_then(|v| v.checked_add(extra)).map_or(false, |v| v <= def.authorized.0);
+            require!(fits, "exceeds authorized shares");
         }
         let mut fresh: HashSet<&str> = HashSet::new();
-        for s in &p.safes { require!(self.safes.get(&s.id).is_none() && fresh.insert(s.id.as_str()), "safe id exists"); }
+        for s in &p.safes {
+            require!(self.safes.get(&s.id).is_none() && !self.pending_safes.contains(&s.id) && fresh.insert(s.id.as_str()), "safe id exists");
+        }
         let mut converting: HashSet<&str> = HashSet::new();
         for id in &p.converted_safes {
             require!(converting.insert(id.as_str()), "safe already converted");
+            require!(!self.pending_converts.contains(id.as_str()), "safe is already being converted");
             let ok = fresh.contains(id.as_str()) || self.safes.get(id).map(|s| !s.converted).unwrap_or(false);
             require!(ok, "unknown or already converted safe");
         }
+    }
+    /// Reserve what check_creditable validated, so the state seen at close cannot be taken by another round
+    /// before this round's callback credits it. Released on success or when the transfer fails.
+    fn reserve_plan(&mut self, r: &Round) {
+        use std::collections::HashMap;
+        let p: RoundPlan = near_sdk::serde_json::from_str(&r.plan).unwrap_or_else(|_| env::panic_str("bad plan"));
+        let mut add: HashMap<String, u128> = HashMap::new();
+        for i in &p.issuances {
+            let cur = add.get(&i.class).copied().unwrap_or(0);
+            add.insert(i.class.clone(), cur.checked_add(i.shares.0).unwrap_or_else(|| env::panic_str("share overflow")));
+        }
+        for (class, extra) in add {
+            let cur = self.pending_issued.get(&class).copied().unwrap_or(0);
+            self.pending_issued.insert(class, cur.checked_add(extra).unwrap_or_else(|| env::panic_str("pending overflow")));
+        }
+        for s in &p.safes { self.pending_safes.insert(s.id.clone()); }
+        for id in &p.converted_safes { self.pending_converts.insert(id.clone()); }
+    }
+    fn release_plan(&mut self, r: &Round) {
+        use std::collections::HashMap;
+        let p: RoundPlan = near_sdk::serde_json::from_str(&r.plan).unwrap_or_else(|_| env::panic_str("bad plan"));
+        let mut add: HashMap<String, u128> = HashMap::new();
+        for i in &p.issuances {
+            let cur = add.get(&i.class).copied().unwrap_or(0);
+            add.insert(i.class.clone(), cur.checked_add(i.shares.0).unwrap_or_else(|| env::panic_str("share overflow")));
+        }
+        for (class, extra) in add {
+            let cur = self.pending_issued.get(&class).copied().unwrap_or(0);
+            self.pending_issued.insert(class, cur.saturating_sub(extra));
+        }
+        for s in &p.safes { self.pending_safes.remove(&s.id); }
+        for id in &p.converted_safes { self.pending_converts.remove(id); }
     }
     fn credit_round(&mut self, r: &Round) {
         let p: RoundPlan = near_sdk::serde_json::from_str(&r.plan).unwrap_or_else(|_| env::panic_str("bad plan"));
@@ -228,12 +301,12 @@ impl Rounds {
     }
     fn credit(&mut self, holder: &str, class: &str, shares: u128) {
         let def = self.classes.get(class).unwrap_or_else(|| env::panic_str("unknown class"));
-        let issued = self.issued.get(class).copied().unwrap_or(0) + shares;
+        let issued = self.issued.get(class).copied().unwrap_or(0).checked_add(shares).unwrap_or_else(|| env::panic_str("issued overflow"));
         require!(issued <= def.authorized.0, "exceeds authorized shares"); // invariant 1
         self.issued.insert(class.to_string(), issued);
         let k = key(holder, class);
         let cur = self.holdings.get(&k).copied().unwrap_or(0);
-        self.holdings.insert(k, cur + shares);
+        self.holdings.insert(k, cur.checked_add(shares).unwrap_or_else(|| env::panic_str("holding overflow")));
     }
     pub fn cancel_round(&mut self, round_id: u64) {
         let mut r = self.rounds.get(&round_id).cloned().unwrap_or_else(|| env::panic_str("no such round"));
@@ -261,18 +334,21 @@ impl Rounds {
     pub fn on_refund(&mut self, round_id: u64, investor: AccountId, amount: U128, #[callback_result] res: Result<(), PromiseError>) {
         let mut r = self.rounds.get(&round_id).cloned().unwrap_or_else(|| env::panic_str("no such round"));
         if res.is_err() {
-            if let Some(s) = r.deposits.iter_mut().find(|d| d.0 == investor) { s.1 = U128(s.1 .0 + amount.0); }
+            if let Some(s) = r.deposits.iter_mut().find(|d| d.0 == investor) {
+                s.1 = U128(s.1 .0.checked_add(amount.0).unwrap_or_else(|| env::panic_str("refund overflow")));
+            }
             self.rounds.insert(round_id, r); return;
         }
-        self.escrow_total -= amount.0;
+        self.escrow_total = self.escrow_total.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("escrow underflow"));
         event("refund_sent", &format!("{{\"round_id\":{},\"investor\":\"{}\",\"amount\":\"{}\"}}", round_id, investor, amount.0));
     }
 
     // ---------- grants ----------
     pub fn grant(&mut self, plan_hash: String, plan: String) -> u64 {
-        self.only_board(); check_hash(&plan, &plan_hash);
+        self.only_board(); require!(plan.len() <= 65_536, "plan too large"); check_hash(&plan, &plan_hash);
         let g: GrantPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad grant"));
         require!(g.cliff_months <= g.term_months && g.term_months > 0, "bad vesting terms");
+        require!(self.shares_of(POOL, "Common") >= g.shares.0, "option pool too small");
         let id = self.next_grant; self.next_grant += 1;
         self.grants.insert(id, Grant { id, grantee: g.grantee.clone(), shares: g.shares, exercised: U128(0), strike_micro: g.strike_micro, start_ns: g.start_ns, term_months: g.term_months, cliff_months: g.cliff_months, terminated_at_ns: None });
         event("grant_created", &format!("{{\"grant_id\":{},\"grantee\":\"{}\",\"shares\":\"{}\"}}", id, g.grantee, g.shares.0));
@@ -296,24 +372,43 @@ impl Rounds {
     fn exercise(&mut self, sender: &AccountId, amount: u128, grant_id: u64, shares: u128) -> u128 {
         let Some(mut g) = self.grants.get(&grant_id).cloned() else { return 0 };
         if &g.grantee != sender || shares == 0 { return 0 }
-        if let Some(t) = g.terminated_at_ns { if env::block_timestamp() > t + self.exercise_window_ns { return 0 } }
-        let cost = g.strike_micro.0 * shares;
-        if amount < cost || shares > self.vested_of(&g) - g.exercised.0 { return 0 }
-        g.exercised = U128(g.exercised.0 + shares);
+        if let Some(t) = g.terminated_at_ns { if env::block_timestamp() > t.checked_add(self.exercise_window_ns).unwrap_or(u64::MAX) { return 0 } }
+        let Some(cost) = g.strike_micro.0.checked_mul(shares) else { return 0 };
+        let Some(available) = self.vested_of(&g).checked_sub(g.exercised.0) else { return 0 };
+        if amount < cost || shares > available { return 0 }
+        // Exercising moves vested option shares out of the unissued pool; it never mints new shares.
+        if !self.move_shares(POOL, &sender.to_string(), "Common", shares) { return 0 }
+        g.exercised = U128(g.exercised.0.checked_add(shares).unwrap_or_else(|| env::panic_str("exercise overflow")));
         self.grants.insert(grant_id, g);
-        self.credit(&sender.to_string(), "Common", shares);
-        // Strike goes to the board treasury asynchronously; ledger tracked as escrow until paid out is out of scope for the demo.
-        self.escrow_total += cost;
+        self.strike_balance = self.strike_balance.checked_add(cost).unwrap_or_else(|| env::panic_str("strike overflow"));
         event("grant_exercised", &format!("{{\"grant_id\":{},\"shares\":\"{}\",\"paid\":\"{}\"}}", grant_id, shares, cost));
         cost
+    }
+    /// The board forwards accumulated exercise strikes to the treasury. Kept separate from `escrow_total`
+    /// so `ledger_total` reports the tokens the contract is actually still holding.
+    pub fn withdraw_strikes(&mut self, amount: U128) {
+        self.only_board();
+        require!(amount.0 > 0 && amount.0 <= self.strike_balance, "nothing to withdraw");
+        self.strike_balance = self.strike_balance.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("strike underflow"));
+        let _ = Promise::new(self.payment_token.clone())
+            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", self.treasury, amount.0).into_bytes(), YOCTO, GAS_FT)
+            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_strike(U128(amount.0)));
+    }
+    #[private]
+    pub fn on_strike(&mut self, amount: U128, #[callback_result] res: Result<(), PromiseError>) {
+        if res.is_err() {
+            self.strike_balance = self.strike_balance.checked_add(amount.0).unwrap_or_else(|| env::panic_str("strike overflow"));
+            return;
+        }
+        event("strikes_swept", &format!("{{\"amount\":\"{}\"}}", amount.0));
     }
 
     // ---------- exits ----------
     pub fn propose_exit(&mut self, plan_hash: String, plan_uri: String, plan: String) -> u64 {
-        self.only_officer(); check_hash(&plan, &plan_hash);
+        self.only_officer(); require!(plan.len() <= 65_536, "plan too large"); check_hash(&plan, &plan_hash);
         let p: ExitPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad exit plan"));
         require!(!p.payouts.is_empty() && p.payouts.len() <= 64, "1 to 64 payouts");
-        let total: u128 = p.payouts.iter().map(|x| x.1 .0).sum();
+        let total = p.payouts.iter().try_fold(0u128, |a, x| a.checked_add(x.1 .0)).unwrap_or_else(|| env::panic_str("exit total overflow"));
         let id = self.next_exit; self.next_exit += 1;
         self.exits.insert(id, Exit { id, plan_hash: plan_hash.clone(), plan_uri, approved: false, total: U128(total), funded: U128(0),
             payouts: p.payouts.into_iter().map(|(holder, amount)| Payout { holder, amount, state: PayState::Pending }).collect() });
@@ -322,10 +417,11 @@ impl Rounds {
     }
     fn fund_exit(&mut self, exit_id: u64, amount: u128) -> u128 {
         let Some(mut e) = self.exits.get(&exit_id).cloned() else { return 0 };
-        let take = amount.min(e.total.0 - e.funded.0);
+        let Some(room) = e.total.0.checked_sub(e.funded.0) else { return 0 };
+        let take = amount.min(room);
         if take == 0 { return 0 }
-        e.funded = U128(e.funded.0 + take); self.exits.insert(exit_id, e);
-        self.exit_funds_total += take; take
+        e.funded = U128(e.funded.0.checked_add(take).unwrap_or_else(|| env::panic_str("funded overflow"))); self.exits.insert(exit_id, e);
+        self.exit_funds_total = self.exit_funds_total.checked_add(take).unwrap_or_else(|| env::panic_str("exit funds overflow")); take
     }
     pub fn approve_exit(&mut self, exit_id: u64, plan_hash: String) {
         self.only_board();
@@ -339,7 +435,7 @@ impl Rounds {
         require!(env::prepaid_gas() >= Gas::from_tgas(20 + 30 * limit), "not enough gas for this limit");
         let mut e = self.exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such exit"));
         require!(e.approved && e.funded.0 == e.total.0, "exit not approved and fully funded");
-        let end = (from + limit).min(e.payouts.len() as u64);
+        let end = from.checked_add(limit).unwrap_or(u64::MAX).min(e.payouts.len() as u64);
         for i in from..end {
             let p = &mut e.payouts[i as usize];
             if p.state != PayState::Pending { continue } // each payout at most once
@@ -359,7 +455,7 @@ impl Rounds {
         if res.is_err() { p.state = PayState::Pending; self.exits.insert(exit_id, e); return } // retryable
         p.state = PayState::Paid;
         let (h, a) = (p.holder.clone(), p.amount.0);
-        self.exit_funds_total -= a;
+        self.exit_funds_total = self.exit_funds_total.checked_sub(a).unwrap_or_else(|| env::panic_str("exit funds underflow"));
         self.exits.insert(exit_id, e);
         event("payout_sent", &format!("{{\"exit_id\":{},\"holder\":\"{}\",\"amount\":\"{}\"}}", exit_id, h, a));
     }
@@ -379,6 +475,12 @@ impl Rounds {
     pub fn safe(&self, id: String) -> Option<SafeRec> { self.safes.get(&id).cloned() }
     pub fn issued_of(&self, class: String) -> U128 { U128(self.issued.get(&class).copied().unwrap_or(0)) }
     /// Tokens the contract must still hold: unpaid deposits, funded-unpaid exits, unforwarded strikes.
-    pub fn ledger_total(&self) -> U128 { U128(self.escrow_total + self.exit_funds_total) }
+    pub fn ledger_total(&self) -> U128 {
+        let t = self.escrow_total.checked_add(self.exit_funds_total).and_then(|v| v.checked_add(self.strike_balance)).unwrap_or_else(|| env::panic_str("ledger overflow"));
+        U128(t)
+    }
+    pub fn strike_balance(&self) -> U128 { U128(self.strike_balance) }
+    pub fn treasury(&self) -> AccountId { self.treasury.clone() }
+    /// `config` keeps its original shape for existing readers; the treasury is a separate view.
     pub fn config(&self) -> (AccountId, AccountId, Vec<ClassDef>) { (self.board.clone(), self.payment_token.clone(), self.classes.values().cloned().collect()) }
 }

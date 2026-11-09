@@ -37,6 +37,20 @@ export function capOnlyCapitalization(n: bigint, safes: Safe[]): Rat {
 }
 
 export function priceRound(inp: PricedRoundInput): PricedRoundResult {
+  if (inp.preMoney <= 0n) throw new Error("pre-money must be positive");
+  if (inp.unissuedPool < 0n) throw new Error("unissued pool must be non-negative");
+  for (const [k, v] of Object.entries(inp.common)) if (v < 0n) throw new Error(`common shares for ${k} must be non-negative`);
+  for (const [k, v] of Object.entries(inp.investors)) if (v < 0n) throw new Error(`investment by ${k} must be non-negative`);
+  if (inp.poolTarget.den === 0n) throw new Error("pool target denominator must be positive");
+  if (inp.poolTarget.num < 0n || cmp(inp.poolTarget, rat(1n)) >= 0) throw new Error("pool target must be in [0, 1)");
+  const seen = new Set<string>();
+  for (const s of inp.safes) {
+    if (seen.has(s.id)) throw new Error(`duplicate SAFE id ${s.id}`);
+    seen.add(s.id);
+    if (s.amount < 0n) throw new Error(`SAFE ${s.id} amount must be non-negative`);
+    if (s.postMoneyCap <= 0n) throw new Error(`SAFE ${s.id} cap must be positive`);
+    if (!Number.isInteger(s.discountBps) || s.discountBps < 0 || s.discountBps > 10000) throw new Error(`SAFE ${s.id} discount must be 0..10000 bps`);
+  }
   const issued = Object.values(inp.common).reduce((a, b) => a + b, 0n);
   const B = inp.unissuedPool;
   const N = issued + B;
@@ -77,18 +91,22 @@ export function priceRound(inp: PricedRoundInput): PricedRoundResult {
 
   const priceFor = (safeShares: bigint) => {
     const X = issued + safeShares;
+    if (X === 0n) throw new Error("no shares to price; the round has no common stock or SAFE shares");
     const target = sub(rat(V), mul(t, rat(Vp)));
     let p = div(target, rat(X));
-    if (cmp(mul(t, div(rat(Vp), p)), rat(B)) < 0) p = div(rat(V), rat(X + B)); // no top-up (R6)
+    // A non-positive price cannot be divided by; treat it as the no-top-up case (R6).
+    if (cmp(p, rat(0n)) <= 0 || cmp(mul(t, div(rat(Vp), p)), rat(B)) < 0) p = div(rat(V), rat(X + B));
     return floor(div(p, rat(PRICE_STEP))) * PRICE_STEP;
   };
 
   let P = priceFor(0n);
+  if (P <= 0n) throw new Error("round price is zero; raise the pre-money or lower the pool target");
   let state = solve(P);
   let iterations = 0;
   for (; iterations < MAX_ITER; iterations++) {
     const sum = state.shares.reduce((a, b) => a + b, 0n);
     const nextP = priceFor(sum);
+    if (nextP <= 0n) throw new Error("round price is zero; raise the pre-money or lower the pool target");
     if (nextP === P) break;
     P = nextP;
     state = solve(P);

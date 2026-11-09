@@ -4,6 +4,9 @@ export const DEFAULT_TERMS = { termMonths: 48, cliffMonths: 12 } as const;
 /** R7: nothing before the cliff; at the cliff cliff/term of the grant; then linear monthly; all at term. Rounds down. */
 export function vested(t: VestingTerms, monthsElapsed: number): bigint {
   if (!Number.isInteger(monthsElapsed) || monthsElapsed < 0) throw new Error("monthsElapsed must be a non-negative integer");
+  if (!Number.isInteger(t.termMonths) || t.termMonths <= 0) throw new Error("termMonths must be a positive integer");
+  if (!Number.isInteger(t.cliffMonths) || t.cliffMonths < 0 || t.cliffMonths > t.termMonths) throw new Error("cliffMonths must be between 0 and termMonths");
+  if (t.totalShares < 0n) throw new Error("totalShares must be non-negative");
   if (monthsElapsed < t.cliffMonths) return 0n;
   if (monthsElapsed >= t.termMonths) return t.totalShares;
   return (t.totalShares * BigInt(monthsElapsed)) / BigInt(t.termMonths);
