@@ -17,17 +17,17 @@
     "mismatches": 0
   },
   "demo": {
-    "transactions": 57,
-    "events": 23,
+    "transactions": 62,
+    "events": 25,
     "rounds_closed": 4,
     "payouts": 5
   },
   "verify_onchain": {
-    "checks": 21,
+    "checks": 23,
     "failed": 0
   },
   "replay": {
-    "checks": 8,
+    "checks": 9,
     "failed": 0
   }
 }

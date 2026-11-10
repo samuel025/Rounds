@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 const APP = process.argv[2] ?? "http://127.0.0.1:5173/";
 const RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com";
-const NEW = "052090", OLD = "372231"; // current deployment and a superseded one used for the writes that would pollute the current one
+const NEW = "118174", OLD = "052090"; // current deployment and a superseded one used for the writes that would pollute the current one
 const acct = (n, s) => `rounds-${n}-${s}.testnet`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failed = 0, total = 0;
@@ -58,7 +58,7 @@ try {
   // 1. any wallet: register and get test USDC from the public faucet
   const before = BigInt(await view(token, "ft_balance_of", { account_id: efe }));
   await session(efe, core);
-  check(!!(await ev(`document.getElementById("wallet-btn").textContent.includes("rounds-efe-052090")`)), "connected account shows in the nav");
+  check(!!(await ev(`document.getElementById("wallet-btn").textContent.includes("rounds-efe-118174")`)), "connected account shows in the nav");
   check(!!(await ev(`document.querySelector('#chain-actions [data-a="faucet"]')`)), "faucet button is offered");
   await clickBtn('#chain-actions [data-a="faucet"]');
   const t1 = await toastText(/DONE|FAIL/);

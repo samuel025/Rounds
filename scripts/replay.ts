@@ -12,7 +12,7 @@ const check = (ok: boolean, msg: string) => { total++; if (!ok) failed++; consol
 
 console.log(`Rounds demo replay (offline). Network ${addr.network}; contract ${addr.rounds}; board ${addr.dao}\n`);
 console.log("STEPS (each links to its testnet transaction)");
-const names: Record<string, string> = { "1": "Setup", "2": "Founders", "3": "SAFEs", "4": "Series A proposed", "5": "Series A funded and closed", "6": "Attacks", "7": "Grant", "8": "Exit" };
+const names: Record<string, string> = { "1": "Setup", "2": "Founders", "3": "SAFEs", "4": "Series A proposed", "5": "Series A funded and closed", "6": "Attacks", "7": "Grant", "8": "Exit", "9": "Exercise" };
 for (const t of txs) console.log(`  ${t.step.padEnd(2)} ${names[t.step] ?? ""}`.padEnd(32) + `${t.what.slice(0, 66).padEnd(68)} ${EX}${t.tx}`.replace(/\s+$/, ""));
 
 // rebuild holdings from events + the plans carried in round_proposed events (closed rounds only, in order)
@@ -39,5 +39,6 @@ check(plans.exit.plan === eng.exit, "the committed exit plan equals the engine's
 check(payouts.length === 5 && payouts.every((p) => eng.waterfall.payoutsMicro[Object.entries(eng.who).find(([, a]) => a === p.data.holder)![0]].toString() === p.data.amount), "GV-2 at $20M: all 5 payouts equal the engine's waterfall to the micro-dollar");
 check(payouts.reduce((s, p) => s + BigInt(p.data.amount), 0n) + eng.waterfall.remainderMicro === 20_000_000_000_000n, "payouts plus the reported rounding remainder equal the $20,000,000 proceeds");
 check(events.filter((e) => e.name === "round_approved").length === 4 && events.some((e) => e.name === "exit_approved"), "every round and the exit were approved by the board before execution");
+check(events.some((e) => e.name === "grant_exercised" && e.data.shares === "1000") && events.some((e) => e.name === "strikes_swept" && e.data.amount === "2000000000"), "options were exercised (1,000 shares, $2,000 strike) and the strike was swept to the treasury");
 console.log(`${failed ? "FAIL" : "PASS"} summary: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

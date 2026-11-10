@@ -2,6 +2,10 @@
 
 > **Not legal or financial advice.** Rounds is a model and a **NEAR testnet demo**, not a securities offering. It claims no legal validity for any instrument; the legal wrapper around any ownership is the organization's job. All money is a test token with no value. Holdings on the demo contract are **public on chain**. Built at NEAR HACKATHON (Nov 2026).
 
+**In 30 seconds.** A funding round is written as an exact plan with a SHA-256 fingerprint. Investor money waits in escrow. The board (a Sputnik DAO) votes on that fingerprint, and the contract will only run a plan whose bytes hash to what was approved. Anyone can recompute the plan in their own browser and compare it with the chain (click **Verify**). Three attacks (a stranger approving, a second close, a wrong-token deposit) are shown failing on chain, and `make verify-onchain` re-checks them.
+
+**Why a blockchain, and not a spreadsheet or a database?** Because the thing worth proving is *"the board approved exactly these numbers, and the money moved only under that approval"*, and that must hold even if the company, an investor or the operator later disagrees. A private cap table cannot prove that to a third party; a contract that holds the escrow, checks the hash and pays out can. The equity math itself stays off chain (it is exact, open and re-checkable). The chain is used only for what needs a neutral referee: approval by hash, custody, and payouts. Rounds is aimed at teams that already govern on-chain with a DAO; it is not a replacement for a cap-table service for an ordinary private company.
+
 Crypto-native startups, and the groups that fund them, often raise money with SAFEs and similar notes and make decisions on-chain, yet the ownership table is still a spreadsheet, and a board's "yes" cannot be tied to the exact numbers it approved. Rounds is a testnet prototype of how that could work. Every funding round becomes an exact plan with a fingerprint (a SHA-256 hash); investors' money waits in escrow; the board (a Sputnik DAO) approves that fingerprint, and the contract only runs a plan that matches it; payouts at an exit are paid out automatically. A pure, exact equity engine does the math (common and preferred shares, option pool, post-money SAFEs, priced rounds with pool top-up, vesting, exit waterfall), and anyone can re-verify any round in their own browser against the chain. It models equity only: tokens, SAFTs and token warrants are not modeled.
 
 ## Why this matters
@@ -32,11 +36,12 @@ Every number below is checked against `results/summary.json` by `make check-read
 
 - The engine reproduces the golden vectors GV-1 (a Series A with two converting SAFEs) and GV-2 (an exit waterfall), plus hand-checked cases GV-3 (discount-only SAFE), GV-4 (options in and out of the money), GV-5 (cap wins, then discount wins), GV-6 (no pool top-up) and GV-7 (down round below the SAFE cap). The expected values of GV-5 to GV-7 were derived on paper first (docs/NOTES.md). Vitest tests: <!--n:tests.engine-->47<!--/n--> passing, including <!--n:tests.properties-->9<!--/n--> property tests, input-guard regressions (zero price, empty cap table, invalid waterfall/vesting), exact BigInt money formatting, and the wallet-action tests (which run the real wallet-selector with a stand-in wallet).
 - A second implementation in Python agrees with the TypeScript engine on <!--n:conformance.scenarios-->1000<!--/n--> seeded random scenarios (<!--n:conformance.mismatches-->0<!--/n--> mismatches; <!--n:conformance.rejected_inputs-->40<!--/n--> deliberately invalid inputs rejected by both).
+- **Independence caveat:** the Python reference and the TypeScript engine were written by the same author in one session, so their agreement shows the code matches the rules in RULES.md, not that the rules are right. The anchors that do not depend on that author are the hand-derived vectors (GV-1/GV-2 from the brief, GV-5 to GV-7 worked on paper first) and the YC post-money SAFE clauses cited in RULES.md.
 - Canonical JSON agrees byte for byte between the two implementations on <!--n:canonical.cases-->4<!--/n--> fixtures, including UTF-16 key order, unicode escaping and plan-shaped objects, and both compute the same SHA-256 (<!--n:canonical.mismatches-->0<!--/n--> mismatches). The Rust contract only hashes the bytes it receives, so it needs no canonicalizer.
 - The Rust contract passes <!--n:tests.sandbox-->13<!--/n--> near-workspaces sandbox tests (full round and exit, wrong-token refund, non-board approval, hash mismatch, double close, two concurrent closes racing for the same SAFE, zero-raise/duplicate-investor/class-overwrite refusals, overlapping option grants not overcommitting the pool, a grant without a pool refused, a cancel racing a close never both refunding and forwarding, exact refunds, hostile token, failed-transfer retry, private callbacks, vesting and exercise, a large funded round, and a round whose plan cannot be credited being refused before any money moves). Escrow is forwarded to a separate treasury account, closing rounds reserve shares and SAFE ids until their callback, options exercise out of the unissued pool instead of minting, and exercise strikes are held separately until the board sweeps them.
-- On **testnet**, a Series A with two converting SAFEs closed through a 2-of-3 Sputnik DAO vote and an exit paid every holder. The final demo run recorded <!--n:demo.transactions-->57<!--/n--> transactions and <!--n:demo.events-->23<!--/n--> contract events, and <!--n:demo.rounds_closed-->4<!--/n--> rounds closed.
-- `make verify-onchain` (read-only) recomputes the demo from the engine and compares with the chain: <!--n:verify_onchain.checks-->21<!--/n--> checks, <!--n:verify_onchain.failed-->0<!--/n--> failed.
-- `make replay` (no network) rebuilds the cap table and exit from committed events: <!--n:replay.checks-->8<!--/n--> checks, <!--n:replay.failed-->0<!--/n--> failed.
+- On **testnet**, a Series A with two converting SAFEs closed through a 2-of-3 Sputnik DAO vote and an exit paid every holder. The final demo run recorded <!--n:demo.transactions-->62<!--/n--> transactions and <!--n:demo.events-->25<!--/n--> contract events, and <!--n:demo.rounds_closed-->4<!--/n--> rounds closed.
+- `make verify-onchain` (read-only) recomputes the demo from the engine and compares with the chain: <!--n:verify_onchain.checks-->23<!--/n--> checks, <!--n:verify_onchain.failed-->0<!--/n--> failed.
+- `make replay` (no network) rebuilds the cap table and exit from committed events: <!--n:replay.checks-->9<!--/n--> checks, <!--n:replay.failed-->0<!--/n--> failed.
 
 ## Try it
 
@@ -86,33 +91,35 @@ Network: NEAR testnet. Throwaway accounts, no value.
 
 | Thing | Account |
 |---|---|
-| Rounds contract | `rounds-core-052090.testnet` |
-| Board (Sputnik DAO v2.0.0, 2-of-3 council) | `rounds-board-052090.sputnik-v2.testnet` |
-| Test USDC (6 decimals, public faucet) | `rounds-usdc-052090.testnet` |
+| Rounds contract | `rounds-core-118174.testnet` |
+| Board (Sputnik DAO v2.0.0, 2-of-3 council) | `rounds-board-118174.sputnik-v2.testnet` |
+| Test USDC (6 decimals, public faucet) | `rounds-usdc-118174.testnet` |
 
 | Demo step | Key transaction |
 |---|---|
-| DAO board created (2-of-3 council) | [Frxub4Ep…](https://testnet.nearblocks.io/txns/Frxub4EpmcLzKRhfMz4PE5a67vZ8uk9HFUBYCfWv3peF) |
-| Founders and pool closed (after a board vote) | [4EGkrJuJ…](https://testnet.nearblocks.io/txns/4EGkrJuJ6DfoXdkBskvZr7jerjLwu7DLPz6wsd8FHR6R) |
-| SAFE 1 closed, SAFE 2 closed | [F7LtPCu6…](https://testnet.nearblocks.io/txns/F7LtPCu6FNjhuxibxYc324aKyNYMjyBhkCXs1ccQMZrh), [7r8cfcGR…](https://testnet.nearblocks.io/txns/7r8cfcGRutnoaXsjinhomdRSNrtanXVuMrxdo2tFMaqk) |
-| Fund pays $9,000,000 into escrow | [87fHfShf…](https://testnet.nearblocks.io/txns/87fHfShfPqeM27x76rqCEsv2zRNQ1PJyQTZQLWU9kwwX) |
-| Series A closed, holdings credited | [2e6T7saS…](https://testnet.nearblocks.io/txns/2e6T7saSYGhTrhQmCdr5pz3etab5MUmL4L3NuzcSxzoS) |
-| Attack: a stranger calls `approve_round` (**fails on chain**: only the board) | [7Zqxt28B…](https://testnet.nearblocks.io/txns/7Zqxt28BLWyag7Tk5ABUGuADrJJNrmBMtBkuKrHnndb9) |
-| Wrong-token deposit (refunded in full) | [tnqvmdcE…](https://testnet.nearblocks.io/txns/tnqvmdcE3oNWYuaiKWLqvc6mHXZca5yLn9ZGKSvXTWD) |
-| Attack: `close_round` a second time (**fails on chain**: already closing/closed) | [GQqAyzex…](https://testnet.nearblocks.io/txns/GQqAyzexEEJ1YFeu2mSWNwGxnZDwfUwQTfz5YZEJbQfJ) |
-| Board executes the option grant for Efe | [Guwiz3eW…](https://testnet.nearblocks.io/txns/Guwiz3eWhDpEDQCU9MbcB5M6bLGbHLsRzSCpkVYiXRP4) |
-| Zed funds the $20M exit; board approves; distribute | [EadSjTmj…](https://testnet.nearblocks.io/txns/EadSjTmjWVJmV3vDgzUA6WwwoawifQwHFGSSA1nct5is), [4qCL2hpB…](https://testnet.nearblocks.io/txns/4qCL2hpBZvSkc81M7c2W11UHQLtojeSkSRppN8Wq5DHK), [B1V9GV2W…](https://testnet.nearblocks.io/txns/B1V9GV2WYS2RTfvHcLRri2ctMMwDAmUMkmK3mgTgVKqz) |
+| DAO board created (2-of-3 council) | [C4qiXVU4…](https://testnet.nearblocks.io/txns/C4qiXVU4DdGz8kSpr65v7qtkuYGZGXQSbQFmVqRgxYj3) |
+| Founders and pool closed (after a board vote) | [JRWVGrBa…](https://testnet.nearblocks.io/txns/JRWVGrBasVbVyyYcSzJHzg9qjm4eQGMbJ6xiTQkfim3) |
+| SAFE 1 closed, SAFE 2 closed | [8PredNbe…](https://testnet.nearblocks.io/txns/8PredNbefqb8n8dYBxx2z56skgcDDvZ6AChWUTwi1D3W), [1RuGqVoR…](https://testnet.nearblocks.io/txns/1RuGqVoRD5BgcfwMFDezvk2A6aqosc5eZcH785uuExD) |
+| Fund pays $9,000,000 into escrow | [F9mg9caS…](https://testnet.nearblocks.io/txns/F9mg9caSp7K9KEFLmvMcjxvoa9qktmE44LPYzDys8HdA) |
+| Series A closed, holdings credited | [CEbpfjre…](https://testnet.nearblocks.io/txns/CEbpfjreRqtaViTtPhxe4gd8SMnRNUTACogzjacokfMV) |
+| Attack: a stranger calls `approve_round` (**fails on chain**: only the board) | [98QfY4UK…](https://testnet.nearblocks.io/txns/98QfY4UKqewo5v78H54umzmVZ9CFrJrthS1KCJYRctuk) |
+| Wrong-token deposit (refunded in full) | [2FKBm8rb…](https://testnet.nearblocks.io/txns/2FKBm8rbPze7kNq54bv3qYqZeVjTWk8p9rJFe8NHmH1E) |
+| Attack: `close_round` a second time (**fails on chain**: already closing/closed) | [FLM6ukD6…](https://testnet.nearblocks.io/txns/FLM6ukD6aDEpnjEfbmoJmmZc4RvFpXMFy7XDJGpqJZ26) |
+| Board executes the option grant for Efe | [A7KVzrey…](https://testnet.nearblocks.io/txns/A7KVzreyP1meueDRZ88rbCq2FRtdMkrmkBmuHXpTugkX) |
+| Zed funds the $20M exit; board approves; distribute | [CjqNRhyG…](https://testnet.nearblocks.io/txns/CjqNRhyGik2gNq24RNjQgfkB4fH2Rxv3PhSApBUJcm1A), [AjRYSm7x…](https://testnet.nearblocks.io/txns/AjRYSm7xW2jpWWEaUTZ7nDjqyAFJWsaLP2yiBfVrshSM), [3mZsGyf1…](https://testnet.nearblocks.io/txns/3mZsGyf13M3CL4s7X5ZcvC8sVMDFk6ytGtdJSnx1UTW1) |
+| Efe exercises 1,000 vested options out of the pool (strike $2,000 held by the contract) | [25NTWiAz…](https://testnet.nearblocks.io/txns/25NTWiAzQFKAmiGSSAdtPrLGbAWsktprvWNCHJhZh84F) |
+| Board sweeps the held strike to the treasury | [3HDZtR4N…](https://testnet.nearblocks.io/txns/3HDZtR4NQ58cumesnGE8pYeXwVnSx8c9AYdhoeCGU71t) |
 
 All transactions of the final run are in `results/demo-txs.json`, and every event in `results/demo-events.json`.
 
 Be aware of what this run does and does not show:
 
 - **The failed attacks are on chain.** The demo signs each hostile call, broadcasts it over RPC itself, and requires the transaction to fail with the contract's own message; `make verify-onchain` re-reads both transactions from the chain and checks that they failed. The wrong-token deposit is a separate, successful transaction whose refund the script verified by balance.
-- **This run was resumed twice**, because the testnet faucet is rate-limited and the leftover test NEAR of earlier runs had to be pieced together (`DEMO_FUND_FROM`). The first attempt stopped while funding accounts and a second stopped while funding the last one; nothing had been deployed or run by then, and the full demo then ran from start to finish in one go. Earlier runs (suffixes `012465`, `372231`) also exist on testnet and are superseded.
-- **The deployed contracts predate the latest hardening.** A self-review found that `close_round` forwarded the escrow to the board before checking that the plan could be credited, so a plan that could never be credited (for example above the authorized shares) would leave the round stuck in Closing with the money at the board. The source now refuses such a plan before any money moves, caps plan size, reserves share capacity and SAFE ids against a concurrent close, sends escrow to a separate treasury, exercises options out of the unissued pool, and checks the arithmetic (all tested). The demo contract and the sandboxes already deployed on testnet run the earlier build; no demo or sandbox plan triggers the racing or uncreditable cases.
+- **This run went start to finish in one go** (exit 0, no resume). The testnet faucet is rate-limited, so for several accounts it refused and the script funded them from earlier demo accounts (see `scripts/demo.ts`). Earlier runs (suffixes `012465`, `372231`, `052090`) also exist on testnet and are superseded; they run older contract builds.
+- **The deployed contracts are the hardened build.** Suffix `118174` runs the current source: escrow goes to a separate treasury (here the DAO), closing a round reserves share capacity and SAFE ids against a concurrent close, a plan that can never be credited is refused before any money moves, options exercise out of the unissued pool, and arithmetic is checked. The concurrency, overcommit and uncreditable-plan cases are covered by the sandbox tests, not triggered in the testnet run. Older testnet deployments and sandboxes still run the earlier build.
 - **Vesting.** The script reads the contract's `vested` view at a specific block whose timestamp is 12.15 demo "months" after the grant start (the block is pinned, so a slow script cannot read a later month) and requires exactly the engine's month-12 value: 25,000 of 100,000. One demo "month" lasts 5 seconds, a contract parameter.
 - **RPC.** The old public endpoint `rpc.testnet.near.org` now rejects requests as deprecated, so the app, the demo and `make verify-onchain` use FastNear (`test.rpc.fastnear.com`; old transactions via `archival-rpc.testnet.fastnear.com`). Both can be overridden with `RPC_URL` and `ARCHIVAL_RPC_URL`.
-- **Exercise on chain** is covered by the sandbox tests, not by the testnet demo.
+- **Exercise on chain** is now in the run: after the exit, Efe exercises 1,000 of the 25,000 vested options at $2.00 (the demo checks the shares come out of the pool, the strike is held, then the board sweeps it to the treasury and `ledger_total` returns to 0). It runs after the exit so the GV-2 waterfall stays exactly as derived; `make verify-onchain` re-checks the resulting cap table.
 
 `make demo` is the script that produced this run. It needs the `near` CLI (near-cli-rs), network access, and creates fresh throwaway testnet accounts through the public faucet (or a previous run's leftovers); it spends no real money. Each run creates fresh accounts; set `DEMO_SUFFIX=<suffix>` to resume a partly finished run, or `DEMO_FUND_FROM=<old suffix>` to fund the new accounts from a previous run's accounts when the faucet refuses.
 

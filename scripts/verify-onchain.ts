@@ -38,7 +38,12 @@ async function main() {
     for (const [h, c, s] of page) held[`${h}|${c}`] = BigInt(s);
     if (page.length < 100) break;
   }
-  const want = p.holdings; const keys = new Set([...Object.keys(want), ...Object.keys(held)]);
+  // demo step 9: Efe exercised 1,000 options out of the unissued pool (shares move, none are minted)
+  const EXN = 1_000n, want = { ...p.holdings };
+  want[`${A.efe}|Common`] = (want[`${A.efe}|Common`] ?? 0n) + EXN; want["unissued_pool|Common"] -= EXN;
+  const sum = (m: Record<string, bigint>) => Object.values(m).reduce((a, b) => a + b, 0n);
+  check(sum(want) === sum(p.holdings), "exercise conserved the total share count (none minted)");
+  check(await view("strike_balance") === "0", "strike_balance = 0 (the exercise strike was swept to the treasury)"); const keys = new Set([...Object.keys(want), ...Object.keys(held)]);
   const wrong = [...keys].filter((k) => (want[k] ?? 0n) !== (held[k] ?? 0n));
   check(wrong.length === 0, `cap table: all ${keys.size} (holder, class) holdings equal the engine's result${wrong.length ? " — differs: " + wrong.join(", ") : ""}`);
   const x = await view("exit", { exit_id: 1 });

@@ -2,15 +2,15 @@
   {
     "step": "6",
     "what": "a stranger calls approve_round",
-    "signer": "rounds-efe-052090.testnet",
-    "tx": "7Zqxt28BLWyag7Tk5ABUGuADrJJNrmBMtBkuKrHnndb9",
+    "signer": "rounds-efe-118174.testnet",
+    "tx": "98QfY4UKqewo5v78H54umzmVZ9CFrJrthS1KCJYRctuk",
     "error": "only the board"
   },
   {
     "step": "6",
     "what": "close_round runs a second time",
-    "signer": "rounds-zed-052090.testnet",
-    "tx": "GQqAyzexEEJ1YFeu2mSWNwGxnZDwfUwQTfz5YZEJbQfJ",
+    "signer": "rounds-zed-118174.testnet",
+    "tx": "FLM6ukD6aDEpnjEfbmoJmmZc4RvFpXMFy7XDJGpqJZ26",
     "error": "already closing/closed"
   }
 ]

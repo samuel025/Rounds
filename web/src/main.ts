@@ -242,7 +242,7 @@ async function initChain() {
   const link = (contract: string, frag: string) => `${location.origin}${location.pathname}?contract=${encodeURIComponent(contract)}#${frag}`;
   const run = async (quiet = false) => {
     const id = input.value.trim().toLowerCase();
-    if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-052090.testnet</span></p>`; return; }
+    if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-118174.testnet</span></p>`; return; }
     if (!quiet) { $("chain-actions").innerHTML = ""; out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`; }
     try {
       const v = await loadChain(dep.rpc, id);

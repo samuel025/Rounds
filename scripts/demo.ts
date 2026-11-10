@@ -56,9 +56,9 @@ const ft = (who: string, to: string, amount: bigint, msg: object, step: string, 
   call(step, what, token, "ft_transfer_call", { receiver_id: to, amount: amount.toString(), msg: JSON.stringify(msg) }, who, { deposit: "1 yoctoNEAR", gas: "200 Tgas" });
 const sha = planHash;
 
-async function dao(step: string, what: string, receiver: string, method: string, args: object) {
+async function dao(step: string, what: string, receiver: string, method: string, args: object, gas = "60000000000000") {
   const a64 = Buffer.from(JSON.stringify(args)).toString("base64");
-  const prop = { proposal: { description: what, kind: { FunctionCall: { receiver_id: receiver, actions: [{ method_name: method, args: a64, deposit: "0", gas: "60000000000000" }] } } } };
+  const prop = { proposal: { description: what, kind: { FunctionCall: { receiver_id: receiver, actions: [{ method_name: method, args: a64, deposit: "0", gas }] } } } };
   const added = call(step, `DAO proposal: ${what}`, DAO, "add_proposal", prop, A.fund, { deposit: "0.1 NEAR" });
   const pid = added.ret as number;
   call(step, `DAO vote 1/2 (fund) on #${pid}`, DAO, "act_proposal", { id: pid, action: "VoteApprove" }, A.fund);
@@ -240,7 +240,26 @@ async function main() {
   Object.keys(who).forEach((k, i) => { const got = post[i] - pre[i]; if (got !== w.payoutsMicro[k]) throw new Error(`payout ${k}: ${got} != ${w.payoutsMicro[k]}`); log(`payout ${k} = ${Number(got) / 1e6} (GV-2 ok)`); });
   const efeBal = await bal(A.efe); log(`efe options out of the money: efe token balance ${efeBal}`);
 
-  // ---- step 9: verify (recompute and compare with chain)
+  // ---- step 9: exercise vested options (after the exit so the GV-2 waterfall stays exactly as derived)
+  // Efe has 25,000 vested options at a $2.00 strike. Exercising 1,000 moves shares out of the unissued pool (never mints) and parks the strike in the contract until the board sweeps it.
+  const EXN = 1_000n, exCost = strike * EXN;
+  call("9", "faucet: efe $2,000 test USDC to pay the strike", A.usdc, "faucet", { account_id: A.efe, amount: exCost.toString() }, A.ada);
+  const efeBefore = await bal(A.efe);
+  ft(A.efe, A.core, exCost, { action: "exercise", id: 1, shares: EXN.toString() }, "9", "efe exercises 1,000 vested options at $2.00");
+  await sleep(4000);
+  if (await holding(A.efe, "Common") !== EXN) throw new Error("exercise did not credit efe");
+  if (await holding("unissued_pool", "Common") !== 1_500_000n - EXN) throw new Error("exercise did not draw from the pool");
+  if (efeBefore - await bal(A.efe) !== exCost) throw new Error("efe did not pay exactly the strike");
+  if (BigInt(await view(A.core, "strike_balance")) !== exCost) throw new Error("strike not held by the contract");
+  log(`efe exercised ${EXN} options: efe holds ${EXN} Common, pool ${1_500_000n - EXN}, strike $${Number(exCost) / 1e6} held`);
+  const daoBefore = await bal(DAO);
+  await dao("9", "board sweeps the exercise strike to the treasury", A.core, "withdraw_strikes", { amount: exCost.toString() }, "100000000000000");
+  await sleep(8000);
+  if (await bal(DAO) - daoBefore !== exCost) throw new Error("strike did not reach the treasury");
+  if (BigInt(await view(A.core, "strike_balance")) !== 0n || BigInt(await view(A.core, "ledger_total")) !== 0n) throw new Error("ledger not drained after the sweep");
+  log("strike swept to the treasury; ledger_total = 0");
+
+  // ---- step 10: verify (recompute and compare with chain)
   const verified: string[] = []; let failed = 0;
   for (const [rid, canon] of Object.entries(planByRound)) {
     const r = await view(A.core, "round", { round_id: Number(rid) }); const h = await sha(canon);
