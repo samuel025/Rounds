@@ -1,5 +1,5 @@
 // Rebuilds, from the engine alone, every plan the demo put on chain (used by verify-onchain and replay).
-import { priceRound, waterfall, canonicalJson, pricedRoundPlan } from "../src/engine/index";
+import { priceRound, waterfall, canonicalJson, pricedRoundPlan, sealPlan } from "../src/engine/index";
 
 const M = 1_000_000n;
 export interface Accounts { ada: string; bayo: string; chidi: string; dayo: string; fund: string; efe: string; zed: string }
@@ -18,7 +18,12 @@ export function demoPlans(A: Accounts) {
     commonShares: { ada: 5_000_000n, bayo: 2_750_000n }, options: { efe: { shares: 100_000n, strikeMicro: result.priceMicro } }, proceedsMicro: 20_000_000n * M });
   const who: Record<string, string> = { ada: A.ada, bayo: A.bayo, safe1: A.chidi, safe2: A.dayo, fund: A.fund };
   const exit = { payouts: Object.entries(who).map(([k, acct]) => [acct, w.payoutsMicro[k].toString()]) };
-  const rounds = [founders, ...safeRounds, seriesA].map((p) => canonicalJson(p));
+  // each plan carries its money terms (kind, raise, deadline) inside the hash, exactly as the demo proposed it
+  const rounds = [
+    sealPlan(founders, { kind: "Founder", raise: [] }),
+    ...safeRounds.map((p, i) => sealPlan(p, { kind: "Safe", raise: [[spec[i].holder, spec[i].amt * M]] })),
+    sealPlan(seriesA, { kind: "Priced", raise: [[A.fund, 9_000_000n * M]] }),
+  ].map((p) => canonicalJson(p));
   // holdings every closed round should have credited, keyed "holder|class"
   const holdings: Record<string, bigint> = {};
   for (const p of [founders, seriesA]) for (const i of p.issuances) holdings[`${i.holder}|${i.class}`] = (holdings[`${i.holder}|${i.class}`] ?? 0n) + BigInt(i.shares);

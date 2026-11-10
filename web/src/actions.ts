@@ -55,7 +55,7 @@ export async function renderActions(host: HTMLElement, v: ChainView, rpc: string
     }
     for (const e of v.exits) {
       const idx = e.payouts.findIndex((p: any) => p.state !== "Paid");
-      if (e.approved && BigInt(e.funded) === BigInt(e.total) && idx >= 0) parts.push(`<div class="act"><div><b>Exit ${e.id}</b> is approved and funded<br/><span class="muted">Anyone may run distribute; ${e.payouts.length - idx} payout(s) remain, up to ${MAX_DISTRIBUTE} per transaction.</span></div><button class="btn sm" data-a="dist" data-e="${e.id}" data-from="${idx}" data-n="${Math.min(MAX_DISTRIBUTE, e.payouts.length - idx)}">Pay out exit ${e.id}</button></div>`);
+      if (e.approved && !e.cancelled && BigInt(e.funded) === BigInt(e.total) && idx >= 0) parts.push(`<div class="act"><div><b>Exit ${e.id}</b> is approved and funded<br/><span class="muted">Anyone may run distribute; ${e.payouts.length - idx} payout(s) remain, up to ${MAX_DISTRIBUTE} per transaction.</span></div><button class="btn sm" data-a="dist" data-e="${e.id}" data-from="${idx}" data-n="${Math.min(MAX_DISTRIBUTE, e.payouts.length - idx)}">Pay out exit ${e.id}</button></div>`);
     }
     // the open sandbox board (a tiny contract: anyone may ask it to act as the board for this one Rounds contract)
     let openBoard = false; try { openBoard = (await call(rpc, v.board, "open_board", {})) === true; } catch { /* a real DAO has no such method */ }

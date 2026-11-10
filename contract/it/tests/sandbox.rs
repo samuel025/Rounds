@@ -7,6 +7,13 @@ const FT_WASM: &str = "../mock-ft/target/near/mock_ft.wasm";
 const ONE: NearToken = NearToken::from_yoctonear(1);
 const USD: u128 = 1_000_000; // micro-dollars per dollar = token units
 
+/// The plan as it goes on chain: the round's body plus its money terms (kind, raise, deadline), all inside the hash.
+fn seal(kind: &str, plan: &str, raise: &Value, deadline_ns: u64) -> String {
+    let mut v: Value = serde_json::from_str(plan).unwrap();
+    let o = v.as_object_mut().unwrap();
+    o.insert("kind".into(), json!(kind)); o.insert("raise".into(), raise.clone()); o.insert("deadline_ns".into(), json!(deadline_ns.to_string()));
+    v.to_string()
+}
 fn h(s: &str) -> String { Sha256::digest(s.as_bytes()).iter().map(|b| format!("{:02x}", b)).collect() }
 
 struct Env {
@@ -45,15 +52,25 @@ async fn setup() -> anyhow::Result<Env> {
 
 impl Env {
     async fn propose(&self, kind: &str, plan: &str, raise: Value) -> u64 {
-        self.ada.call(self.rounds.id(), "propose_round").args_json(json!({"kind": kind, "plan_hash": h(plan), "plan_uri": "ipfs://demo", "plan": plan, "raise": raise, "deadline_ns": u64::MAX}))
+        let plan = seal(kind, plan, &raise, u64::MAX);
+        self.ada.call(self.rounds.id(), "propose_round").args_json(json!({"kind": kind, "plan_hash": h(&plan), "plan_uri": "ipfs://demo", "plan": plan, "raise": raise, "deadline_ns": u64::MAX}))
             .transact().await.unwrap().into_result().unwrap().json::<u64>().unwrap()
+    }
+    /// Hash of the plan bytes the chain holds for a round (the body the test wrote plus its sealed terms).
+    async fn plan_hash(&self, round: u64, body: &str) -> String {
+        let r: Value = self.rounds.view("round").args_json(json!({"round_id": round})).await.unwrap().json().unwrap();
+        let plan = r["plan"].as_str().unwrap();
+        let (on_chain, want): (Value, Value) = (serde_json::from_str(plan).unwrap(), serde_json::from_str(body).unwrap());
+        for (k, v) in want.as_object().unwrap() { assert_eq!(&on_chain[k], v, "the chain holds the body the test proposed"); }
+        h(plan)
     }
     async fn deposit(&self, who: &Account, round: u64, usd: u128) {
         who.call(self.ft.id(), "ft_transfer_call").args_json(json!({"receiver_id": self.rounds.id(), "amount": (usd * USD).to_string(), "msg": json!({"action": "round", "id": round}).to_string()}))
             .deposit(ONE).max_gas().transact().await.unwrap().into_result().unwrap();
     }
     async fn approve(&self, round: u64, plan: &str) -> bool {
-        self.board.call(self.rounds.id(), "approve_round").args_json(json!({"round_id": round, "plan_hash": h(plan)})).transact().await.unwrap().is_success()
+        let hash = self.plan_hash(round, plan).await;
+        self.board.call(self.rounds.id(), "approve_round").args_json(json!({"round_id": round, "plan_hash": hash})).transact().await.unwrap().is_success()
     }
     async fn close(&self, round: u64) -> bool {
         self.close_by(&self.efe, round).await
@@ -140,7 +157,8 @@ async fn full_round_and_exit() -> anyhow::Result<()> {
 async fn rounds_reject_zero_raise_duplicate_investor_and_class_overwrite() -> anyhow::Result<()> {
     let e = setup().await?;
     let plan = r#"{"issuances":[{"class":"Common","holder":"ada","shares":"1"}]}"#;
-    let propose = |raise: Value| e.ada.call(e.rounds.id(), "propose_round").args_json(json!({"kind":"Priced","plan_hash":h(plan),"plan_uri":"x","plan":plan,"raise":raise,"deadline_ns":u64::MAX})).transact();
+    let propose = |raise: Value| { let p = seal("Priced", plan, &raise, u64::MAX); e.ada.call(e.rounds.id(), "propose_round").args_json(json!({"kind":"Priced","plan_hash":h(&p),"plan_uri":"x","plan":p,"raise":raise,"deadline_ns":u64::MAX})).transact() };
+    assert!(propose(json!([[e.fund.id(), "1"]])).await?.is_success(), "the same plan with a valid raise is accepted");
     let zero = propose(json!([[e.fund.id(), "0"]])).await?;
     assert!(!zero.is_success(), "a zero raise must not close for free");
     let dup = propose(json!([[e.fund.id(), "1"], [e.fund.id(), "1"]])).await?;
@@ -177,10 +195,12 @@ async fn auth_hash_and_replay() -> anyhow::Result<()> {
     let e = setup().await?;
     // stranger cannot approve; hash mismatch rejected; non-officer cannot propose
     let r = e.propose("Founder", FOUNDER, json!([])).await;
-    assert!(!e.fund.call(e.rounds.id(), "approve_round").args_json(json!({"round_id": r, "plan_hash": h(FOUNDER)})).transact().await?.is_success(), "non-board approve fails");
+    let fh = e.plan_hash(r, FOUNDER).await;
+    assert!(!e.fund.call(e.rounds.id(), "approve_round").args_json(json!({"round_id": r, "plan_hash": fh})).transact().await?.is_success(), "non-board approve fails");
     assert!(!e.board.call(e.rounds.id(), "approve_round").args_json(json!({"round_id": r, "plan_hash": h("other")})).transact().await?.is_success(), "hash mismatch fails");
-    assert!(!e.fund.call(e.rounds.id(), "propose_round").args_json(json!({"kind":"Founder","plan_hash":h(FOUNDER),"plan_uri":"x","plan":FOUNDER,"raise":[],"deadline_ns":u64::MAX})).transact().await?.is_success(), "non-officer propose fails");
-    assert!(!e.ada.call(e.rounds.id(), "propose_round").args_json(json!({"kind":"Founder","plan_hash":h("x"),"plan_uri":"x","plan":FOUNDER,"raise":[],"deadline_ns":u64::MAX})).transact().await?.is_success(), "proposed plan must match its hash");
+    let sealed = seal("Founder", FOUNDER, &json!([]), u64::MAX);
+    assert!(!e.fund.call(e.rounds.id(), "propose_round").args_json(json!({"kind":"Founder","plan_hash":h(&sealed),"plan_uri":"x","plan":sealed,"raise":[],"deadline_ns":u64::MAX})).transact().await?.is_success(), "non-officer propose fails");
+    assert!(!e.ada.call(e.rounds.id(), "propose_round").args_json(json!({"kind":"Founder","plan_hash":h("x"),"plan_uri":"x","plan":sealed,"raise":[],"deadline_ns":u64::MAX})).transact().await?.is_success(), "proposed plan must match its hash");
     // cannot close before approval
     assert!(!e.close(r).await);
     assert!(e.approve(r, FOUNDER).await);
@@ -190,7 +210,7 @@ async fn auth_hash_and_replay() -> anyhow::Result<()> {
     assert!(!e.close(r).await);
     assert_eq!(e.holding("ada", "Common").await, 5_000_000);
     // outsiders cannot call callbacks
-    for (m, a) in [("on_close", json!({"round_id": r, "total": "0"})), ("on_payout", json!({"exit_id": 1, "index": 0})), ("on_refund", json!({"round_id": r, "investor": e.ada.id(), "amount": "1"}))] {
+    for (m, a) in [("on_close", json!({"round_id": r, "total": "0"})), ("on_payout", json!({"exit_id": 1, "index": 0})), ("on_refund", json!({"round_id": r, "investor": e.ada.id(), "amount": "1"})), ("on_exit_refund", json!({"exit_id": 1, "funder": e.ada.id(), "amount": "1"}))] {
         assert!(!e.efe.call(e.rounds.id(), m).args_json(a).max_gas().transact().await?.is_success(), "{} must be private", m);
     }
     Ok(())
@@ -400,5 +420,112 @@ async fn grant_without_a_pool_is_refused() -> anyhow::Result<()> {
     let now = e.w.view_block().await?.timestamp();
     assert!(!e.grant(1, now, 48, 12).await, "no pool, no grant");
     assert_eq!(e.number("open_claims").await, 0);
+    Ok(())
+}
+
+/// The board approves a hash; that hash must cover the money terms too. A proposal whose raise, kind or deadline
+/// differs from the ones inside the hashed plan is refused, so an approved share plan cannot be paired with a $1 raise.
+#[tokio::test]
+async fn plan_hash_binds_raise_kind_and_deadline() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let body = r#"{"converted_safes":[],"issuances":[{"class":"SeriesA","holder":"fund","shares":"4500000"}]}"#;
+    let full = json!([[e.fund.id(), "9000000000000"]]);
+    let plan = seal("Priced", body, &full, 1_900_000_000_000_000_000);
+    let send = |kind: &'static str, plan: String, raise: Value, deadline: u64| e.ada.call(e.rounds.id(), "propose_round")
+        .args_json(json!({"kind": kind, "plan_hash": h(&plan), "plan_uri": "x", "plan": plan, "raise": raise, "deadline_ns": deadline})).transact();
+    assert!(!send("Priced", plan.clone(), json!([[e.fund.id(), "1"]]), 1_900_000_000_000_000_000).await?.is_success(), "a $9M plan cannot be proposed with a tiny raise");
+    assert!(!send("Priced", plan.clone(), json!([[e.zed.id(), "9000000000000"]]), 1_900_000_000_000_000_000).await?.is_success(), "nor with another investor");
+    assert!(!send("Safe", plan.clone(), full.clone(), 1_900_000_000_000_000_000).await?.is_success(), "nor as another kind of round");
+    assert!(!send("Priced", plan.clone(), full.clone(), u64::MAX).await?.is_success(), "nor with another deadline");
+    assert!(!send("Priced", body.to_string(), full.clone(), 1_900_000_000_000_000_000).await?.is_success(), "a plan without its terms is refused");
+    let ok = send("Priced", plan.clone(), full.clone(), 1_900_000_000_000_000_000).await?;
+    assert!(ok.is_success(), "the matching terms are accepted");
+    let r: Value = e.rounds.view("round").args_json(json!({"round_id": ok.json::<u64>()?})).await?.json()?;
+    assert_eq!(r["plan_hash"], h(&plan)); assert_eq!(r["raise"], full);
+    // a SAFE round: the investor pays exactly the SAFE's purchase amount
+    let safe = r#"{"safes":[{"id":"safe1","holder":"chidi.test.near","amount":"500000000000","post_money_cap":"5000000000000","discount_bps":0,"converted":false}]}"#;
+    let cheap = json!([[e.chidi.id(), "1"]]);
+    let p = seal("Safe", safe, &cheap, u64::MAX);
+    assert!(!send("Safe", p, cheap, u64::MAX).await?.is_success(), "a $500,000 SAFE cannot be bought for less, even if the plan says so");
+    Ok(())
+}
+
+/// Cancelling a round with many investors must not fail for gas: the cancel refunds what its gas covers and the
+/// rest are pulled with `retry_refund`, each exactly once.
+#[tokio::test]
+async fn cancel_with_many_investors_refunds_everyone() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let root = e.w.root_account()?;
+    let mut investors = vec![];
+    for i in 0..12 {
+        let a = root.create_subaccount(&format!("inv{}", i)).initial_balance(NearToken::from_near(5)).transact().await?.into_result()?;
+        register(&e.ft, &[a.id()]).await; faucet(&e.ft, &a, 1_000).await;
+        investors.push(a);
+    }
+    let raise = Value::Array(investors.iter().map(|a| json!([a.id(), (1_000 * USD).to_string()])).collect());
+    let r = e.propose("Priced", r#"{"converted_safes":[],"issuances":[{"class":"SeriesA","holder":"pool","shares":"12"}]}"#, raise).await;
+    for a in &investors { e.deposit(a, r, 1_000).await; }
+    assert_eq!(e.number("ledger_total").await, 12_000 * USD);
+    assert!(e.cancel(r).await, "the cancel itself succeeds with 12 depositors");
+    assert_eq!(e.status(r).await, "Cancelled");
+    let mut refunded = 0;
+    for a in &investors { if balance(&e.ft, a.id()).await == 1_000 * USD { refunded += 1; } }
+    assert_eq!(refunded, 8, "the cancel refunds MAX_REFUNDS_PER_CALL investors itself");
+    for a in &investors {
+        if balance(&e.ft, a.id()).await == 1_000 * USD { continue }
+        e.efe.call(e.rounds.id(), "retry_refund").args_json(json!({"round_id": r, "investor": a.id()})).max_gas().transact().await?.into_result()?;
+    }
+    for a in &investors {
+        assert_eq!(balance(&e.ft, a.id()).await, 1_000 * USD, "{} has the deposit back", a.id());
+        assert!(!e.efe.call(e.rounds.id(), "retry_refund").args_json(json!({"round_id": r, "investor": a.id()})).max_gas().transact().await?.is_success(), "no double refund");
+    }
+    assert_eq!(e.round_balance().await, 0);
+    assert_eq!(e.number("ledger_total").await, 0);
+    // a cancel with little gas still cancels and leaves every refund pullable
+    let r2 = e.propose("Priced", r#"{"converted_safes":[],"issuances":[{"class":"SeriesA","holder":"pool","shares":"1"}]}"#, json!([[investors[0].id(), (1_000 * USD).to_string()]])).await;
+    e.deposit(&investors[0], r2, 1_000).await;
+    assert!(e.board.call(e.rounds.id(), "cancel_round").args_json(json!({"round_id": r2})).gas(Gas::from_tgas(20)).transact().await?.is_success(), "a low-gas cancel succeeds");
+    assert_eq!(balance(&e.ft, investors[0].id()).await, 0, "no refund fitted in that gas");
+    e.efe.call(e.rounds.id(), "retry_refund").args_json(json!({"round_id": r2, "investor": investors[0].id()})).max_gas().transact().await?.into_result()?;
+    assert_eq!(balance(&e.ft, investors[0].id()).await, 1_000 * USD);
+    Ok(())
+}
+
+/// Money paid into an exit the board calls off is not stranded: funders take back exactly what they paid, once.
+#[tokio::test]
+async fn cancelled_exit_refunds_its_funders() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let plan = json!({"payouts": [[e.ada.id(), "100000000"], [e.bayo.id(), "50000000"]]}).to_string();
+    let x = e.ada.call(e.rounds.id(), "propose_exit").args_json(json!({"plan_hash": h(&plan), "plan_uri": "x", "plan": plan})).transact().await?.into_result()?.json::<u64>()?;
+    let fund = |who: &Account, amt: &str| who.call(e.ft.id(), "ft_transfer_call").args_json(json!({"receiver_id": e.rounds.id(), "amount": amt, "msg": json!({"action":"exit","id":x}).to_string()})).deposit(ONE).max_gas().transact();
+    let (z0, f0) = (balance(&e.ft, e.zed.id()).await, balance(&e.ft, e.fund.id()).await);
+    fund(&e.zed, "100000000").await?.into_result()?; fund(&e.fund, "20000000").await?.into_result()?;
+    assert_eq!(e.number("ledger_total").await, 120 * USD);
+    let refund = |who: &Account| e.efe.call(e.rounds.id(), "refund_exit").args_json(json!({"exit_id": x, "funder": who.id()})).max_gas().transact();
+    assert!(!refund(&e.zed).await?.is_success(), "no refund while the exit is live");
+    assert!(!e.efe.call(e.rounds.id(), "cancel_exit").args_json(json!({"exit_id": x})).transact().await?.is_success(), "only the board cancels an exit");
+    e.board.call(e.rounds.id(), "cancel_exit").args_json(json!({"exit_id": x})).transact().await?.into_result()?;
+    assert!(!e.board.call(e.rounds.id(), "approve_exit").args_json(json!({"exit_id": x, "plan_hash": h(&plan)})).transact().await?.is_success(), "a cancelled exit cannot be approved");
+    assert!(!e.zed.call(e.rounds.id(), "distribute").args_json(json!({"exit_id": x, "from": 0, "limit": 2})).max_gas().transact().await?.is_success(), "nor paid out");
+    let before = balance(&e.ft, e.zed.id()).await;
+    fund(&e.zed, "1000000").await?.into_result()?;
+    assert_eq!(balance(&e.ft, e.zed.id()).await, before, "nor funded any further");
+    // a failed refund transfer leaves the claim in place
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": true})).transact().await?.into_result()?;
+    let _ = refund(&e.zed).await?;
+    assert_eq!(e.number("ledger_total").await, 120 * USD, "a failed refund keeps the money on the ledger");
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": false})).transact().await?.into_result()?;
+    refund(&e.zed).await?.into_result()?; refund(&e.fund).await?.into_result()?;
+    assert_eq!((balance(&e.ft, e.zed.id()).await, balance(&e.ft, e.fund.id()).await), (z0, f0), "each funder has exactly their money back");
+    assert!(!refund(&e.zed).await?.is_success(), "no double refund");
+    assert!(!refund(&e.ada).await?.is_success(), "a non-funder gets nothing");
+    assert_eq!(e.round_balance().await, 0);
+    assert_eq!(e.number("ledger_total").await, 0);
+    // an exit whose payouts have started cannot be cancelled
+    let x2 = e.ada.call(e.rounds.id(), "propose_exit").args_json(json!({"plan_hash": h(&plan), "plan_uri": "x", "plan": plan})).transact().await?.into_result()?.json::<u64>()?;
+    e.zed.call(e.ft.id(), "ft_transfer_call").args_json(json!({"receiver_id": e.rounds.id(), "amount": "150000000", "msg": json!({"action":"exit","id":x2}).to_string()})).deposit(ONE).max_gas().transact().await?.into_result()?;
+    e.board.call(e.rounds.id(), "approve_exit").args_json(json!({"exit_id": x2, "plan_hash": h(&plan)})).transact().await?.into_result()?;
+    e.zed.call(e.rounds.id(), "distribute").args_json(json!({"exit_id": x2, "from": 0, "limit": 1})).max_gas().transact().await?.into_result()?;
+    assert!(!e.board.call(e.rounds.id(), "cancel_exit").args_json(json!({"exit_id": x2})).transact().await?.is_success(), "payouts have started");
     Ok(())
 }

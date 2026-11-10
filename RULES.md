@@ -37,7 +37,7 @@ Default 48 months, 12-month cliff: 25% at cliff, remainder monthly (linear per m
 Sort preferred classes by preference per as-converted share ascending. For k = 0..n: lowest k convert, others take preference (pro rata in rank order if proceeds are insufficient; pari passu by default), remainder split among common + converted pro rata. Choose the unique consistent k: every converter gets >= its preference per share, every non-converter would get less by converting. Options exercise only if per-share payout > strike; cash exercise adds strike to proceeds. Unissued pool receives nothing.
 
 ## R9 Plan hash
-sha256 of RFC 8785 canonical JSON of the plan, all amounts as strings.
+sha256 of RFC 8785 canonical JSON of the plan, all amounts as strings. A round plan carries its money terms as well as its shares: `kind` (Founder, Safe or Priced), `raise` (a list of `[investor account, micro-dollars]`) and `deadline_ns` (a string). The contract refuses a proposal whose `kind`, `raise` or `deadline_ns` arguments differ from the ones inside the hashed plan, and in a Safe round each investor's raise must equal the purchase amounts of the SAFEs issued to them. So the hash the board approves fixes who pays how much for which shares, not only the shares.
 
 ## Golden vectors
 vectors/gv-1.json, vectors/gv-2.json (hand-checked against R3, R6, R8 on 2026-11-06). TODO: add five more (discount-only SAFE; cap+discount each winning; no top-up; down round below caps; exit with out-of-the-money option).

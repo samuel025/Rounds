@@ -51,7 +51,8 @@ describe("wallet actions reach the selector in a format it accepts", () => {
     expect(seen.length).toBe(1);
     const [first, second] = seen[0].actions;
     expect([first.params.methodName, second.params.methodName]).toEqual(["storage_deposit", "propose_round"]);
-    expect(second.params.args).toEqual({ deadline_ns: 1794000000000000000 }); // Meteor's converter parses JSON bytes, so very large numbers pass through a double: harmless for a deadline
+    expect(second.params.args).toEqual({ deadline_ns: 1794000000000000000 }); // Meteor's converter parses JSON bytes, so very large numbers pass through a double; the app only sends whole-second deadlines, which survive that exactly (the contract compares the deadline with the one in the hashed plan)
+    for (const ns of ["1794938764000000000", "1900000000000000000", "1794000000123000000"]) expect(JSON.stringify(JSON.parse(ns))).toBe(ns);
   });
 
   it("the old plain-object format is rejected the way the user saw (regression guard)", async () => {

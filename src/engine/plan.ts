@@ -19,6 +19,16 @@ export async function planHash(canonical: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+export type RoundKind = "Founder" | "Safe" | "Priced";
+/** deadline_ns for a round with no funding deadline (u64 max, as a string: plans never carry numbers above 2^53). */
+export const NO_DEADLINE = "18446744073709551615";
+/** Put a round's money terms inside the plan, so the hash the board approves covers them too (RULES.md R9):
+ *  the kind of round, who pays how much (micro-dollars) and the funding deadline. The contract refuses a
+ *  proposal whose call arguments differ from these. */
+export function sealPlan<T extends object>(body: T, terms: { kind: RoundKind; raise: [string, bigint | string][]; deadlineNs?: bigint | string }) {
+  return { ...body, kind: terms.kind, raise: terms.raise.map(([who, amount]) => [who, amount.toString()]), deadline_ns: (terms.deadlineNs ?? NO_DEADLINE).toString() };
+}
+
 /** The plan the Rounds contract executes for a priced round (see contract RoundPlan). */
 export function pricedRoundPlan(inp: PricedRoundInput, r: PricedRoundResult, classes: { safeClass: (safeId: string) => string; seriesClass: string; investorHolder?: (k: string) => string }) {
   const issuances: { class: string; holder: string; shares: string }[] = [];

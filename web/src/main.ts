@@ -3,7 +3,7 @@ import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { usd, usdExact, price4 } from "./format";
-import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
+import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, sealPlan, NO_DEADLINE, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const M = 1_000_000n;
@@ -65,13 +65,14 @@ function renderModel() {
   renderCap(r); renderPeople(r); renderExit(r);
 }
 async function renderPlan(r: Res) {
-  const plan = pricedRoundPlan(input(), r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred" });
+  const raise: [string, bigint][] = [["fund.testnet", BigInt(state.raise) * M]];
+  const plan = sealPlan(pricedRoundPlan(input(), r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred" }), { kind: "Priced", raise });
   const canon = canonicalJson(plan); const h = await planHash(canon);
   $("plan-card").innerHTML = `<div class="card-h"><span class="mono muted">PLAN HASH · SHA-256 OF RFC 8785 JSON ${RULES("r9")}</span></div><div class="hash">${h}</div>
-  <p class="note" style="margin-top:12px">This is the exact value the board votes on. Propose it with your wallet, or with the command below; either way the contract accepts it only from an officer account, and the DAO then approves it by this hash.</p>
+  <p class="note" style="margin-top:12px">This is the exact value the board votes on. It covers the shares issued <b>and</b> the money: who pays how much, and the funding deadline. (Shown here for an example investor <span class="mono">fund.testnet</span> and no deadline; proposing with your wallet puts your account and a 7-day deadline into the plan, so that plan has its own hash.) Propose it with your wallet, or with the command below; either way the contract accepts it only from an officer account, and the DAO then approves it by this hash.</p>
   <div id="propose-row" style="margin:10px 0"${state.locked ? " hidden" : ""}><button class="btn primary sm" id="propose-btn">Propose on chain with my wallet</button> <span class="note" id="propose-note">Sends <span class="mono">propose_round</span> to the contract in the box under Events &amp; verify, with your account as the investor. Testnet only.</span></div>
   ${state.locked ? `<p class="note">Propose this exact plan in the guided steps below: <a href="#try" class="mono">Run a round on testnet</a>.</p>` : ""}
-  <pre class="out" id="cli">near contract call-function as-transaction &lt;ROUNDS&gt; propose_round json-args '{"kind":"Priced","plan_hash":"${h}","plan_uri":"…","plan":${JSON.stringify(canon).replace(/&/g, "&amp;").replace(/</g, "&lt;")},"raise":[["fund.testnet","${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":…}' …</pre>`;
+  <pre class="out" id="cli">near contract call-function as-transaction &lt;ROUNDS&gt; propose_round json-args '{"kind":"Priced","plan_hash":"${h}","plan_uri":"…","plan":${JSON.stringify(canon).replace(/&/g, "&amp;").replace(/</g, "&lt;")},"raise":[["fund.testnet","${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${NO_DEADLINE}}' …</pre>`;
   $("propose-btn").onclick = async () => {
     const acct = account();
     if (!acct) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
@@ -95,9 +96,12 @@ async function proposeModeled(contract: string) {
   const { r } = solve(); if (!r) throw new Error("the modeled round has no valid solution; fix the inputs");
   const inp = input();
   for (const sf of inp.safes) { try { const rec = await call(defaultRpc, contract, "safe", { id: sf.id }); if (rec?.holder) sf.holder = rec.holder; } catch { /* no such SAFE on this contract: keep the label */ } }
-  const mine = pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct });
+  // 7 days out, in whole seconds: the argument travels as a JSON number and some wallets pass it through a double, so it must
+  // survive that unchanged to equal the deadline inside the hashed plan (a whole second in ns is exact in a double and prints as itself)
+  const deadline = ((BigInt(Math.floor(Date.now() / 1000)) + 7n * 86_400n) * 1_000_000_000n).toString();
+  // the money terms go inside the hashed plan; the contract refuses the call if they differ from the arguments below
+  const mine = sealPlan(pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct }), { kind: "Priced", raise: [[acct, BigInt(state.raise) * M]], deadlineNs: deadline });
   const c = canonicalJson(mine); const hh = await planHash(c);
-  const deadline = ((BigInt(Date.now()) + 7n * 86_400_000n) * 1_000_000n).toString(); // exact u64, 7 days out
   const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":[[${JSON.stringify(acct)},"${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${deadline}}`;
   return send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
 }
@@ -242,7 +246,7 @@ async function initChain() {
   const link = (contract: string, frag: string) => `${location.origin}${location.pathname}?contract=${encodeURIComponent(contract)}#${frag}`;
   const run = async (quiet = false) => {
     const id = input.value.trim().toLowerCase();
-    if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-118174.testnet</span></p>`; return; }
+    if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-332657.testnet</span></p>`; return; }
     if (!quiet) { $("chain-actions").innerHTML = ""; out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`; }
     try {
       const v = await loadChain(dep.rpc, id);
@@ -252,10 +256,10 @@ async function initChain() {
       for (const r of v.rounds) {
         const c = await checkRound(r); if (!c.ok) failed++;
         const hl = only && +only === r.id ? ' style="background:rgba(68,255,164,.08)"' : "";
-        rows.push(`<tr id="round-${r.id}"${hl}><td>Round ${r.id}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td><td>${esc(r.status)}</td><td><span class="${c.ok ? "pass" : "fail"}">${c.ok ? "PASS" : "FAIL"}</span> <span class="mono muted">${esc(r.plan_hash.slice(0, 16))}…</span></td><td><button class="linkbtn" data-copy="${esc(link(id, "verify/round-" + r.id))}" data-r="${r.id}">Copy link</button></td></tr>`);
+        rows.push(`<tr id="round-${r.id}"${hl}><td>Round ${r.id}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td><td>${esc(r.status)}</td><td><span class="${c.ok ? "pass" : "fail"}">${c.ok ? "PASS" : "FAIL"}</span> <span class="mono muted">${esc(r.plan_hash.slice(0, 16))}…</span> <span class="muted">${c.terms === "bound" ? "· hash covers shares and money" : c.terms === "legacy" ? "· older contract: hash covers shares only" : "· money terms differ from the plan"}</span></td><td><button class="linkbtn" data-copy="${esc(link(id, "verify/round-" + r.id))}" data-r="${r.id}">Copy link</button></td></tr>`);
       }
       const hold = v.holdings.map(([h, cl, sh]) => `<tr><td class="mono">${esc(h)}</td><td>${esc(cl)}</td><td class="n">${esc(BigInt(sh).toLocaleString("en-US"))}</td></tr>`).join("");
-      const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.approved ? "approved" : "pending"}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc(usdExact(BigInt(e.total)))} USDC</td></tr>`).join("");
+      const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.cancelled ? "cancelled" : e.approved ? "approved" : "pending"}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc(usdExact(BigInt(e.total)))} USDC</td></tr>`).join("");
       out.innerHTML = `<div class="chain-h"><span class="mono muted">CONTRACT <b>${esc(v.contract)}</b> · BOARD ${esc(v.board)} · TOKEN ${esc(v.token)}</span></div>
         <table class="chain-tbl"><tr><th>HOLDER</th><th>CLASS</th><th class="n">SHARES (ON CHAIN)</th></tr>${hold || `<tr><td colspan="3" class="muted">no shares issued yet</td></tr>`}</table>
         <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th>SHARE</th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>

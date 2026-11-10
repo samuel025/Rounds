@@ -2,7 +2,7 @@
 // Every plan below is produced by the engine; the contract only credits plans the board approved by hash.
 import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { priceRound, waterfall, vested, canonicalJson, planHash, pricedRoundPlan } from "../src/engine/index";
+import { priceRound, waterfall, vested, canonicalJson, planHash, sealPlan, type RoundKind, pricedRoundPlan } from "../src/engine/index";
 
 const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://testnet.nearblocks.io";
 const M = 1_000_000n;
@@ -85,7 +85,7 @@ async function collectEvents() {
   }
 }
 // A hostile call that must fail ON CHAIN: sign with the CLI, broadcast over RPC ourselves, so a failed transaction still gives us its hash.
-async function attackFail(step: string, what: string, contract: string, method: string, args: object, signer: string, expectMsg: string) {
+async function attackFail(step: string, what: string, contract: string, method: string, args: object | string, signer: string, expectMsg: string) {
   const out = sendRaw(contract, method, args, signer, { mode: "display" }).replace(/\x1b\[[0-9;]*m/g, "");
   const b64 = out.match(/serialized as base64\):\s*\n(\S+)/)?.[1]; if (!b64) throw new Error("no signed transaction in CLI output");
   const res = await rfetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "send_tx", params: { signed_tx_base64: b64, wait_until: "FINAL" } }) });
@@ -154,7 +154,7 @@ async function main() {
   await dao("1", "board makes ada an officer", A.core, "set_officer", { account: A.ada, enabled: true });
 
   const propose = async (step: string, kind: string, plan: object, raise: [string, bigint][], uri: string) => {
-    const canon = canonicalJson(plan); const hash = await sha(canon);
+    const canon = canonicalJson(sealPlan(plan, { kind: kind as RoundKind, raise })); const hash = await sha(canon);
     const r = call(step, `ada proposes ${kind} round`, A.core, "propose_round", JSON.stringify({ kind, plan_hash: hash, plan_uri: uri, plan: canon, raise: raise.map(([a, v]) => [a, v.toString()]), deadline_ns: "__MAX_U64__" }).replace('"__MAX_U64__"', "18446744073709551615"), A.ada);
     planByRound[String(r.ret)] = canon; return { rid: r.ret as number, canon, hash };
   };
@@ -192,13 +192,18 @@ async function main() {
   const checks: [string, bigint, bigint][] = [["fund", await holding(A.fund, "Series A Preferred"), 4_500_000n], ["safe1", await holding(A.chidi, "SAFE 1 shadow preferred"), 1_000_000n], ["safe2", await holding(A.dayo, "SAFE 2 shadow preferred"), 250_000n], ["pool", await holding("unissued_pool", "Common"), 1_500_000n]];
   for (const [n, got, want] of checks) { if (got !== want) throw new Error(`holding ${n}: ${got} != ${want}`); log(`holding ${n} = ${got} (GV-1 ok)`); }
 
-  // ---- step 6: three attacks
+  // ---- step 6: four attacks
   await attackFail("6", "a stranger calls approve_round", A.core, "approve_round", { round_id: a.rid, plan_hash: a.hash }, A.efe, "only the board");
   const before = await bal(A.chidi, A.fake);
   ft(A.chidi, A.core, 50n * M, { action: "round", id: a.rid }, "6", "chidi deposits the WRONG token", A.fake);
   const after = await bal(A.chidi, A.fake); if (before !== after) throw new Error("wrong token not refunded"); log("wrong-token deposit refunded in full");
   await attackFail("6", "close_round runs a second time", A.core, "close_round", { round_id: a.rid }, A.zed, "already closing/closed");
   if (await holding(A.fund, "Series A Preferred") !== 4_500_000n) throw new Error("double close changed holdings");
+  // an officer re-proposes the very plan the board approved ($9,000,000 for 4,500,000 shares) but asks the investor for $1:
+  // the money terms are inside the hashed plan, so the contract refuses before anything is recorded
+  await attackFail("6", "an officer proposes the approved Series A plan with a $1 raise", A.core, "propose_round",
+    JSON.stringify({ kind: "Priced", plan_hash: a.hash, plan_uri: "ipfs://series-a", plan: a.canon, raise: [[A.fund, "1"]], deadline_ns: "__MAX_U64__" }).replace('"__MAX_U64__"', "18446744073709551615"), A.ada, "plan does not carry these terms");
+  if (await view(A.core, "round", { round_id: a.rid + 1 }) !== null) throw new Error("the underpriced proposal was recorded");
 
   // ---- step 7: grant and cliff
   const strike = res.priceMicro;

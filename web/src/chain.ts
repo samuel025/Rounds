@@ -2,7 +2,7 @@
 import { planHash } from "../../src/engine/index";
 
 export interface RoundRec { id: number; kind: unknown; status: string; plan_hash: string; plan_uri: string; plan: string; raise: [string, string][]; deposits: [string, string][] }
-export interface ExitRec { id: number; plan_hash: string; plan_uri: string; approved: boolean; total: string; funded: string; payouts: { account?: string; amount?: string; paid?: boolean }[] }
+export interface ExitRec { id: number; plan_hash: string; plan_uri: string; approved: boolean; cancelled?: boolean; total: string; funded: string; payouts: { account?: string; amount?: string; paid?: boolean }[] }
 export interface ChainView {
   contract: string; board: string; token: string; classes: { id: string; authorized: string }[];
   holdings: [string, string, string][]; rounds: RoundRec[]; exits: ExitRec[];
@@ -30,5 +30,8 @@ export async function loadChain(rpc: string, contract: string, max = 50): Promis
 // Recompute a round's plan hash locally and compare with the one the chain holds.
 export async function checkRound(r: RoundRec) {
   const local = await planHash(r.plan);
-  return { ok: local === r.plan_hash, local };
+  // Current contracts keep the money terms (kind, raise, deadline) inside the hashed plan; older deployments hashed the shares only.
+  let terms: "bound" | "mismatch" | "legacy" = "legacy";
+  try { const p = JSON.parse(r.plan); if (Array.isArray(p.raise)) terms = p.kind === r.kind && JSON.stringify(p.raise) === JSON.stringify(r.raise) ? "bound" : "mismatch"; } catch { terms = "mismatch"; }
+  return { ok: local === r.plan_hash && terms !== "mismatch", local, terms };
 }

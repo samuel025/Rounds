@@ -1,68 +1,68 @@
-Rounds demo replay (offline). Network testnet; contract rounds-core-118174.testnet; board rounds-board-118174.sputnik-v2.testnet
+Rounds demo replay (offline). Network testnet; contract rounds-core-332657.testnet; board rounds-board-332657.sputnik-v2.testnet
 
 STEPS (each links to its testnet transaction)
-  1  Setup                      create the DAO board (2-of-3 council)                                https://testnet.nearblocks.io/txns/C4qiXVU4DdGz8kSpr65v7qtkuYGZGXQSbQFmVqRgxYj3
-  1  Setup                      deploy test USDC (6 decimals, public faucet, no value)               https://testnet.nearblocks.io/txns/3EqSqvej2rWBcMZ5f8mGacQgRGQE1WP63tQeodU9wPQi
-  1  Setup                      deploy a second token used only for the wrong-token attack           https://testnet.nearblocks.io/txns/3hXUUJT7cBn9kUm87yjar1vAJpkCi7cHxM4xA2xqbvTX
-  1  Setup                      deploy Rounds with the DAO as board and treasury                     https://testnet.nearblocks.io/txns/99ZuUnZtkFqUwEWwwej7xqS7vjj8p8mjmR928hcn9LMu
-  1  Setup                      register rounds-ada-118174.testnet for test USDC                     https://testnet.nearblocks.io/txns/2PKA51ommMpHcnbazt6o1fKJPsv6g58FMX28Us2vBs6d
-  1  Setup                      register rounds-fund-118174.testnet for test USDC                    https://testnet.nearblocks.io/txns/A9zFxz2EAmR122npk3QdVAMTgY6BhmZCACGaMhrPbAHR
-  1  Setup                      register rounds-indep-118174.testnet for test USDC                   https://testnet.nearblocks.io/txns/41nAjHMMpkmmCvS5t1EXZvwMp5DtouLhVGrD1aWq91AH
-  1  Setup                      register rounds-bayo-118174.testnet for test USDC                    https://testnet.nearblocks.io/txns/GgLmKyK7uQ8yJPKYCSVRJ3XazDZAmJ7Y1mxrYttHQeNc
-  1  Setup                      register rounds-chidi-118174.testnet for test USDC                   https://testnet.nearblocks.io/txns/4RLr2FKHgspYzXGcVH2AdJwvv999GGyMcMGGbMstXtLj
-  1  Setup                      register rounds-dayo-118174.testnet for test USDC                    https://testnet.nearblocks.io/txns/3ApYdxfkPiRLYU5WKgC9bw7TuvdaijSmbbXsZEAzVcor
-  1  Setup                      register rounds-efe-118174.testnet for test USDC                     https://testnet.nearblocks.io/txns/HqrEkiBBVg3zKWWDoXy1W3eBFqAThfWvUAmXKyA78tHo
-  1  Setup                      register rounds-zed-118174.testnet for test USDC                     https://testnet.nearblocks.io/txns/DukqPUB1PwtTSP5P35GmNDQSQy1gdgNBpmE9Pv47YbNJ
-  1  Setup                      register rounds-core-118174.testnet for test USDC                    https://testnet.nearblocks.io/txns/AQevrk1gpAYZGj9F1RkRH7D7StXKqZXzHiFdjXxC9i1u
-  1  Setup                      register rounds-board-118174.sputnik-v2.testnet for test USDC        https://testnet.nearblocks.io/txns/EnGp3gXkcRchVdZQP7pZiYUerbhPeaarmYheVK9iyMgx
-  1  Setup                      register rounds-chidi-118174.testnet for the fake token              https://testnet.nearblocks.io/txns/HkbmM4T5K7hyz7G1i2XXwNxDSSBruwPxsvNHLiCrC8LK
-  1  Setup                      register rounds-core-118174.testnet for the fake token               https://testnet.nearblocks.io/txns/47uxYFKi8XEryXyTUpEvvroZnYUnjhe3x2L7JSAY2CAM
-  1  Setup                      faucet: fund $9,000,000 test USDC                                    https://testnet.nearblocks.io/txns/84KkGs3HCG5Rj5kuEwXxJtjyboVVyZuhRM1bysahuc3F
-  1  Setup                      faucet: chidi $500,000                                               https://testnet.nearblocks.io/txns/4JkgakCWjra6dn9NuD77bHCjy5HHPfXgsZoTfLiZQQS1
-  1  Setup                      faucet: dayo $250,000                                                https://testnet.nearblocks.io/txns/82eaJipeYqsRYS5G6mqC16skZbdZPx3iazELKAJm1EAx
-  1  Setup                      faucet: zed $20,000,000                                              https://testnet.nearblocks.io/txns/GiKQaA7GZL6tmKxVG5428SnmasdWDYgBEF4Qq4gbLJ8f
-  1  Setup                      faucet: 100 fake tokens to chidi                                     https://testnet.nearblocks.io/txns/4Sz5CGgbWGP9HYKF4hG3rBe6rfBSAKBff1Z6qKjm4sWz
-  1  Setup                      DAO proposal: board makes ada an officer                             https://testnet.nearblocks.io/txns/2jt4FLgg63mSAuJT6u1xAXZB1Qv4qrEwYfRFdQw2wy28
-  1  Setup                      DAO vote 1/2 (fund) on #0                                            https://testnet.nearblocks.io/txns/HyurUHzSQNgKW23q6XAowdFsT1yWCYwGw49Ayd2PQaaG
-  1  Setup                      DAO vote 2/2 (indep) on #0: executes set_officer                     https://testnet.nearblocks.io/txns/4pykvhh7VYjomB9uVbsU7MvXivrbriRfiER85LphraqM
-  2  Founders                   ada proposes Founder round                                           https://testnet.nearblocks.io/txns/Fm2Y5C3PatG8mwo9DLAEmo5MAXvDwK9Q1z8WXUEBDsZa
-  2  Founders                   DAO proposal: board approves founder issuance by plan hash           https://testnet.nearblocks.io/txns/8AEgsmrsUEZtfVRr1LpiiPkndusLTMPCUiZDgorQLxa5
-  2  Founders                   DAO vote 1/2 (fund) on #1                                            https://testnet.nearblocks.io/txns/Apg4EhMfSKP8CzGSDyi38PSygosU72Zbw7CuHaCH1aeD
-  2  Founders                   DAO vote 2/2 (indep) on #1: executes approve_round                   https://testnet.nearblocks.io/txns/6dsy8T2U6a1KzbwWkmEdnJiM5bWS7qNLjmARnjRmP57a
-  2  Founders                   anyone closes founder issuance                                       https://testnet.nearblocks.io/txns/JRWVGrBasVbVyyYcSzJHzg9qjm4eQGMbJ6xiTQkfim3
-  3  SAFEs                      ada proposes Safe round                                              https://testnet.nearblocks.io/txns/96txms1EBjdfJcV1dGFCCuS37hT4y85ZFQgYWsCY9spq
-  3  SAFEs                      safe1 holder pays $500000 into escrow                                https://testnet.nearblocks.io/txns/3Yo2QqUDasTjiB6cW8LAafs9DWW2QTEJeB9oyEu7jzwJ
-  3  SAFEs                      DAO proposal: board approves safe1 by plan hash                      https://testnet.nearblocks.io/txns/8p7AcATowvk1MvLzQpyPFZi5oioG8sNewhxf3xur63x8
-  3  SAFEs                      DAO vote 1/2 (fund) on #2                                            https://testnet.nearblocks.io/txns/CDYZhXcHuRzc1pB9bAZGNtUd5iRTrBGxmmE5MoGXXGcw
-  3  SAFEs                      DAO vote 2/2 (indep) on #2: executes approve_round                   https://testnet.nearblocks.io/txns/DYb9rbUx7cTTqvy1YLtPL6fmSfQRwPUZAEf4w4kzt1AG
-  3  SAFEs                      anyone closes safe1                                                  https://testnet.nearblocks.io/txns/8PredNbefqb8n8dYBxx2z56skgcDDvZ6AChWUTwi1D3W
-  3  SAFEs                      ada proposes Safe round                                              https://testnet.nearblocks.io/txns/a8coVW8RMNpPuoQgMpRxAre9S16qNayVDEcyHQd9z5N
-  3  SAFEs                      safe2 holder pays $250000 into escrow                                https://testnet.nearblocks.io/txns/4fDmhU3HmKVFmaJuvktVCAoZhwy9HXF4LJdce1NWVnXt
-  3  SAFEs                      DAO proposal: board approves safe2 by plan hash                      https://testnet.nearblocks.io/txns/99JzLMeUiBE51qrQgd7gqsiqta2egCyrdVVo1sRNgeMi
-  3  SAFEs                      DAO vote 1/2 (fund) on #3                                            https://testnet.nearblocks.io/txns/3VG9BmJjfBiqZQRKyWGCKTLzQsZaG7euPygWenxDH1ev
-  3  SAFEs                      DAO vote 2/2 (indep) on #3: executes approve_round                   https://testnet.nearblocks.io/txns/2CwoKoKYRKQatfeLVToWaokcTMxQeXxTqwiJCPVB6HRq
-  3  SAFEs                      anyone closes safe2                                                  https://testnet.nearblocks.io/txns/1RuGqVoRD5BgcfwMFDezvk2A6aqosc5eZcH785uuExD
-  4  Series A proposed          ada proposes Priced round                                            https://testnet.nearblocks.io/txns/2HfPfFsdZLEfdQR5Mae9hyZMKyABDjgvA2PWaHPF1bKa
-  5  Series A funded and closed fund pays $9,000,000 into escrow                                     https://testnet.nearblocks.io/txns/F9mg9caSp7K9KEFLmvMcjxvoa9qktmE44LPYzDys8HdA
-  5  Series A funded and closed DAO proposal: board approves Series A by plan hash                   https://testnet.nearblocks.io/txns/3ZjAuB1wr6HoParcZc2aJet4KM3cfHzenKLNeXWa2RHP
-  5  Series A funded and closed DAO vote 1/2 (fund) on #4                                            https://testnet.nearblocks.io/txns/8a1Du4ZgNEvzEWms1DdpQHrVCA4qkcZM4ZZnf3ED7aQX
-  5  Series A funded and closed DAO vote 2/2 (indep) on #4: executes approve_round                   https://testnet.nearblocks.io/txns/AtxBaS75USZcWSP59VoZ725jQaWwwpYhaHCLYNZA3BqH
-  5  Series A funded and closed anyone closes Series A                                               https://testnet.nearblocks.io/txns/CEbpfjreRqtaViTtPhxe4gd8SMnRNUTACogzjacokfMV
-  6  Attacks                    chidi deposits the WRONG token                                       https://testnet.nearblocks.io/txns/2FKBm8rbPze7kNq54bv3qYqZeVjTWk8p9rJFe8NHmH1E
-  7  Grant                      DAO proposal: board grants Efe 100,000 options at $2.00              https://testnet.nearblocks.io/txns/G1bffuSU8wuKEZBuyCZVytwSTDGGHnKKB3rbJBW14DCh
-  7  Grant                      DAO vote 1/2 (fund) on #5                                            https://testnet.nearblocks.io/txns/2pw2dZcrHPx18x8rywUpmufYvCr4Wzf5JZLe5tPVJqhu
-  7  Grant                      DAO vote 2/2 (indep) on #5: executes grant                           https://testnet.nearblocks.io/txns/A7KVzreyP1meueDRZ88rbCq2FRtdMkrmkBmuHXpTugkX
-  8  Exit                       ada proposes the $20M exit                                           https://testnet.nearblocks.io/txns/4b9usVGrr74v4xjaji7yBSKBLaMKoUN9UB1QmsVGmXrF
-  8  Exit                       zed funds the exit ($19999999.999999)                                https://testnet.nearblocks.io/txns/CjqNRhyGik2gNq24RNjQgfkB4fH2Rxv3PhSApBUJcm1A
-  8  Exit                       DAO proposal: board approves the exit by plan hash                   https://testnet.nearblocks.io/txns/2V5n4XbkrxLmyYacx3SBccZnvzesAUCsVp4WK5G8uLhP
-  8  Exit                       DAO vote 1/2 (fund) on #6                                            https://testnet.nearblocks.io/txns/87sAaT4LxKcifDJPeG53SCN5WHV8z9FsMEvkh28JGWVP
-  8  Exit                       DAO vote 2/2 (indep) on #6: executes approve_exit                    https://testnet.nearblocks.io/txns/AjRYSm7xW2jpWWEaUTZ7nDjqyAFJWsaLP2yiBfVrshSM
-  8  Exit                       anyone runs distribute                                               https://testnet.nearblocks.io/txns/3mZsGyf13M3CL4s7X5ZcvC8sVMDFk6ytGtdJSnx1UTW1
-  9  Exercise                   faucet: efe $2,000 test USDC to pay the strike                       https://testnet.nearblocks.io/txns/FasR7F1iwyMm9bgAxZbBpwQ5To2JwF2eciNdLA7rwDyM
-  9  Exercise                   efe exercises 1,000 vested options at $2.00                          https://testnet.nearblocks.io/txns/25NTWiAzQFKAmiGSSAdtPrLGbAWsktprvWNCHJhZh84F
-  9  Exercise                   DAO proposal: board sweeps the exercise strike to the treasury       https://testnet.nearblocks.io/txns/39WRa3jQUBuZWE8Q8FeKGRjji5jTdDbsZPLsUernTMSi
-  9  Exercise                   DAO vote 1/2 (fund) on #7                                            https://testnet.nearblocks.io/txns/B2i1oaUEPACmuT3wwY5e6QfUVH78ywMAmHL7ZKECkp65
-  9  Exercise                   DAO vote 2/2 (indep) on #7: executes withdraw_strikes                https://testnet.nearblocks.io/txns/3HDZtR4NQ58cumesnGE8pYeXwVnSx8c9AYdhoeCGU71t
+  1  Setup                      create the DAO board (2-of-3 council)                                https://testnet.nearblocks.io/txns/CBjoyTvg46iq6HXQG8SNLuUzdotw3gHgDmakA2m5bLQx
+  1  Setup                      deploy test USDC (6 decimals, public faucet, no value)               https://testnet.nearblocks.io/txns/H8Sa9QMokARWBnVGLNwdo6DyVxkDaZn7n2hq2Peypoti
+  1  Setup                      deploy a second token used only for the wrong-token attack           https://testnet.nearblocks.io/txns/92bgHVdJ9LszyUsXvqVzqWAP9EKeBixKGkjemZvM2xBn
+  1  Setup                      deploy Rounds with the DAO as board and treasury                     https://testnet.nearblocks.io/txns/31rjTeV37BGUFeWd9qWdEiyjbkALwdFxewmPio1ywFaf
+  1  Setup                      register rounds-ada-332657.testnet for test USDC                     https://testnet.nearblocks.io/txns/FTbN2bDxmdwgcs53TvtepxjgBj3NDFwZ6XKQBjwp64F5
+  1  Setup                      register rounds-fund-332657.testnet for test USDC                    https://testnet.nearblocks.io/txns/4aUSZq8mqAUhcbYZX1BYnm4uVnSyt1CByffwgypoPJf2
+  1  Setup                      register rounds-indep-332657.testnet for test USDC                   https://testnet.nearblocks.io/txns/BNcnohTV72PDptrRjBDMFU4PjGaYog2StuycVifcWnFr
+  1  Setup                      register rounds-bayo-332657.testnet for test USDC                    https://testnet.nearblocks.io/txns/3zTsZAXsFa2tnobLPdnwhpTw1c8xibUYmWkiGXFhW5Hg
+  1  Setup                      register rounds-chidi-332657.testnet for test USDC                   https://testnet.nearblocks.io/txns/F6W3rsGtbwDYGFbASYHKhQtBijEV8nzWTnx8Vm7qTeKB
+  1  Setup                      register rounds-dayo-332657.testnet for test USDC                    https://testnet.nearblocks.io/txns/AHWABHYACiLME7KDj9MHsZiaXStB8ifBhEREhtbtVdrn
+  1  Setup                      register rounds-efe-332657.testnet for test USDC                     https://testnet.nearblocks.io/txns/FYHvYthWwn6DsH66XmjAqEtMDg8CK2o4dmM7ReMYADed
+  1  Setup                      register rounds-zed-332657.testnet for test USDC                     https://testnet.nearblocks.io/txns/5XpxoakCkp5dqWVp5HUJnBY95DPhnbBXHSaxvTjaJ8yb
+  1  Setup                      register rounds-core-332657.testnet for test USDC                    https://testnet.nearblocks.io/txns/9FC2x7FDBidP23U1CD522dEwKbBwAVH39n8Wm8KLrLsq
+  1  Setup                      register rounds-board-332657.sputnik-v2.testnet for test USDC        https://testnet.nearblocks.io/txns/9E2U2YNRmFupPdJzGcbmuSAA39zGKWc4t2xy5PEanCeX
+  1  Setup                      register rounds-chidi-332657.testnet for the fake token              https://testnet.nearblocks.io/txns/EASv7dRFo2aFtrN4KhoURY3aHEmhYCsjsY5dBiLymifB
+  1  Setup                      register rounds-core-332657.testnet for the fake token               https://testnet.nearblocks.io/txns/7TyQaD4Q5Qnp5K4TetPUtXi8gcAFkRhqU6GVoDNErs9c
+  1  Setup                      faucet: fund $9,000,000 test USDC                                    https://testnet.nearblocks.io/txns/J8eTFkLNhWVxCbAdTq4uFZQBadgbNRTX1fdy6nQwDiv6
+  1  Setup                      faucet: chidi $500,000                                               https://testnet.nearblocks.io/txns/Dv9bPu93pSzU7WdjMGxu4j3JZhnVtc8LkTTGKxxmrvqo
+  1  Setup                      faucet: dayo $250,000                                                https://testnet.nearblocks.io/txns/CeJWNuMqUTNeMTfZVh8xnADjRnux7eu6L8pdM5hpSDh9
+  1  Setup                      faucet: zed $20,000,000                                              https://testnet.nearblocks.io/txns/2aLLFfFjH6u5t1zFD2wzHp1xMaeWpSeaxayJqJL1NCWB
+  1  Setup                      faucet: 100 fake tokens to chidi                                     https://testnet.nearblocks.io/txns/28qbGKHjt8MQSJGg7hyX64bFqQ1wA2tUB1nZfu7jvWdh
+  1  Setup                      DAO proposal: board makes ada an officer                             https://testnet.nearblocks.io/txns/2guzqRA6Rc2iRxG2ejfbtYtGT89JDDs3UinWUR7HuCdT
+  1  Setup                      DAO vote 1/2 (fund) on #0                                            https://testnet.nearblocks.io/txns/3MvkNqrTDaYdDw4jrcPEbyKGDBizkhV1GuVtNgB7DSJE
+  1  Setup                      DAO vote 2/2 (indep) on #0: executes set_officer                     https://testnet.nearblocks.io/txns/GPew5c9ZniuYBm5zvHMnNZSYYiwbaR8uvoFRVJTd6oUG
+  2  Founders                   ada proposes Founder round                                           https://testnet.nearblocks.io/txns/FeLmrtvzBMfZ43fKPqnK7zeqbhTtYT5d9niN9KGcD8wx
+  2  Founders                   DAO proposal: board approves founder issuance by plan hash           https://testnet.nearblocks.io/txns/8AFFXCZQx196tXUzRT3LjkQiUP4CJpCmRnG8nXWjQMGi
+  2  Founders                   DAO vote 1/2 (fund) on #1                                            https://testnet.nearblocks.io/txns/Givoz5UxB6pU7uTj8foKfEXj9RSHDfpuUjdLHP8Qeiib
+  2  Founders                   DAO vote 2/2 (indep) on #1: executes approve_round                   https://testnet.nearblocks.io/txns/Dx2RZjikFHpoyY2P5j4WX7dMx8S7iodKiYhDJZYf1H3J
+  2  Founders                   anyone closes founder issuance                                       https://testnet.nearblocks.io/txns/BQjYKsyuxxH8EZtvzuhsmyQcXGpCodE9pXYVDhs4dAcw
+  3  SAFEs                      ada proposes Safe round                                              https://testnet.nearblocks.io/txns/AGntS5j1cfk7JiWzB71HrEFSeX2u61rK4y3mJ7LXwHxk
+  3  SAFEs                      safe1 holder pays $500000 into escrow                                https://testnet.nearblocks.io/txns/jmTDxUTZtb8u4xQX9B3Je3kGD5r2yC4816iEoYp1jTn
+  3  SAFEs                      DAO proposal: board approves safe1 by plan hash                      https://testnet.nearblocks.io/txns/3cNc3gfu3LVqHPKy4gjdZAtmTRHzcrQLQemMB8kgWXwD
+  3  SAFEs                      DAO vote 1/2 (fund) on #2                                            https://testnet.nearblocks.io/txns/7vC18Ci8HjBX6KVda7PeuZTGreG9fXDHaLhj7dY1qjD6
+  3  SAFEs                      DAO vote 2/2 (indep) on #2: executes approve_round                   https://testnet.nearblocks.io/txns/8K6afKaeTJooHBSTDBqEefUUysUa5qo52tdBjhSvNjzU
+  3  SAFEs                      anyone closes safe1                                                  https://testnet.nearblocks.io/txns/FUKR6FXtigCSDs4kvdSQiyCogEmZm8F9hvv841fArN1g
+  3  SAFEs                      ada proposes Safe round                                              https://testnet.nearblocks.io/txns/JCXyzRFdVZTqgSrd3UeeXFB9NGkdcZszJw32JUtmeu6d
+  3  SAFEs                      safe2 holder pays $250000 into escrow                                https://testnet.nearblocks.io/txns/3EUXMvM74s67ApkwkpMazGfXAG5yo77LMDZBF9bAQY4C
+  3  SAFEs                      DAO proposal: board approves safe2 by plan hash                      https://testnet.nearblocks.io/txns/Fhi6woyADT6RS2xcBC34Qbsf4AF3cfsqdhRDYd32HwcU
+  3  SAFEs                      DAO vote 1/2 (fund) on #3                                            https://testnet.nearblocks.io/txns/6ECvX1G6TmwzfY2i2EXWWrMihjfyxGDuk5CtyicQXnuJ
+  3  SAFEs                      DAO vote 2/2 (indep) on #3: executes approve_round                   https://testnet.nearblocks.io/txns/28fxPDgKYhAhwXC1eyK7UwV9ny7SacgobQANHejsEkyM
+  3  SAFEs                      anyone closes safe2                                                  https://testnet.nearblocks.io/txns/3zNMoHYZaJHxRfmFPBgnRzSZSmX14cABarq2JaCqaBti
+  4  Series A proposed          ada proposes Priced round                                            https://testnet.nearblocks.io/txns/9w3yoRSNLkBeKr4HyZvxoHkBwfYap5k31MyYg45gfxKg
+  5  Series A funded and closed fund pays $9,000,000 into escrow                                     https://testnet.nearblocks.io/txns/5amo4PEfw32RCBQ99Jpq7TJep7XNRZaAKyNNfjKsaKoe
+  5  Series A funded and closed DAO proposal: board approves Series A by plan hash                   https://testnet.nearblocks.io/txns/2NNSmWiS8RSwroZAfcRMAiBQm4C1L4Fuc24Prpv9hoJC
+  5  Series A funded and closed DAO vote 1/2 (fund) on #4                                            https://testnet.nearblocks.io/txns/3P4PBUfvrvKiKqmMmTEvNSkY5TLAvmBhiYb5GGA4u5Ua
+  5  Series A funded and closed DAO vote 2/2 (indep) on #4: executes approve_round                   https://testnet.nearblocks.io/txns/5LriPJLKjErnAJrq74dfb9Bgrp3uNmMrUQiZmiJ4chw6
+  5  Series A funded and closed anyone closes Series A                                               https://testnet.nearblocks.io/txns/DsQFjqyNHd8HUT7EiYvvB98TnU5ajx99SuGJsQ7FfWpJ
+  6  Attacks                    chidi deposits the WRONG token                                       https://testnet.nearblocks.io/txns/4y67JwrnunqMYehb75rLjhQNjKYPJGi4mqWLZzmQAKnL
+  7  Grant                      DAO proposal: board grants Efe 100,000 options at $2.00              https://testnet.nearblocks.io/txns/3VF52n8iFFsMyu7S79EYPvmYArdSv3J31LmspvcW8xY5
+  7  Grant                      DAO vote 1/2 (fund) on #5                                            https://testnet.nearblocks.io/txns/4EwncvZxMbRgaNYynK663iubx2WHY82HNTqCorBQrDQT
+  7  Grant                      DAO vote 2/2 (indep) on #5: executes grant                           https://testnet.nearblocks.io/txns/8r5epXYrskPfhanM4Y4bremzPYxb2e7Da5vRPtBNj4or
+  8  Exit                       ada proposes the $20M exit                                           https://testnet.nearblocks.io/txns/5fxCoh3Ap112sZjLgEKSZMB3i9EeZDNqiF5iibb4GKQ3
+  8  Exit                       zed funds the exit ($19999999.999999)                                https://testnet.nearblocks.io/txns/5aJjxcZN9Asqxj5b2N6xgoir1MH4UNAHUm6SDYKLcQu
+  8  Exit                       DAO proposal: board approves the exit by plan hash                   https://testnet.nearblocks.io/txns/82GCCTfcA5UMDy6SpW4i1gT3GnQvSBc7t9T81eAxg5uz
+  8  Exit                       DAO vote 1/2 (fund) on #6                                            https://testnet.nearblocks.io/txns/Cc2gtPnxvp65N9H2kcaVsWQzYsKybLmr8iJ35UVzGeDz
+  8  Exit                       DAO vote 2/2 (indep) on #6: executes approve_exit                    https://testnet.nearblocks.io/txns/3XQ3qfzUArqtQKRAYztxjuiWtYaRkAbrWe2gh3WQa297
+  8  Exit                       anyone runs distribute                                               https://testnet.nearblocks.io/txns/GXUKYGZKVP1i8mgfCP9JQ1SXWMzKVJWgEj1mth6JbxsB
+  9  Exercise                   faucet: efe $2,000 test USDC to pay the strike                       https://testnet.nearblocks.io/txns/4jcvQNPATEbby3QXH5tymrgo536acu4dRmB7vyQbRt9S
+  9  Exercise                   efe exercises 1,000 vested options at $2.00                          https://testnet.nearblocks.io/txns/2Xez75oHUowbHh8disKksXC2QuU4yL7VrKyQeQ1PSXHw
+  9  Exercise                   DAO proposal: board sweeps the exercise strike to the treasury       https://testnet.nearblocks.io/txns/Dvo6mWjroGBiihAGKpnxUhsvXjgwiGWcGzXUkuvCGsDC
+  9  Exercise                   DAO vote 1/2 (fund) on #7                                            https://testnet.nearblocks.io/txns/EUkq5PskMYj9vVpvoZfu9QMCHQJ6afTtt9aGb23voxu5
+  9  Exercise                   DAO vote 2/2 (indep) on #7: executes withdraw_strikes                https://testnet.nearblocks.io/txns/5HeMtV4ZFXLU9NkuMM7FNAt9VCJ3QJyAKu7RJZ5LSECH
 
 CAP TABLE rebuilt from committed events
   ada            Common                        5000000   33.33%

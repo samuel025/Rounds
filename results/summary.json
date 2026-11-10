@@ -1,11 +1,11 @@
 {
   "tests": {
-    "engine": 47,
+    "engine": 48,
     "engine_failed": 0,
     "engine_files": 9,
     "properties": 9,
     "golden_vector_tests": 12,
-    "sandbox": 13
+    "sandbox": 16
   },
   "conformance": {
     "scenarios": 1000,
@@ -23,7 +23,7 @@
     "payouts": 5
   },
   "verify_onchain": {
-    "checks": 23,
+    "checks": 28,
     "failed": 0
   },
   "replay": {

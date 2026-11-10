@@ -1,13 +1,19 @@
 //! Rounds: escrow, holdings and payouts, acting only on plans the board approved by hash.
 //! Plans are canonical-JSON strings; plan_hash = hex(sha256(plan bytes)). See RULES.md R9.
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::Deserialize;
 use near_sdk::store::{IterableMap, IterableSet};
 use near_sdk::{env, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError};
 
 const GAS_FT: Gas = Gas::from_tgas(10);
 const GAS_CB: Gas = Gas::from_tgas(15);
-const GAS_CLOSE_MIN: Gas = Gas::from_tgas(60);
+const GAS_CLOSE_MIN: Gas = Gas::from_tgas(100); // the gas the largest-plan sandbox test closes with
+/// A refund is one token transfer plus its callback. `cancel_round` sends at most this many itself and
+/// only as many as the attached gas covers; the rest are pulled one by one with `retry_refund`.
+pub const MAX_REFUNDS_PER_CALL: u64 = 8;
+const GAS_PER_REFUND: u64 = 30; // Tgas: GAS_FT + GAS_CB + headroom
+/// Cap on distinct funders of one exit, so the exit record stays small.
+pub const MAX_EXIT_FUNDERS: usize = 16;
 pub const MAX_DISTRIBUTE: u64 = 8; // 8 payouts x 25 Tgas + overhead < 300 Tgas (open question 6)
 /// Cap on grants ever created: `grant` and the claim views scan every grant, so this bounds their gas.
 pub const MAX_GRANTS: u64 = 256;
@@ -47,6 +53,11 @@ struct RoundPlan {
     #[serde(default)] issuances: Vec<Issuance>,
     #[serde(default)] safes: Vec<SafeRec>,
     #[serde(default)] converted_safes: Vec<String>,
+    // The money terms are part of the hashed plan (RULES.md R9): the board's approval of the hash covers who
+    // pays how much, the kind of round and the funding deadline, not only the shares issued.
+    kind: RoundKind,
+    raise: Vec<(AccountId, U128)>,
+    deadline_ns: U64,
 }
 
 #[near(serializers = [json, borsh])]
@@ -67,7 +78,7 @@ pub enum PayState { Pending, Sending, Paid }
 pub struct Payout { pub holder: AccountId, pub amount: U128, pub state: PayState }
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug)]
-pub struct Exit { pub id: u64, pub plan_hash: String, pub plan_uri: String, pub approved: bool, pub total: U128, pub funded: U128, pub payouts: Vec<Payout> }
+pub struct Exit { pub id: u64, pub plan_hash: String, pub plan_uri: String, pub approved: bool, pub total: U128, pub funded: U128, pub payouts: Vec<Payout>, pub funders: Vec<(AccountId, U128)>, pub cancelled: bool }
 #[derive(Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 struct ExitPlan { payouts: Vec<(AccountId, U128)> }
@@ -153,6 +164,8 @@ impl Rounds {
         check_hash(&plan, &plan_hash);
         let parsed: RoundPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad plan"));
         require!(raise.len() <= 32 && parsed.issuances.len() <= 64 && parsed.safes.len() <= 32, "plan too large");
+        // The call's terms must be the ones inside the hashed plan, so an approval of the hash cannot be paired with other money terms.
+        require!(parsed.kind == kind && parsed.raise == raise && parsed.deadline_ns.0 == deadline_ns, "plan does not carry these terms (kind, raise, deadline_ns)");
         if kind == RoundKind::Founder { require!(raise.is_empty(), "founder rounds take no deposits"); }
         else {
             require!(!raise.is_empty(), "round needs investors");
@@ -160,7 +173,15 @@ impl Rounds {
         }
         let mut seen = std::collections::HashSet::new();
         require!(raise.iter().all(|(a, _)| seen.insert(a.clone())), "duplicate investor");
-        if kind == RoundKind::Safe { require!(!parsed.safes.is_empty(), "safe round needs safes"); }
+        if kind == RoundKind::Safe {
+            require!(!parsed.safes.is_empty(), "safe round needs safes");
+            // each investor pays exactly the purchase amounts of the SAFEs issued to them
+            for (who, amt) in &raise {
+                let paid = parsed.safes.iter().filter(|s| &s.holder == who).try_fold(0u128, |a, s| a.checked_add(s.amount.0)).unwrap_or_else(|| env::panic_str("safe amount overflow"));
+                require!(paid == amt.0, "an investor's raise must equal their SAFE amounts");
+            }
+            require!(parsed.safes.iter().all(|s| raise.iter().any(|(w, _)| w == &s.holder)), "every SAFE holder must be in the raise");
+        }
         let id = self.next_round; self.next_round += 1;
         let deposits = raise.iter().map(|(a, _)| (a.clone(), U128(0))).collect();
         self.rounds.insert(id, Round { id, kind, status: RoundStatus::Funding, plan_hash: plan_hash.clone(), plan_uri, plan, raise, deposits, deadline_ns });
@@ -174,7 +195,7 @@ impl Rounds {
         let m: Msg = match near_sdk::serde_json::from_str(&msg) { Ok(m) => m, Err(_) => return amount };
         let accepted = match m.action.as_str() {
             "round" => self.deposit_round(&sender_id, amount.0, m.id),
-            "exit" => self.fund_exit(m.id, amount.0),
+            "exit" => self.fund_exit(&sender_id, m.id, amount.0),
             "exercise" => self.exercise(&sender_id, amount.0, m.id, m.shares.map(|s| s.0).unwrap_or(0)),
             _ => 0,
         };
@@ -205,7 +226,7 @@ impl Rounds {
         event("round_approved", &format!("{{\"round_id\":{},\"plan_hash\":\"{}\"}}", round_id, plan_hash));
     }
     pub fn close_round(&mut self, round_id: u64) -> Option<Promise> {
-        require!(env::prepaid_gas() >= GAS_CLOSE_MIN, "attach at least 60 Tgas");
+        require!(env::prepaid_gas() >= GAS_CLOSE_MIN, "attach at least 100 Tgas");
         let mut r = self.rounds.get(&round_id).cloned().unwrap_or_else(|| env::panic_str("no such round"));
         require!(r.status == RoundStatus::Approved, "round not approved or already closing/closed");
         require!(r.raise.iter().zip(r.deposits.iter()).all(|(a, b)| a.1 .0 == b.1 .0), "round not fully funded");
@@ -331,9 +352,16 @@ impl Rounds {
         let who: Vec<AccountId> = r.deposits.iter().filter(|d| d.1 .0 > 0).map(|d| d.0.clone()).collect();
         self.rounds.insert(round_id, r);
         event("round_cancelled", &format!("{{\"round_id\":{}}}", round_id));
-        for a in who { self.refund(round_id, a); }
+        // Refund as many as the attached gas covers (at most MAX_REFUNDS_PER_CALL); the cancel itself never fails for
+        // lack of gas, and any investor not refunded here is refunded by `retry_refund`.
+        let afford = (env::prepaid_gas().as_tgas().saturating_sub(env::used_gas().as_tgas() + 15) / GAS_PER_REFUND).min(MAX_REFUNDS_PER_CALL);
+        for a in who.into_iter().take(afford as usize) { self.refund(round_id, a); }
     }
-    pub fn retry_refund(&mut self, round_id: u64, investor: AccountId) { self.refund(round_id, investor); }
+    /// Anyone may trigger the refund of one investor of a cancelled round (also the retry after a failed transfer).
+    pub fn retry_refund(&mut self, round_id: u64, investor: AccountId) {
+        require!(env::prepaid_gas() >= Gas::from_tgas(GAS_PER_REFUND + 10), "attach at least 40 Tgas");
+        self.refund(round_id, investor);
+    }
     fn refund(&mut self, round_id: u64, investor: AccountId) {
         let mut r = self.rounds.get(&round_id).cloned().unwrap_or_else(|| env::panic_str("no such round"));
         require!(r.status == RoundStatus::Cancelled, "round not cancelled");
@@ -451,22 +479,62 @@ impl Rounds {
         let total = p.payouts.iter().try_fold(0u128, |a, x| a.checked_add(x.1 .0)).unwrap_or_else(|| env::panic_str("exit total overflow"));
         let id = self.next_exit; self.next_exit += 1;
         self.exits.insert(id, Exit { id, plan_hash: plan_hash.clone(), plan_uri, approved: false, total: U128(total), funded: U128(0),
-            payouts: p.payouts.into_iter().map(|(holder, amount)| Payout { holder, amount, state: PayState::Pending }).collect() });
+            payouts: p.payouts.into_iter().map(|(holder, amount)| Payout { holder, amount, state: PayState::Pending }).collect(), funders: vec![], cancelled: false });
         event("exit_proposed", &format!("{{\"exit_id\":{},\"plan_hash\":\"{}\",\"total\":\"{}\"}}", id, plan_hash, total));
         id
     }
-    fn fund_exit(&mut self, exit_id: u64, amount: u128) -> u128 {
+    fn fund_exit(&mut self, sender: &AccountId, exit_id: u64, amount: u128) -> u128 {
         let Some(mut e) = self.exits.get(&exit_id).cloned() else { return 0 };
+        if e.cancelled { return 0 }
         let Some(room) = e.total.0.checked_sub(e.funded.0) else { return 0 };
         let take = amount.min(room);
         if take == 0 { return 0 }
+        // remember who paid what, so a cancelled exit can be refunded exactly
+        match e.funders.iter_mut().find(|f| &f.0 == sender) {
+            Some(f) => f.1 = U128(f.1 .0.checked_add(take).unwrap_or_else(|| env::panic_str("funded overflow"))),
+            None => { if e.funders.len() >= MAX_EXIT_FUNDERS { return 0 } e.funders.push((sender.clone(), U128(take))); }
+        }
         e.funded = U128(e.funded.0.checked_add(take).unwrap_or_else(|| env::panic_str("funded overflow"))); self.exits.insert(exit_id, e);
         self.exit_funds_total = self.exit_funds_total.checked_add(take).unwrap_or_else(|| env::panic_str("exit funds overflow")); take
+    }
+    /// The board calls off an exit before any payout has been sent. Funders then take their money back with `refund_exit`.
+    pub fn cancel_exit(&mut self, exit_id: u64) {
+        self.only_board();
+        let mut e = self.exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such exit"));
+        require!(!e.cancelled, "already cancelled");
+        require!(e.payouts.iter().all(|p| p.state == PayState::Pending), "payouts have started");
+        e.cancelled = true; e.approved = false; self.exits.insert(exit_id, e);
+        event("exit_cancelled", &format!("{{\"exit_id\":{}}}", exit_id));
+    }
+    /// Anyone may trigger the refund of one funder of a cancelled exit.
+    pub fn refund_exit(&mut self, exit_id: u64, funder: AccountId) {
+        require!(env::prepaid_gas() >= Gas::from_tgas(GAS_PER_REFUND + 10), "attach at least 40 Tgas");
+        let mut e = self.exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such exit"));
+        require!(e.cancelled, "exit not cancelled");
+        let slot = e.funders.iter_mut().find(|f| f.0 == funder).unwrap_or_else(|| env::panic_str("not a funder"));
+        let amt = slot.1 .0; require!(amt > 0, "nothing to refund");
+        slot.1 = U128(0); // locked before the transfer; restored if it fails
+        e.funded = U128(e.funded.0.checked_sub(amt).unwrap_or_else(|| env::panic_str("funded underflow")));
+        self.exits.insert(exit_id, e);
+        let _ = Promise::new(self.payment_token.clone())
+            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", funder, amt).into_bytes(), YOCTO, GAS_FT)
+            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_exit_refund(exit_id, funder, U128(amt)));
+    }
+    #[private]
+    pub fn on_exit_refund(&mut self, exit_id: u64, funder: AccountId, amount: U128, #[callback_result] res: Result<(), PromiseError>) {
+        if res.is_err() {
+            let mut e = self.exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such exit"));
+            if let Some(f) = e.funders.iter_mut().find(|f| f.0 == funder) { f.1 = U128(f.1 .0.saturating_add(amount.0)); }
+            e.funded = U128(e.funded.0.saturating_add(amount.0));
+            self.exits.insert(exit_id, e); return; // retryable
+        }
+        self.exit_funds_total = self.exit_funds_total.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("exit funds underflow"));
+        event("exit_refund_sent", &format!("{{\"exit_id\":{},\"funder\":\"{}\",\"amount\":\"{}\"}}", exit_id, funder, amount.0));
     }
     pub fn approve_exit(&mut self, exit_id: u64, plan_hash: String) {
         self.only_board();
         let mut e = self.exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such exit"));
-        require!(!e.approved, "already approved"); require!(e.plan_hash == plan_hash, "plan hash mismatch");
+        require!(!e.cancelled, "exit was cancelled"); require!(!e.approved, "already approved"); require!(e.plan_hash == plan_hash, "plan hash mismatch");
         e.approved = true; self.exits.insert(exit_id, e);
         event("exit_approved", &format!("{{\"exit_id\":{}}}", exit_id));
     }

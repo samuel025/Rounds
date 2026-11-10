@@ -1,24 +1,29 @@
 PASS engine reproduces GV-1 (price $2.0000, 15,000,000 fully diluted, Fund 4,500,000)
-PASS config: board is the DAO rounds-board-118174.sputnik-v2.testnet and the payment token is rounds-usdc-118174.testnet
+PASS config: board is the DAO rounds-board-332657.sputnik-v2.testnet and the payment token is rounds-usdc-332657.testnet
 PASS round 1 (Founder): status Closed
 PASS round 1: on-chain plan equals the plan the engine recomputes
-PASS round 1: on-chain plan hash 52fdbe02d8b87763… equals sha256 of the recomputed plan
+PASS round 1: on-chain plan hash 14a9d6bc89e6950a… equals sha256 of the recomputed plan
+PASS round 1: the investors and amounts on chain (none) are the ones inside the approved plan, paid in full
 PASS round 2 (Safe): status Closed
 PASS round 2: on-chain plan equals the plan the engine recomputes
-PASS round 2: on-chain plan hash f8fbd060ae91359b… equals sha256 of the recomputed plan
+PASS round 2: on-chain plan hash a2f1631512518b45… equals sha256 of the recomputed plan
+PASS round 2: the investors and amounts on chain ($500,000) are the ones inside the approved plan, paid in full
 PASS round 3 (Safe): status Closed
 PASS round 3: on-chain plan equals the plan the engine recomputes
-PASS round 3: on-chain plan hash 72e1d2417c98a196… equals sha256 of the recomputed plan
+PASS round 3: on-chain plan hash b87eb620a1006a4b… equals sha256 of the recomputed plan
+PASS round 3: the investors and amounts on chain ($250,000) are the ones inside the approved plan, paid in full
 PASS round 4 (Priced): status Closed
 PASS round 4: on-chain plan equals the plan the engine recomputes
-PASS round 4: on-chain plan hash a631d5dab861d9df… equals sha256 of the recomputed plan
+PASS round 4: on-chain plan hash 7d3869dc52d0ff86… equals sha256 of the recomputed plan
+PASS round 4: the investors and amounts on chain ($9,000,000) are the ones inside the approved plan, paid in full
 PASS exercise conserved the total share count (none minted)
 PASS strike_balance = 0 (the exercise strike was swept to the treasury)
 PASS cap table: all 7 (holder, class) holdings equal the engine's result
 PASS exit 1: on-chain plan hash equals sha256 of the recomputed waterfall plan
 PASS exit 1: all 5 payouts Paid
 PASS exit 1: every payout equals the engine's waterfall to the micro-dollar
-PASS attack "a stranger calls approve_round": transaction 98QfY4UK… exists on chain and failed ("only the board")
-PASS attack "close_round runs a second time": transaction FLM6ukD6… exists on chain and failed ("already closing/closed")
+PASS attack "a stranger calls approve_round": transaction BfbQ7u3W… exists on chain and failed ("only the board")
+PASS attack "close_round runs a second time": transaction A8nEWMuy… exists on chain and failed ("already closing/closed")
+PASS attack "an officer proposes the approved Series A plan with a $1 raise": transaction 4AsbsTGM… exists on chain and failed ("plan does not carry these terms")
 PASS ledger: nothing left in custody (ledger_total = 0)
-PASS summary: 23 checks, 0 failed
+PASS summary: 28 checks, 0 failed

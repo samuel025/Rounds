@@ -15,7 +15,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 | `make check-readme` | node | `PASS summary: <n> tagged numbers checked, 0 failed` |
 | `make summary` | node, python-generated conformance files, cargo (to list sandbox tests) | rewrites `results/summary.json` |
 | `make web` / `make web-dev` | node | static site in `dist/` / dev server |
-| `make test-contract` | rust (wasm32 target), cargo-near, network for the sandbox binary | 13 sandbox tests pass |
+| `make test-contract` | rust (wasm32 target), cargo-near, network for the sandbox binary | 16 sandbox tests pass |
 | `make demo` | `near` CLI (near-cli-rs), network, public faucet | scripted testnet run; **creates fresh throwaway accounts; do not run casually** |
 
 `make verify-onchain` and `make replay` read `results/demo-*.json` (committed) and the testnet contract named in `results/demo-addresses.json`.
@@ -45,4 +45,5 @@ Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet.
 
 - The Python reference and the TypeScript engine were written by the same author in one session.
 - The committed demo run's vesting read is pinned to a block inside month 12 and equals the engine's 25,000. The failed attacks' transaction hashes are in `results/demo-attacks.json` and are re-checked by `make verify-onchain`.
+- A round's plan hash covers its money terms (`kind`, `raise`, `deadline_ns`) as well as its issuances; `propose_round` refuses arguments that differ from the hashed plan (sandbox test `plan_hash_binds_raise_kind_and_deadline`, and a failed on-chain attempt in `results/demo-attacks.json`). Deployments made before 2026-11-10 hashed the issuances only.
 - The SAFE clause citations in `RULES.md` map each rule to the YC post-money forms in `ref/`. Cap-plus-discount SAFEs are Rounds' own extension (not in the YC forms); Promised Options, pre-round exits and MFN are not modelled.

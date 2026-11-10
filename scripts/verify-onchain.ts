@@ -31,6 +31,8 @@ async function main() {
     check(r.status === "Closed", `round ${i + 1} (${r.kind}): status Closed`);
     check(r.plan === p.rounds[i], `round ${i + 1}: on-chain plan equals the plan the engine recomputes`);
     check(r.plan_hash === h, `round ${i + 1}: on-chain plan hash ${h.slice(0, 16)}… equals sha256 of the recomputed plan`);
+    const terms = JSON.parse(r.plan);
+    check(terms.kind === r.kind && JSON.stringify(terms.raise) === JSON.stringify(r.raise) && JSON.stringify(r.deposits) === JSON.stringify(r.raise), `round ${i + 1}: the investors and amounts on chain (${r.raise.length ? r.raise.map((x: [string, string]) => "$" + (BigInt(x[1]) / 1_000_000n).toLocaleString("en-US")).join(", ") : "none"}) are the ones inside the approved plan, paid in full`);
   }
   const held: Record<string, bigint> = {};
   for (let from = 0; ; from += 100) {

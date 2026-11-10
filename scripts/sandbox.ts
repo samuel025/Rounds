@@ -4,7 +4,7 @@
 // Creates throwaway accounts (faucet first; SANDBOX_FUND_FROM=acct1,acct2 funds from spare testnet accounts if the faucet refuses).
 import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
-import { canonicalJson, planHash } from "../src/engine/index";
+import { canonicalJson, planHash, sealPlan, type RoundKind } from "../src/engine/index";
 
 const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://testnet.nearblocks.io";
 const M = 1_000_000n;
@@ -100,7 +100,7 @@ async function main() {
   board("makes ada an officer", "set_officer", { account: A.ada, enabled: true });
 
   const propose = async (kind: string, plan: object, raise: [string, bigint][], uri: string) => {
-    const canon = canonicalJson(plan); const hash = await planHash(canon);
+    const canon = canonicalJson(sealPlan(plan, { kind: kind as RoundKind, raise })); const hash = await planHash(canon);
     const r = call("2", `ada proposes ${kind} round`, A.rounds, "propose_round", JSON.stringify({ kind, plan_hash: hash, plan_uri: uri, plan: canon, raise: raise.map(([a, v]) => [a, v.toString()]), deadline_ns: "__MAX_U64__" }).replace('"__MAX_U64__"', "18446744073709551615"), A.ada);
     return { rid: r.ret as number, hash };
   };

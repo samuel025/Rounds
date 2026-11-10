@@ -2,15 +2,22 @@
   {
     "step": "6",
     "what": "a stranger calls approve_round",
-    "signer": "rounds-efe-118174.testnet",
-    "tx": "98QfY4UKqewo5v78H54umzmVZ9CFrJrthS1KCJYRctuk",
+    "signer": "rounds-efe-332657.testnet",
+    "tx": "BfbQ7u3WgpGjwPobgx53tkAGzRAo7XDmNJkEJ5uAizv9",
     "error": "only the board"
   },
   {
     "step": "6",
     "what": "close_round runs a second time",
-    "signer": "rounds-zed-118174.testnet",
-    "tx": "FLM6ukD6aDEpnjEfbmoJmmZc4RvFpXMFy7XDJGpqJZ26",
+    "signer": "rounds-zed-332657.testnet",
+    "tx": "A8nEWMuywqUVAyMC6tyPubNAtLW1qGWSxr1BVyw3LyJc",
     "error": "already closing/closed"
+  },
+  {
+    "step": "6",
+    "what": "an officer proposes the approved Series A plan with a $1 raise",
+    "signer": "rounds-ada-332657.testnet",
+    "tx": "4AsbsTGMkePnGn7aHF8YB74cKyASHxGBzkuK9MVTyw8f",
+    "error": "plan does not carry these terms"
   }
 ]
