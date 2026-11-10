@@ -72,11 +72,20 @@ impl Env {
         u128::from_str_radix(&self.rounds.view(method).await.unwrap().json::<String>().unwrap(), 10).unwrap()
     }
     async fn grant(&self, shares: u128, start_ns: u64, term: u32, cliff: u32) -> bool {
-        let plan = json!({"grantee": self.efe.id(), "shares": shares.to_string(), "strike_micro": "1", "start_ns": start_ns, "term_months": term, "cliff_months": cliff}).to_string();
+        self.grant_to(&self.efe, shares, 1, start_ns, term, cliff).await
+    }
+    async fn grant_to(&self, who: &Account, shares: u128, strike_micro: u128, start_ns: u64, term: u32, cliff: u32) -> bool {
+        let plan = json!({"grantee": who.id(), "shares": shares.to_string(), "strike_micro": strike_micro.to_string(), "start_ns": start_ns, "term_months": term, "cliff_months": cliff}).to_string();
         self.board.call(self.rounds.id(), "grant").args_json(json!({"plan_hash": h(&plan), "plan": plan})).transact().await.unwrap().is_success()
     }
     async fn terminate(&self, id: u64) {
         self.board.call(self.rounds.id(), "terminate").args_json(json!({"grant_id": id})).transact().await.unwrap().into_result().unwrap();
+    }
+    async fn cancel(&self, round: u64) -> bool {
+        self.board.call(self.rounds.id(), "cancel_round").args_json(json!({"round_id": round})).max_gas().transact().await.unwrap().is_success()
+    }
+    async fn round_balance(&self) -> u128 {
+        balance(&self.ft, self.rounds.id()).await
     }
 }
 
@@ -358,5 +367,38 @@ async fn close_that_cannot_credit_does_not_move_money() -> anyhow::Result<()> {
     assert_eq!(e.status(r).await, "Approved", "the round stays retryable");
     assert_eq!(balance(&e.ft, e.board.id()).await, before, "no money moved to the board");
     assert_eq!(u128::from_str_radix(&e.rounds.view("ledger_total").await?.json::<String>()?, 10)?, 9_000_000 * USD, "the escrow is intact");
+    Ok(())
+}
+
+/// A cancel racing a close must never both refund the investor and forward the escrow: a Closing round cannot be
+/// cancelled, and a cancelled round cannot be closed.
+#[tokio::test]
+async fn cancel_cannot_race_a_close() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let safe = r#"{"safes":[{"id":"safe1","holder":"chidi.test.near","amount":"500000000000","post_money_cap":"5000000000000","discount_bps":0,"converted":false}]}"#;
+    let r = e.propose("Safe", safe, json!([[e.chidi.id(), "500000000000"]])).await;
+    e.deposit(&e.chidi, r, 500_000).await;
+    assert!(e.approve(r, safe).await);
+    let chidi_before = balance(&e.ft, e.chidi.id()).await;
+    let (closed, cancelled) = tokio::join!(e.close_by(&e.efe, r), e.cancel(r));
+    let st = e.status(r).await;
+    assert!(st == "Closed" || st == "Cancelled", "round must settle, got {st}");
+    assert!(closed ^ cancelled, "exactly one of close/cancel wins (got {closed}, {cancelled})");
+    e.w.fast_forward(5).await?;
+    let (treasury, chidi) = (balance(&e.ft, e.treasury.id()).await, balance(&e.ft, e.chidi.id()).await);
+    if st == "Closed" { assert_eq!((treasury, chidi), (500_000 * USD, chidi_before), "closed: escrow forwarded, no refund"); }
+    else { assert_eq!((treasury, chidi), (0, chidi_before + 500_000 * USD), "cancelled: refunded, nothing forwarded"); }
+    assert_eq!(e.round_balance().await, 0, "the contract holds nothing for this round");
+    assert_eq!(e.number("ledger_total").await, 0);
+    Ok(())
+}
+
+/// A grant needs an `unissued_pool` holding; without one it is refused rather than creating an unbacked claim.
+#[tokio::test]
+async fn grant_without_a_pool_is_refused() -> anyhow::Result<()> {
+    let e = setup().await?;
+    let now = e.w.view_block().await?.timestamp();
+    assert!(!e.grant(1, now, 48, 12).await, "no pool, no grant");
+    assert_eq!(e.number("open_claims").await, 0);
     Ok(())
 }

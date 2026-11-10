@@ -9,6 +9,8 @@ const GAS_FT: Gas = Gas::from_tgas(10);
 const GAS_CB: Gas = Gas::from_tgas(15);
 const GAS_CLOSE_MIN: Gas = Gas::from_tgas(60);
 pub const MAX_DISTRIBUTE: u64 = 8; // 8 payouts x 25 Tgas + overhead < 300 Tgas (open question 6)
+/// Cap on grants ever created: `grant` and the claim views scan every grant, so this bounds their gas.
+pub const MAX_GRANTS: u64 = 256;
 const YOCTO: NearToken = NearToken::from_yoctonear(1);
 /// Holder id under which a round's unissued option pool is credited. Options are a claim on this pool:
 /// exercising shares moves them out of the pool instead of minting new ones.
@@ -83,7 +85,7 @@ pub struct Rounds {
     rounds: IterableMap<u64, Round>, safes: IterableMap<String, SafeRec>,
     grants: IterableMap<u64, Grant>, exits: IterableMap<u64, Exit>,
     next_round: u64, next_grant: u64, next_exit: u64,
-    escrow_total: u128, exit_funds_total: u128, strike_balance: u128,
+    escrow_total: u128, exit_funds_total: u128, strike_balance: u128, strikes_in_flight: u128,
     // Resources reserved by a round that is Closing, so two concurrent closes cannot both pass the
     // pre-flight check and then have the second one panic in its callback with the escrow already moved.
     pending_issued: IterableMap<String, u128>,
@@ -113,7 +115,7 @@ impl Rounds {
             board, treasury, payment_token, month_ns, exercise_window_ns, classes: c, issued: IterableMap::new(b"i"),
             holdings: IterableMap::new(b"h"), officers: IterableSet::new(b"o"), rounds: IterableMap::new(b"r"),
             safes: IterableMap::new(b"s"), grants: IterableMap::new(b"g"), exits: IterableMap::new(b"x"),
-            next_round: 1, next_grant: 1, next_exit: 1, escrow_total: 0, exit_funds_total: 0, strike_balance: 0,
+            next_round: 1, next_grant: 1, next_exit: 1, escrow_total: 0, exit_funds_total: 0, strike_balance: 0, strikes_in_flight: 0,
             pending_issued: IterableMap::new(b"p"), pending_safes: IterableSet::new(b"P"), pending_converts: IterableSet::new(b"q"),
         }
     }
@@ -295,6 +297,9 @@ impl Rounds {
         }
         for (class, extra) in add {
             let cur = self.pending_issued.get(&class).copied().unwrap_or(0);
+            // A release always follows a reserve of the same plan, so this cannot underflow. Panicking here would
+            // strand a Closing round, so clamp but make any drift visible.
+            if cur < extra { event("reservation_drift", &format!("{{\"class\":\"{}\",\"reserved\":\"{}\",\"released\":\"{}\"}}", class, cur, extra)); }
             self.pending_issued.insert(class, cur.saturating_sub(extra));
         }
         for s in &p.safes { self.pending_safes.remove(&s.id); }
@@ -359,10 +364,11 @@ impl Rounds {
         let g: GrantPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad grant"));
         require!(g.cliff_months <= g.term_months && g.term_months > 0, "bad vesting terms");
         require!(g.shares.0 > 0, "grant needs shares");
+        require!(self.next_grant <= MAX_GRANTS, "too many grants");
         // Existing grants are a claim on the same pool: do not promise the same shares twice.
         let claimed = self.open_claim_shares();
         let wanted = claimed.checked_add(g.shares.0).unwrap_or_else(|| env::panic_str("claim overflow"));
-        require!(self.shares_of(POOL, "Common") >= wanted, "option pool too small");
+        require!(self.shares_of(POOL, "Common") >= wanted, "option pool too small (needs unissued_pool Common shares not already claimed)");
         let id = self.next_grant; self.next_grant += 1;
         self.grants.insert(id, Grant { id, grantee: g.grantee.clone(), shares: g.shares, exercised: U128(0), strike_micro: g.strike_micro, start_ns: g.start_ns, term_months: g.term_months, cliff_months: g.cliff_months, terminated_at_ns: None });
         event("grant_created", &format!("{{\"grant_id\":{},\"grantee\":\"{}\",\"shares\":\"{}\"}}", id, g.grantee, g.shares.0));
@@ -421,12 +427,15 @@ impl Rounds {
         self.only_board();
         require!(amount.0 > 0 && amount.0 <= self.strike_balance, "nothing to withdraw");
         self.strike_balance = self.strike_balance.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("strike underflow"));
+        // Tokens stay in the contract until the transfer lands, so keep them in the ledger meanwhile.
+        self.strikes_in_flight = self.strikes_in_flight.checked_add(amount.0).unwrap_or_else(|| env::panic_str("strike overflow"));
         let _ = Promise::new(self.payment_token.clone())
             .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", self.treasury, amount.0).into_bytes(), YOCTO, GAS_FT)
             .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_strike(U128(amount.0)));
     }
     #[private]
     pub fn on_strike(&mut self, amount: U128, #[callback_result] res: Result<(), PromiseError>) {
+        self.strikes_in_flight = self.strikes_in_flight.saturating_sub(amount.0);
         if res.is_err() {
             self.strike_balance = self.strike_balance.checked_add(amount.0).unwrap_or_else(|| env::panic_str("strike overflow"));
             return;
@@ -507,7 +516,7 @@ impl Rounds {
     pub fn issued_of(&self, class: String) -> U128 { U128(self.issued.get(&class).copied().unwrap_or(0)) }
     /// Tokens the contract must still hold: unpaid deposits, funded-unpaid exits, unforwarded strikes.
     pub fn ledger_total(&self) -> U128 {
-        let t = self.escrow_total.checked_add(self.exit_funds_total).and_then(|v| v.checked_add(self.strike_balance)).unwrap_or_else(|| env::panic_str("ledger overflow"));
+        let t = self.escrow_total.checked_add(self.exit_funds_total).and_then(|v| v.checked_add(self.strike_balance)).and_then(|v| v.checked_add(self.strikes_in_flight)).unwrap_or_else(|| env::panic_str("ledger overflow"));
         U128(t)
     }
     pub fn strike_balance(&self) -> U128 { U128(self.strike_balance) }
