@@ -207,5 +207,75 @@
   "data": {
    "amount": "2000000000"
   }
+ },
+ {
+  "name": "exit_proposed",
+  "tx": "6e5HJpMckW8iDKoLs17L4q8cYwXyGsrsRBQcdEGtnvQw",
+  "data": {
+   "exit_id": 2,
+   "plan_hash": "38899549fc3a08a857144ab0ace7e0cdd74c749a0c67db5d64ed47bb33dd716a",
+   "total": "99999999997"
+  }
+ },
+ {
+  "name": "exit_approved",
+  "tx": "33SzbUG3R6XZDNpHthwbFP5mtTHKyxugdxrcHD38QqNG",
+  "data": {
+   "exit_id": 2
+  }
+ },
+ {
+  "name": "payout_sent",
+  "tx": "8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq",
+  "data": {
+   "exit_id": 2,
+   "holder": "rounds-ada-332657.testnet",
+   "amount": "37034293756"
+  }
+ },
+ {
+  "name": "payout_sent",
+  "tx": "8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq",
+  "data": {
+   "exit_id": 2,
+   "holder": "rounds-bayo-332657.testnet",
+   "amount": "20368861565"
+  }
+ },
+ {
+  "name": "payout_sent",
+  "tx": "8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq",
+  "data": {
+   "exit_id": 2,
+   "holder": "rounds-chidi-332657.testnet",
+   "amount": "7406858751"
+  }
+ },
+ {
+  "name": "payout_sent",
+  "tx": "8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq",
+  "data": {
+   "exit_id": 2,
+   "holder": "rounds-dayo-332657.testnet",
+   "amount": "1851714687"
+  }
+ },
+ {
+  "name": "payout_sent",
+  "tx": "8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq",
+  "data": {
+   "exit_id": 2,
+   "holder": "rounds-efe-332657.testnet",
+   "amount": "7406858"
+  }
+ },
+ {
+  "name": "payout_sent",
+  "tx": "8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq",
+  "data": {
+   "exit_id": 2,
+   "holder": "rounds-fund-332657.testnet",
+   "amount": "33330864380"
+  }
  }
 ]

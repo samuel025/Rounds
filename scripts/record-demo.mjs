@@ -17,11 +17,12 @@ mkdirSync("demo", { recursive: true });
 const RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com";
 const rpcQ = async (params) => (await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params }) })).json());
 const viewC = async (acct, method, args) => { const j = await rpcQ({ request_type: "call_function", finality: "final", account_id: acct, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") }); const r = j.result?.result; return r ? JSON.parse(Buffer.from(r).toString()) : null; };
+const ONLY = process.env.ONLY; // ONLY=share records just the shared-payout scene: no sandbox is used up and no key is needed
 let SANDBOX = process.env.SANDBOX;
-if (!SANDBOX) for (const c of JSON.parse(readFileSync("web/public/sandboxes.json", "utf8"))) { if ((await viewC(c.rounds, "round", { round_id: 4 })) === null) { SANDBOX = c.rounds; break; } }
+if (!SANDBOX) for (const c of JSON.parse(readFileSync("web/public/sandboxes.json", "utf8"))) { if (ONLY || (await viewC(c.rounds, "round", { round_id: 4 })) === null) { SANDBOX = c.rounds; break; } }
 if (!SANDBOX) throw new Error("no unused sandbox in the pool");
 const JUDGE = SANDBOX.replace("rsbx-rounds-", "rsbx-bayo-");
-if (!existsSync(`${process.env.HOME}/.near-credentials/testnet/${JUDGE}.json`)) throw new Error(`no key for ${JUDGE}`);
+if (!ONLY && !existsSync(`${process.env.HOME}/.near-credentials/testnet/${JUDGE}.json`)) throw new Error(`no key for ${JUDGE}`);
 console.log(`sandbox ${SANDBOX}, signed in as ${JUDGE}`);
 async function signAndSend(signer, receiver, act) {
   const args = ["contract", "call-function", "as-transaction", receiver, act.method, "json-args", act.args, "prepaid-gas", `${act.gasTgas} Tgas`, "attached-deposit", `${act.depositYocto} yoctoNEAR`, "sign-as", signer, "network-config", "testnet", "sign-with-legacy-keychain", "display"];
@@ -117,7 +118,7 @@ const drag = async (sel, from, to, steps = 24) => { // slider drag between fract
 
 process.on("uncaughtException", async (e) => { try { console.log("DIAG", await ev(`JSON.stringify({u:location.href,n:document.querySelectorAll("[id]").length,t:!!document.getElementById("cap-table"),y:scrollY})`)); } catch {} console.log(String(e.message).slice(0,200)); chrome.kill(); process.exit(1); });
 // ---- script ----
-await sleep(2200);
+await sleep(ONLY ? 600 : 2200);
 await ev(`document.getElementById("title").style.opacity=0`); await sleep(900); await ev(`document.getElementById("title").remove()`);
 await ev(`window.scrollTo(0,0)`); await sleep(500);
 
@@ -132,6 +133,7 @@ const doStep = async (act, n) => {
   await click(flowBtn(act)); await waitRow(n, /done/);
 };
 
+if (!ONLY) {
 await narrate(N.hook, async () => {
   await sleep(2000); await point("h1", 0.4, 0.5); await sleep(7500);
   await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
@@ -178,8 +180,15 @@ if (/FAIL/.test(chainTxt) || !/PASS/.test(chainTxt)) throw new Error("the on-cha
 await scrollTo("#exit");
 await narrate(N.exit, async () => { await sleep(5000); await drag("#proceeds", 0.05, 0.2, 18); await sleep(4000); await drag("#proceeds", 0.2, 0.9, 30); });
 
+}
+
+await scrollTo("#share");
+await narrate(N.share, async () => { await sleep(5000); await drag("#pot", 0.1, 0.45, 20); await sleep(4000); await drag("#pot", 0.45, 0.15, 20); });
+
+if (!ONLY) {
 await ev(`window.scrollTo({top:0,behavior:"smooth"})`); await sleep(1200);
 await narrate(N.close2, async () => { await point("h1", 0.4, 0.5); });
+}
 await sleep(800);
 
 // ---- encode ----

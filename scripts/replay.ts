@@ -25,9 +25,13 @@ console.log("\nCAP TABLE rebuilt from committed events");
 for (const [k, v] of Object.entries(holdings).sort()) { const [h, c] = k.split("|"); console.log(`  ${short(h).padEnd(14)} ${c.padEnd(26)} ${v.toString().padStart(10)}  ${(Number((v * 10000n) / fd) / 100).toFixed(2).padStart(6)}%`); }
 console.log(`  ${"total".padEnd(41)} ${fd.toString().padStart(10)}`);
 
-const payouts = events.filter((e) => e.name === "payout_sent");
+const payouts = events.filter((e) => e.name === "payout_sent" && String(e.data.exit_id) === "1");
+const shared = events.filter((e) => e.name === "payout_sent" && String(e.data.exit_id) === "2");
 console.log("\nEXIT PAYOUTS from committed events");
 for (const p of payouts) console.log(`  ${short(p.data.holder).padEnd(14)} ${usd(BigInt(p.data.amount)).padStart(16)}`);
+
+console.log("\nSHARED PAYOUT (exit 2: the DAO treasury shares $100,000 pro rata) from committed events");
+for (const p of shared) console.log(`  ${short(p.data.holder).padEnd(14)} ${usd(BigInt(p.data.amount)).padStart(16)}`);
 
 console.log("\nCHECKS against the engine (recomputed offline)");
 const A = addr.accounts as Accounts; const eng = demoPlans(A);
@@ -38,7 +42,10 @@ check(eng.rounds.every((p, i) => planOf[i + 1] && JSON.stringify(planOf[i + 1]) 
 check(plans.exit.plan === eng.exit, "the committed exit plan equals the engine's waterfall plan");
 check(payouts.length === 5 && payouts.every((p) => eng.waterfall.payoutsMicro[Object.entries(eng.who).find(([, a]) => a === p.data.holder)![0]].toString() === p.data.amount), "GV-2 at $20M: all 5 payouts equal the engine's waterfall to the micro-dollar");
 check(payouts.reduce((s, p) => s + BigInt(p.data.amount), 0n) + eng.waterfall.remainderMicro === 20_000_000_000_000n, "payouts plus the reported rounding remainder equal the $20,000,000 proceeds");
-check(events.filter((e) => e.name === "round_approved").length === 4 && events.some((e) => e.name === "exit_approved"), "every round and the exit were approved by the board before execution");
+const dist = eng.distribution;
+check(shared.length === dist.payouts.length && dist.payouts.every(([h, a]) => shared.some((p) => p.data.holder === h && p.data.amount === a.toString())), `R10: the ${dist.payouts.length} shared payouts equal the engine's pro-rata split of $100,000 over ${dist.eligibleShares} eligible shares, to the micro-dollar`);
+check(shared.reduce((s, p) => s + BigInt(p.data.amount), 0n) + dist.remainderMicro === 100_000_000_000n && plans.distribution?.plan === eng.distributionPlan, "shared payouts plus the reported remainder equal the $100,000 pot, and the committed plan equals the engine's plan");
+check(events.filter((e) => e.name === "round_approved").length === 4 && events.filter((e) => e.name === "exit_approved").length === 2, "every round and both payouts (the exit and the shared payout) were approved by the board before execution");
 check(events.some((e) => e.name === "grant_exercised" && e.data.shares === "1000") && events.some((e) => e.name === "strikes_swept" && e.data.amount === "2000000000"), "options were exercised (1,000 shares, $2,000 strike) and the strike was swept to the treasury");
 console.log(`${failed ? "FAIL" : "PASS"} summary: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

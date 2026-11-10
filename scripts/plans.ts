@@ -1,9 +1,14 @@
 // Rebuilds, from the engine alone, every plan the demo put on chain (used by verify-onchain and replay).
-import { priceRound, waterfall, canonicalJson, pricedRoundPlan, sealPlan } from "../src/engine/index";
+import { priceRound, waterfall, canonicalJson, pricedRoundPlan, sealPlan, proRataDistribution, holderTotals, distributionPlan } from "../src/engine/index";
 
 const M = 1_000_000n;
 export interface Accounts { ada: string; bayo: string; chidi: string; dayo: string; fund: string; efe: string; zed: string }
 export const CLASSES = { common: "Common", seriesA: "Series A Preferred", safe1: "SAFE 1 shadow preferred", safe2: "SAFE 2 shadow preferred" };
+
+/** Demo step 10: the DAO treasury shares $100,000 with everyone who holds shares. */
+export const DISTRIBUTION_POT_MICRO = 100_000n * M;
+/** Demo step 9: Efe exercised 1,000 options, which moved 1,000 shares from the unissued pool to Efe (none minted). */
+export const EXERCISED_SHARES = 1_000n;
 
 export function demoPlans(A: Accounts) {
   const founders = { issuances: [{ class: CLASSES.common, holder: A.ada, shares: "5000000" }, { class: CLASSES.common, holder: A.bayo, shares: "2750000" }, { class: CLASSES.common, holder: "unissued_pool", shares: "1000000" }] };
@@ -27,5 +32,8 @@ export function demoPlans(A: Accounts) {
   // holdings every closed round should have credited, keyed "holder|class"
   const holdings: Record<string, bigint> = {};
   for (const p of [founders, seriesA]) for (const i of p.issuances) holdings[`${i.holder}|${i.class}`] = (holdings[`${i.holder}|${i.class}`] ?? 0n) + BigInt(i.shares);
-  return { rounds, exit: canonicalJson(exit), holdings, result, waterfall: w, who };
+  const final = { ...holdings };
+  final[`${A.efe}|Common`] = (final[`${A.efe}|Common`] ?? 0n) + EXERCISED_SHARES; final["unissued_pool|Common"] -= EXERCISED_SHARES;
+  const distribution = proRataDistribution(holderTotals(final), DISTRIBUTION_POT_MICRO);
+  return { rounds, exit: canonicalJson(exit), holdings, finalHoldings: final, distribution, distributionPlan: canonicalJson(distributionPlan(distribution)), result, waterfall: w, who };
 }

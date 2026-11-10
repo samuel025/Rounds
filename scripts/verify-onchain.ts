@@ -52,6 +52,11 @@ async function main() {
   check(x.plan_hash === await planHash(p.exit), `exit 1: on-chain plan hash equals sha256 of the recomputed waterfall plan`);
   check(x.payouts.length === 5 && x.payouts.every((q: any) => q.state === "Paid"), "exit 1: all 5 payouts Paid");
   check(x.payouts.every((q: any, i: number) => q.amount === JSON.parse(p.exit).payouts[i][1] && q.holder === JSON.parse(p.exit).payouts[i][0]), "exit 1: every payout equals the engine's waterfall to the micro-dollar");
+  // demo step 10: the DAO treasury shared $100,000 pro rata over every holder (RULES.md R10)
+  const dist = p.distribution, x2 = await view("exit", { exit_id: 2 });
+  check(x2 !== null && x2.plan_hash === await planHash(p.distributionPlan), `exit 2 (shared payout): on-chain plan hash equals sha256 of the pro-rata plan the engine computes from the final cap table (${dist.eligibleShares} eligible shares)`);
+  check(!!x2 && x2.payouts.length === dist.payouts.length && x2.payouts.every((q: any, i: number) => q.state === "Paid" && q.holder === dist.payouts[i][0] && q.amount === dist.payouts[i][1].toString()), `exit 2: all ${dist.payouts.length} payouts Paid and equal to the engine's pro-rata amounts to the micro-dollar (remainder ${dist.remainderMicro} micro-dollars not paid)`);
+  check(!!x2 && JSON.stringify(x2.funders) === JSON.stringify([[addr.dao, dist.paidMicro.toString()]]) && !x2.cancelled, "exit 2: it was funded by the DAO treasury itself, in the amount of the plan");
   if (existsSync("results/demo-attacks.json")) {
     for (const t of JSON.parse(readFileSync("results/demo-attacks.json", "utf8")) as { what: string; signer: string; tx: string; error: string }[]) {
       const res = await (await fetch(ARCHIVAL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tx", params: { tx_hash: t.tx, sender_account_id: t.signer, wait_until: "FINAL" } }) })).json() as any;

@@ -63,6 +63,14 @@ STEPS (each links to its testnet transaction)
   9  Exercise                   DAO proposal: board sweeps the exercise strike to the treasury       https://testnet.nearblocks.io/txns/Dvo6mWjroGBiihAGKpnxUhsvXjgwiGWcGzXUkuvCGsDC
   9  Exercise                   DAO vote 1/2 (fund) on #7                                            https://testnet.nearblocks.io/txns/EUkq5PskMYj9vVpvoZfu9QMCHQJ6afTtt9aGb23voxu5
   9  Exercise                   DAO vote 2/2 (indep) on #7: executes withdraw_strikes                https://testnet.nearblocks.io/txns/5HeMtV4ZFXLU9NkuMM7FNAt9VCJ3QJyAKu7RJZ5LSECH
+  10                            ada proposes the shared payout ($100,000 pro rata over all holders   https://testnet.nearblocks.io/txns/6e5HJpMckW8iDKoLs17L4q8cYwXyGsrsRBQcdEGtnvQw
+  10                            DAO proposal: board funds the shared payout from the treasury        https://testnet.nearblocks.io/txns/AAT5UsKqYsMsscc7ixPJhW4wsHemiHdAF2bXDjYuzUqR
+  10                            DAO vote 1/2 (fund) on #8                                            https://testnet.nearblocks.io/txns/EutWNoL7iZWroPKthAFAw88pvzcqCXHvQtmFPf2E4ZQm
+  10                            DAO vote 2/2 (indep) on #8: executes ft_transfer_call                https://testnet.nearblocks.io/txns/2sTXcXLyRhK7L7HPidUQDc91vH93BZ2Td6RyiTsDWqke
+  10                            DAO proposal: board approves the shared payout by plan hash          https://testnet.nearblocks.io/txns/FMcQscdwqkPoH3jrRKQHKzGVHL5cEho7x6VVzJ4XEQW6
+  10                            DAO vote 1/2 (fund) on #9                                            https://testnet.nearblocks.io/txns/4bLgqoLvUA4PYnbPQCyYBPHADWAnJXZUJMcx2XWboZuf
+  10                            DAO vote 2/2 (indep) on #9: executes approve_exit                    https://testnet.nearblocks.io/txns/33SzbUG3R6XZDNpHthwbFP5mtTHKyxugdxrcHD38QqNG
+  10                            anyone runs distribute                                               https://testnet.nearblocks.io/txns/8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq
 
 CAP TABLE rebuilt from committed events
   ada            Common                        5000000   33.33%
@@ -80,6 +88,14 @@ EXIT PAYOUTS from committed events
   dayo                $305,555.56
   fund              $9,000,000.00
 
+SHARED PAYOUT (exit 2: the DAO treasury shares $100,000 pro rata) from committed events
+  ada                  $37,034.29
+  bayo                 $20,368.86
+  chidi                 $7,406.86
+  dayo                  $1,851.71
+  efe                       $7.41
+  fund                 $33,330.86
+
 CHECKS against the engine (recomputed offline)
 PASS four rounds closed in order (founders, two SAFEs, Series A)
 PASS replayed holdings equal the engine's holdings for every (holder, class)
@@ -88,6 +104,8 @@ PASS every committed plan equals the plan the engine recomputes
 PASS the committed exit plan equals the engine's waterfall plan
 PASS GV-2 at $20M: all 5 payouts equal the engine's waterfall to the micro-dollar
 PASS payouts plus the reported rounding remainder equal the $20,000,000 proceeds
-PASS every round and the exit were approved by the board before execution
+PASS R10: the 6 shared payouts equal the engine's pro-rata split of $100,000 over 13501000 eligible shares, to the micro-dollar
+PASS shared payouts plus the reported remainder equal the $100,000 pot, and the committed plan equals the engine's plan
+PASS every round and both payouts (the exit and the shared payout) were approved by the board before execution
 PASS options were exercised (1,000 shares, $2,000 strike) and the strike was swept to the treasury
-PASS summary: 9 checks, 0 failed
+PASS summary: 11 checks, 0 failed

@@ -39,6 +39,9 @@ Sort preferred classes by preference per as-converted share ascending. For k = 0
 ## R9 Plan hash
 sha256 of RFC 8785 canonical JSON of the plan, all amounts as strings. A round plan carries its money terms as well as its shares: `kind` (Founder, Safe or Priced), `raise` (a list of `[investor account, micro-dollars]`) and `deadline_ns` (a string). The contract refuses a proposal whose `kind`, `raise` or `deadline_ns` arguments differ from the ones inside the hashed plan, and in a Safe round each investor's raise must equal the purchase amounts of the SAFEs issued to them. So the hash the board approves fixes who pays how much for which shares, not only the shares.
 
+## R10 Shared payout
+A pot of money paid to the holders of shares, pro rata by shares held whatever the class (preference and conversion do not apply: this is a distribution, not an exit). The unissued option pool is not a holder and receives nothing. Each holder gets floor(pot × shares / eligible shares) micro-dollars, holders are listed in account-id order and zero amounts are left out, so the payouts never exceed the pot and the rounding remainder (less than one micro-dollar per holder) is reported and not paid. The plan has the exit plan's shape (`payouts`: a list of `[account, micro-dollars]`), so the same approve-by-hash and pay-once machinery that runs an exit runs a shared payout.
+
 ## Golden vectors
 vectors/gv-1.json, vectors/gv-2.json (hand-checked against R3, R6, R8 on 2026-11-06). TODO: add five more (discount-only SAFE; cap+discount each winning; no top-up; down round below caps; exit with out-of-the-money option).
 

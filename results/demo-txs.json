@@ -370,5 +370,53 @@
     "tx": "5HeMtV4ZFXLU9NkuMM7FNAt9VCJ3QJyAKu7RJZ5LSECH",
     "what": "DAO vote 2/2 (indep) on #7: executes withdraw_strikes",
     "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "6e5HJpMckW8iDKoLs17L4q8cYwXyGsrsRBQcdEGtnvQw",
+    "what": "ada proposes the shared payout ($100,000 pro rata over all holders)",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "AAT5UsKqYsMsscc7ixPJhW4wsHemiHdAF2bXDjYuzUqR",
+    "what": "DAO proposal: board funds the shared payout from the treasury",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "EutWNoL7iZWroPKthAFAw88pvzcqCXHvQtmFPf2E4ZQm",
+    "what": "DAO vote 1/2 (fund) on #8",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "2sTXcXLyRhK7L7HPidUQDc91vH93BZ2Td6RyiTsDWqke",
+    "what": "DAO vote 2/2 (indep) on #8: executes ft_transfer_call",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "FMcQscdwqkPoH3jrRKQHKzGVHL5cEho7x6VVzJ4XEQW6",
+    "what": "DAO proposal: board approves the shared payout by plan hash",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "4bLgqoLvUA4PYnbPQCyYBPHADWAnJXZUJMcx2XWboZuf",
+    "what": "DAO vote 1/2 (fund) on #9",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "33SzbUG3R6XZDNpHthwbFP5mtTHKyxugdxrcHD38QqNG",
+    "what": "DAO vote 2/2 (indep) on #9: executes approve_exit",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "10",
+    "tx": "8wYUkrEJJdBWUnMAYUVY6oar8Yqo9CnuCj6CrkFJ7JGq",
+    "what": "anyone runs distribute",
+    "signer": "rounds-zed-332657.testnet"
   }
 ]

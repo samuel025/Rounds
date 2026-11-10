@@ -22,8 +22,11 @@ PASS cap table: all 7 (holder, class) holdings equal the engine's result
 PASS exit 1: on-chain plan hash equals sha256 of the recomputed waterfall plan
 PASS exit 1: all 5 payouts Paid
 PASS exit 1: every payout equals the engine's waterfall to the micro-dollar
+PASS exit 2 (shared payout): on-chain plan hash equals sha256 of the pro-rata plan the engine computes from the final cap table (13501000 eligible shares)
+PASS exit 2: all 6 payouts Paid and equal to the engine's pro-rata amounts to the micro-dollar (remainder 3 micro-dollars not paid)
+PASS exit 2: it was funded by the DAO treasury itself, in the amount of the plan
 PASS attack "a stranger calls approve_round": transaction BfbQ7u3W… exists on chain and failed ("only the board")
 PASS attack "close_round runs a second time": transaction A8nEWMuy… exists on chain and failed ("already closing/closed")
 PASS attack "an officer proposes the approved Series A plan with a $1 raise": transaction 4AsbsTGM… exists on chain and failed ("plan does not carry these terms")
 PASS ledger: nothing left in custody (ledger_total = 0)
-PASS summary: 28 checks, 0 failed
+PASS summary: 31 checks, 0 failed

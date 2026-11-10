@@ -12,6 +12,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 | `make verify-onchain` | network (read-only RPC) | every line starts with `PASS`; last line `PASS summary: <n> checks, 0 failed`. A line starting `FAIL` means a mismatch with the chain or an unreachable RPC |
 | `make sandbox` | near CLI, network, faucet or `SANDBOX_FUND_FROM` | deploys a fresh open sandbox (testnet); `results/sandbox.json` lists it; `SANDBOX_TOKEN` reuses a token contract |
 | `make e2e-wallet` | `make web-dev` running, near CLI, Chrome, demo keys in `~/.near-credentials` | drives the app's wallet buttons on testnet via a DEV-only test signer; `PASS summary: 11 checks, 0 failed`. Writes a few testnet transactions on a superseded deployment |
+| `make distribute` | node, `near` CLI, network, the demo accounts' keys (after `make demo`) | Demo step 10 on testnet: the DAO treasury shares a $100,000 pot pro rata (RULES.md R10); once per deployment (a second run stops at "exit 2 already exists"); appends to `results/demo-*.json` and `web/public/events.json` |
 | `make check-readme` | node | `PASS summary: <n> tagged numbers checked, 0 failed` |
 | `make summary` | node, python-generated conformance files, cargo (to list sandbox tests) | rewrites `results/summary.json` |
 | `make web` / `make web-dev` | node | static site in `dist/` / dev server |

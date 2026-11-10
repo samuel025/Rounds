@@ -3,7 +3,7 @@ import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { usd, usdExact, price4 } from "./format";
-import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, sealPlan, NO_DEADLINE, type PricedRoundInput, type Safe } from "../../src/engine/index";
+import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, sealPlan, NO_DEADLINE, proRataDistribution, distributionPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const M = 1_000_000n;
@@ -17,7 +17,7 @@ const sandboxContracts = new Set<string>(); // contracts that the guided "Run a 
 let defaultContract = "", defaultRpc = "https://test.rpc.fastnear.com", explorerBase = "https://testnet.nearblocks.io";
 const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
-  proceeds: 20_000_000, month: 18, filter: "All", investor: "fund", locked: false };
+  proceeds: 20_000_000, pot: 100_000, month: 18, filter: "All", investor: "fund", locked: false };
 const COLORS: Record<string, string> = { ada: "#fafafa", bayo: "#a1a1aa", safe1: "#44ffa4", safe2: "#2ca86c", fund: "#3080ff", unissued_pool: "#f99c00", efe: "#d946ef" };
 const names: Record<string, string> = {}; // filled with the real account ids when the modeler is tied to a sandbox on chain
 const labelRaw = (k: string) => names[k] ?? ({ unissued_pool: "Option pool (unissued)", fund: "New investor (Series A)", safe1: "Chidi · early investor, SAFE 1", safe2: "Dayo · early investor, SAFE 2", ada: "Ada · founder", bayo: "Bayo · founder", efe: "Efe · employee (options)" } as Record<string, string>)[k] ?? k;
@@ -62,7 +62,7 @@ function renderModel() {
   <p class="note" style="margin-top:12px">Fully diluted ${n(r.fullyDiluted)} × ${price4(r.priceMicro)} = ${usd(r.fullyDiluted * r.priceMicro)} vs post-money ${usd(post)}; the difference is price rounding, reported not hidden ${RULES("r1")}. SAFE shares are priced at the lower of the cap and discount prices ${RULES("r3")}.</p>`;
   void renderPlan(r);
   window.dispatchEvent(new Event("rounds:model"));
-  renderCap(r); renderPeople(r); renderExit(r);
+  renderCap(r); renderPeople(r); renderExit(r); void renderShare(r);
 }
 async function renderPlan(r: Res) {
   const raise: [string, bigint][] = [["fund.testnet", BigInt(state.raise) * M]];
@@ -185,6 +185,20 @@ function renderExit(r: Res) {
   $<HTMLInputElement>("proceeds").oninput = (e) => { state.proceeds = +(e.target as HTMLInputElement).value; renderExit(r); };
 }
 
+// ---------- shared payout (RULES.md R10) ----------
+async function renderShare(r: Res) {
+  const ids = ["ada", "bayo", "safe1", "safe2", "fund"].filter((k) => (r.holdings[k] ?? 0n) > 0n);
+  const shares = Object.fromEntries(ids.map((k) => [k, r.holdings[k]]));
+  const pot = BigInt(state.pot) * M, d = proRataDistribution(shares, pot), got = Object.fromEntries(d.payouts);
+  const h = await planHash(canonicalJson(distributionPlan(d)));
+  $("share-card").innerHTML = `<div class="stat"><div><b>${usd(pot)}</b><span>Pot to share</span></div><div><b>${n(d.eligibleShares)}</b><span>Shares that receive it ${RULES("r10")}</span></div><div><b>${usd(d.remainderMicro, true)}</b><span>Rounding remainder (not paid)</span></div></div>
+  <input type="range" id="pot" min="0" max="1000000" step="5000" value="${state.pot}" aria-label="Pot to share, in dollars"/>
+  <div style="margin-top:16px">${bars(ids.map((k) => [k, got[k] ?? 0n] as [string, bigint]), pot || 1n)}</div>
+  <table><tr><th>Holder</th><th class="n">Shares</th><th class="n">Payout</th><th class="n">Share of the pot</th></tr>${ids.map((k) => `<tr><td>${label(k)}</td><td class="n">${n(shares[k])}</td><td class="n">${usd(got[k] ?? 0n, true)}</td><td class="n">${pct(got[k] ?? 0n, pot || 1n)}</td></tr>`).join("")}</table>
+  <p class="note" style="margin-top:12px">Plan hash the board would approve: <span class="mono">${esc(h.slice(0, 24))}…</span>. Shares are paid by how many each holder has, whatever the class; the unissued option pool receives nothing. <b>On testnet this ran from the DAO's own treasury</b>: an officer proposed this kind of plan, the 2-of-3 board funded it from the treasury and approved its hash, and the contract paid every holder once (Events &amp; verify, exit 2). The table above uses the modeled company; the testnet run used the real cap table, six holders and a $100,000 pot.</p>`;
+  $<HTMLInputElement>("pot").oninput = (e) => { state.pot = +(e.target as HTMLInputElement).value; void renderShare(r); };
+}
+
 // ---------- form ----------
 function renderForm() {
   const lk = state.locked ? " disabled" : "";
@@ -259,7 +273,7 @@ async function initChain() {
         rows.push(`<tr id="round-${r.id}"${hl}><td>Round ${r.id}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td><td>${esc(r.status)}</td><td><span class="${c.ok ? "pass" : "fail"}">${c.ok ? "PASS" : "FAIL"}</span> <span class="mono muted">${esc(r.plan_hash.slice(0, 16))}…</span> <span class="muted">${c.terms === "bound" ? "· hash covers shares and money" : c.terms === "legacy" ? "· older contract: hash covers shares only" : "· money terms differ from the plan"}</span></td><td><button class="linkbtn" data-copy="${esc(link(id, "verify/round-" + r.id))}" data-r="${r.id}">Copy link</button></td></tr>`);
       }
       const hold = v.holdings.map(([h, cl, sh]) => `<tr><td class="mono">${esc(h)}</td><td>${esc(cl)}</td><td class="n">${esc(BigInt(sh).toLocaleString("en-US"))}</td></tr>`).join("");
-      const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.cancelled ? "cancelled" : e.approved ? "approved" : "pending"}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc(usdExact(BigInt(e.total)))} USDC</td></tr>`).join("");
+      const exits = v.exits.map((e) => `<tr><td>Exit ${e.id}</td><td>${e.cancelled ? "cancelled" : e.approved ? "approved" : "pending"}${e.funders?.length ? `<br/><span class="muted">funded by ${esc(e.funders.map((f) => f[0]).join(", "))}</span>` : ""}</td><td class="mono muted">${esc(e.plan_hash.slice(0, 16))}…</td><td class="n">${esc(usdExact(BigInt(e.total)))} USDC</td></tr>`).join("");
       out.innerHTML = `<div class="chain-h"><span class="mono muted">CONTRACT <b>${esc(v.contract)}</b> · BOARD ${esc(v.board)} · TOKEN ${esc(v.token)}</span></div>
         <table class="chain-tbl"><tr><th>HOLDER</th><th>CLASS</th><th class="n">SHARES (ON CHAIN)</th></tr>${hold || `<tr><td colspan="3" class="muted">no shares issued yet</td></tr>`}</table>
         <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th>SHARE</th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>

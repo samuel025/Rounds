@@ -11,5 +11,9 @@
   },
   "grant": {
     "plan": "{\"cliff_months\":12,\"grantee\":\"rounds-efe-332657.testnet\",\"shares\":\"100000\",\"start_ns\":1794333148958000000,\"strike_micro\":\"2000000\",\"term_months\":48}"
+  },
+  "distribution": {
+    "id": 2,
+    "plan": "{\"payouts\":[[\"rounds-ada-332657.testnet\",\"37034293756\"],[\"rounds-bayo-332657.testnet\",\"20368861565\"],[\"rounds-chidi-332657.testnet\",\"7406858751\"],[\"rounds-dayo-332657.testnet\",\"1851714687\"],[\"rounds-efe-332657.testnet\",\"7406858\"],[\"rounds-fund-332657.testnet\",\"33330864380\"]]}"
   }
 }

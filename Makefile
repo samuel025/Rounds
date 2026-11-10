@@ -44,3 +44,8 @@ e2e-wallet:
 sandbox:
 	npx vite-node scripts/sandbox.ts
 
+
+# demo step 10 (after `make demo`): the DAO treasury shares a $100,000 pot with every shareholder, pro rata; once per demo deployment
+.PHONY: distribute
+distribute:
+	npx vite-node scripts/distribute.ts

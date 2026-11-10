@@ -2,7 +2,7 @@
 import { planHash } from "../../src/engine/index";
 
 export interface RoundRec { id: number; kind: unknown; status: string; plan_hash: string; plan_uri: string; plan: string; raise: [string, string][]; deposits: [string, string][] }
-export interface ExitRec { id: number; plan_hash: string; plan_uri: string; approved: boolean; cancelled?: boolean; total: string; funded: string; payouts: { account?: string; amount?: string; paid?: boolean }[] }
+export interface ExitRec { id: number; plan_hash: string; plan_uri: string; approved: boolean; cancelled?: boolean; funders?: [string, string][]; total: string; funded: string; payouts: { account?: string; amount?: string; paid?: boolean }[] }
 export interface ChainView {
   contract: string; board: string; token: string; classes: { id: string; authorized: string }[];
   holdings: [string, string, string][]; rounds: RoundRec[]; exits: ExitRec[];
