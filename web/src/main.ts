@@ -1,5 +1,6 @@
 import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
+import { renderReview } from "./review";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { usd, usdExact, price4 } from "./format";
@@ -261,7 +262,7 @@ async function initChain() {
   const run = async (quiet = false) => {
     const id = input.value.trim().toLowerCase();
     if (!validAccount(id)) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> enter a NEAR account id such as <span class="mono">rounds-core-332657.testnet</span></p>`; return; }
-    if (!quiet) { $("chain-actions").innerHTML = ""; out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`; }
+    if (!quiet) { $("chain-actions").innerHTML = ""; $("review-body").innerHTML = `<p class="note">Reading the board's proposals …</p>`; out.innerHTML = `<p class="note">Reading ${esc(id)} from ${esc(dep.rpc)} …</p>`; }
     try {
       const v = await loadChain(dep.rpc, id);
       const only = /^#verify\/round-(\d+)$/.exec(location.hash)?.[1];
@@ -277,7 +278,7 @@ async function initChain() {
       out.innerHTML = `<div class="chain-h"><span class="mono muted">CONTRACT <b>${esc(v.contract)}</b> · BOARD ${esc(v.board)} · TOKEN ${esc(v.token)}</span></div>
         <table class="chain-tbl"><tr><th>HOLDER</th><th>CLASS</th><th class="n">SHARES (ON CHAIN)</th></tr>${hold || `<tr><td colspan="3" class="muted">no shares issued yet</td></tr>`}</table>
         <table class="chain-tbl"><tr><th>ROUND</th><th>KIND</th><th>STATUS</th><th>PLAN HASH RECOMPUTED HERE</th><th>SHARE</th></tr>${rows.join("") || `<tr><td colspan="5" class="muted">no rounds</td></tr>`}</table>
-        ${exits ? `<table class="chain-tbl"><tr><th>EXIT</th><th>STATE</th><th>PLAN HASH</th><th class="n">FUNDED</th></tr>${exits}</table><p class="note">Exit plan text is not stored on chain, only its hash and URI, so exit hashes are shown, not recomputed here.</p>` : ""}
+        ${exits ? `<table class="chain-tbl"><tr><th>EXIT</th><th>STATE</th><th>PLAN HASH</th><th class="n">FUNDED</th></tr>${exits}</table><p class="note">Exit plan text is not stored on chain, only its hash and URI; the Board proposals card below rebuilds each exit plan from its stored payouts and re-checks the hash.</p>` : ""}
         <pre class="out"><span class="${failed ? "fail" : "pass"}">${failed ? "FAIL" : "PASS"}</span> ${v.rounds.length} round plan(s) re-hashed in this browser; ${failed} mismatch(es)\nEverything above was read live from the chain; nothing came from this site's files.</pre>`;
       out.querySelectorAll<HTMLButtonElement>("button[data-copy]").forEach((b) => (b.onclick = async () => {
         try { await navigator.clipboard.writeText(b.dataset.copy!); toast(`Link copied. Anyone who opens it sees this contract with round ${esc(b.dataset.r!)} highlighted, and its hash re-checked.`, "ok"); }
@@ -285,6 +286,7 @@ async function initChain() {
       }));
       if (sandboxContracts.has(v.contract)) $("chain-actions").innerHTML = `<div class="chain-h"><span class="mono muted">YOUR ACTIONS</span></div><p class="note">This is an open sandbox. Everything you can do on it is in the guided steps: <a href="#try" class="mono">Run a round on testnet</a>.</p>`;
       else void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, reloadChain);
+      void renderReview($("review-body"), v, dep.rpc, dep.explorer, reloadChain).catch((e) => { $("review-body").innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read the board: ${esc((e as Error).message)}</p>`; });
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };

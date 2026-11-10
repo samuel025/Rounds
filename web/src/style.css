@@ -75,3 +75,11 @@ input[disabled]{opacity:.55;cursor:not-allowed}
 .gloss{margin-top:12px}.gloss summary{cursor:pointer;font-size:13px;color:var(--muted)}.gloss summary:hover{color:var(--fg)}
 .gloss dl{display:grid;grid-template-columns:200px 1fr;gap:8px 18px;margin:14px 0 0;font-size:13.5px;line-height:1.55}.gloss dt{font-weight:600}.gloss dd{margin:0;color:var(--muted)}
 @media(max-width:700px){.gloss dl{grid-template-columns:1fr;gap:2px}.gloss dd{margin-bottom:8px}}
+
+/* board proposal review */
+.rv{border-top:1px solid var(--line);padding:16px 0}.rv:first-of-type{border-top:0}
+.rv-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+.rv-l{margin:6px 0 10px;padding-left:18px;color:var(--fg)}.rv-l li{margin:2px 0}
+.rv-f{display:grid;gap:4px;font-size:14px}
+.chip{font:500 11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line2);border-radius:999px;padding:3px 8px;color:var(--muted)}
+.chip.inprogress{color:#f99c00;border-color:#f99c00}.chip.approved{color:#44ffa4;border-color:#44ffa4}
