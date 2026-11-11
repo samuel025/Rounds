@@ -1,7 +1,9 @@
-// Fails if any number the README tags as <!--n:path-->value<!--/n--> differs from results/summary.json,
+// Fails if any number the README (and the docs/ pages it links) tags as <!--n:path-->value<!--/n--> differs from results/summary.json,
 // or if the README states an untagged count of tests, scenarios, events, transactions, checks or payouts.
 import { readFileSync } from "node:fs";
-const readme = readFileSync("README.md", "utf8"), summary = JSON.parse(readFileSync("results/summary.json", "utf8"));
+import { existsSync } from "node:fs";
+const FILES = ["README.md", ...["CONFIDENTIAL", "EVIDENCE", "TESTNET-RUN", "TOKENS", "BOARD-REVIEW", "APP-GUIDE", "LIMITS"].map((n) => `docs/${n}.md`)].filter(existsSync);
+const readme = FILES.map((f) => readFileSync(f, "utf8")).join("\n"), summary = JSON.parse(readFileSync("results/summary.json", "utf8"));
 const get = (p) => p.split(".").reduce((o, k) => (o == null ? o : o[k]), summary);
 let bad = 0, n = 0;
 for (const m of readme.matchAll(/<!--n:([\w.]+)-->([^<]*)<!--\/n-->/g)) {

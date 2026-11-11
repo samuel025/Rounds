@@ -1,0 +1,25 @@
+# Tokens and SAFTs
+
+Demo step 11 (`make tokens`, re-checked by `make verify-tokens`).
+
+[← back to the README](../README.md)
+
+Most crypto startups raise with SAFTs or token warrants, not only equity, so Rounds handles them too: the engine models them (RULES.md R11, `src/engine/saft.ts`), the contract enforces them, and a second testnet deployment ran them end to end (demo step 11, `make tokens`, re-checked read-only by `make verify-tokens`).
+
+- **Selling a SAFT** is a `Saft` round, like a SAFE round: the investor pays exactly the SAFT amount into escrow (the plan hash covers it) and the DAO approves the plan by hash. The SAFT is stored with its terms: amount, FDV cap, discount.
+- **At launch** the board names the project token once (`set_project_token`), the DAO funds a **token reserve** from its treasury (an ordinary `ft_transfer_call` proposal), and the board approves a conversion plan by hash (`convert_safts`). **The contract recomputes every token count itself** from the SAFT's stored terms (tokens = amount ÷ the lower of the cap price and the discounted launch price, exact integer arithmetic) and refuses the plan if any number differs, if the SAFTs would hold more than the total supply, or if the reserve cannot cover every claim. This is the one place where the chain computes the maths instead of trusting the plan; the sandbox tests include a mutation check (swapping the price rule makes them fail).
+- **Each conversion becomes a vesting token grant** (nothing before the cliff, then linear, the same rule as option vesting). The board can also grant a contributor tokens from the same reserve (`grant_tokens`, programmable rewards), and end a grant (`terminate_token_grant`). Grants are claims on the reserve and can never promise more than it holds. Anyone may trigger `claim_tokens`; it pays the grantee what has vested, locks the claim before the transfer and restores it if the transfer fails.
+- **In the app**, the Board proposals card decodes these votes too: a conversion plan is re-hashed and **every token count is recomputed in the browser** from the SAFT terms in the plan; a grant's terms are re-hashed; a reserve deposit is described in whole tokens.
+
+The testnet run (`rounds-tok-332657.testnet`, with the demo's DAO as board and treasury and its test USDC as the payment token, plus the project token `rounds-tkn-332657.testnet`): $500,000 and $250,000 of SAFTs sold, 100,000,000 tokens put in the reserve by the DAO, conversion at a $0.015 launch price (SAFT 1 at its cap price, 25,000,000 tokens; SAFT 2, with a 20% discount, at the discount price, 20,833,333.333333 tokens), a 1,000,000-token contributor grant, the unlock read at a pinned block in month 4 (16,666,666,666,666 units, equal to the engine), and every claim paid. It recorded <!--n:tokens.transactions-->36<!--/n--> transactions and <!--n:tokens.events-->12<!--/n--> contract events, and `make verify-tokens` passes <!--n:verify_tokens.checks-->18<!--/n--> checks with <!--n:verify_tokens.failed-->0<!--/n--> failed. An officer's attempt to sell a $500,000 SAFT for $1 [fails on chain](https://testnet.nearblocks.io/txns/BDDfVwDf4PaHRSrzYfzS4e5MnERgjqmRak1fHYZrmrbJ).
+
+| Step | Key transaction |
+|---|---|
+| Second Rounds contract deployed (DAO as board and treasury) | [13khZ9Bm…](https://testnet.nearblocks.io/txns/13khZ9BmFYnVdSTeU7eWcn3JLpj7g4oVD6e7fmbxfvvG) |
+| Saft round closed | [A4CEtCtQ…](https://testnet.nearblocks.io/txns/A4CEtCtQr2LexHgRtXWQzgHWpcg5ndCbGR1fvPo7wh8p) |
+| DAO funds the token reserve | [CFmRVB6X…](https://testnet.nearblocks.io/txns/CFmRVB6XiU1ut21wS6LnjRN83TW5DuwigrS4hMZ3j6Mi) |
+| DAO approves the conversion plan; the contract recomputes and creates the grants | [GjFkKvfh…](https://testnet.nearblocks.io/txns/GjFkKvfhK5Kra1GFzsjqxtd9AUgj8USiVHaCar4Sp1at) |
+| DAO grants a contributor tokens | [9uGcUToQ…](https://testnet.nearblocks.io/txns/9uGcUToQGRTGSEPuamMMoWfimQmhn5HerED3pcnma4Go) |
+| Claims: chidi, dayo, efe | [G37EX8kK…](https://testnet.nearblocks.io/txns/G37EX8kKMzhzL8KZFpFLKLoHdinQ1iV7ArrnNagnT1NZ), [HXsc2eRB…](https://testnet.nearblocks.io/txns/HXsc2eRBzf5WyJ8yvfYT9gLFfugjw2DbiBtmMRUTo28f), [24BW7h5d…](https://testnet.nearblocks.io/txns/24BW7h5dHkUQbmZvn4Wf3yjUzn4zQ4f5BtPPtFeGdz1t) |
+
+Limits: the first demo contract (`rounds-core-332657`) and the open sandboxes were deployed before this code and do not have token methods; only the second contract does, and the app's Verify and Board proposals views read it by pasting its account into the contract box. Token amounts are in the token's base units, and the exact conversion needs `amount × supply` to fit in 128 bits (fine for six-decimal tokens; an 18-decimal token with a very large supply would be refused, never mis-converted). The Python reference does not cover R11, so its independence caveat applies; the anchors are the hand-derived vectors GV-9a to GV-9d, the contract's own recomputation and the on-chain run. Whether a SAFT is a security is a legal question Rounds does not answer. There is no token price oracle: the launch price and supply are inputs the board approves, and a voter checks them in the review card.
