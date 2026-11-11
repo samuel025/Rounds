@@ -131,7 +131,9 @@ export function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
   let receipt: Receipt | null = null, exits: any[] = [], busy = false, status = "", exitId = 0;
   const roots = new Map<number, string>(); // round id -> the committed root, to match a receipt to the payouts of its own cap table
   async function load() {
-    exits = []; for (let i = 1; i <= 30; i++) { try { const e = await call(d.rpc, d.contract, "private_exit", { exit_id: i }); if (!e) break; exits.push(e); } catch { break; } }
+    // build the new list aside and swap it in, so a click while the chain is being read still sees the previous list instead of an empty one
+    const list: any[] = []; for (let i = 1; i <= 30; i++) { try { const e = await call(d.rpc, d.contract, "private_exit", { exit_id: i }); if (!e) break; list.push(e); } catch { break; } }
+    exits = list;
     for (const e of exits) if (!roots.has(e.round_id)) { try { const c = await call(d.rpc, d.contract, "confidential_root", { round_id: e.round_id }); if (c) roots.set(e.round_id, c[0]); } catch { /* not committed yet */ } }
     // a receipt belongs to one cap table: select the newest payout of that table, else the newest payout
     const own = receipt ? [...exits].reverse().find((x) => roots.get(x.round_id) === receipt!.merkleRoot) : undefined;
@@ -152,19 +154,21 @@ export function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
     (host.querySelector("#zk-claim-btn") as HTMLButtonElement).onclick = () => void claim((host.querySelector("#zk-recipient") as HTMLInputElement).value.trim().toLowerCase());
   }
   async function claim(recipient: string) {
-    const e = exits.find((x) => x.id === exitId); if (!receipt || !e) return;
+    const e = exits.find((x) => x.id === exitId);
+    console.debug("[zk] claim() " + JSON.stringify({ recipient, exitId, haveReceipt: !!receipt, haveExit: !!e }));
+    if (!receipt || !e) { toast(`<span class="fail">FAIL</span> ${!receipt ? "load your receipt first" : "no private payout is selected yet"}`, "fail"); return; }
     if (!/^[a-z0-9._-]{2,64}$/.test(recipient)) { toast(`<span class="fail">FAIL</span> enter the receiving account id`, "fail"); return; }
     busy = true; status = "Proving in your browser …"; draw();
     try {
       await nodeGlobals(); const zk = await import("../../src/engine/zk");
       const t0 = performance.now();
       const p = await zk.provePrivateClaim(receipt, { exitId: BigInt(e.id), totalShares: BigInt(e.total_shares), totalPot: BigInt(e.pot) }, recipient, FILES.claim);
-      status = `Proved in ${((performance.now() - t0) / 1000).toFixed(1)} s. Sending …`; draw();
+      status = `Proved in ${((performance.now() - t0) / 1000).toFixed(1)} s. Sending …`; draw(); console.debug("[zk] claim proved");
       toast("Waiting for your wallet to approve: claim the private payout …");
       const x = await send(d.contract, [{ method: "claim_private_payout", args: { exit_id: e.id, nullifier: p.nullifier.toString(), payout_amount: p.payoutAmount.toString(), recipient_id: recipient, proof: p.contractProof }, gasTgas: 300 }]);
       if (x.hash) toast(`<span class="pass">DONE</span> ${esc(usd(p.payoutAmount))} claimed to ${esc(recipient)}: ${txLink(d.explorer, x.hash)}`, "ok");
       status = "Claimed.";
-    } catch (err) { toast(`<span class="fail">FAIL</span> ${esc((err as Error).message)}`, "fail"); status = ""; }
+    } catch (err) { console.debug("[zk] claim failed", (err as Error).message); toast(`<span class="fail">FAIL</span> ${esc((err as Error).message)}`, "fail"); status = ""; }
     busy = false; await load();
   }
   draw(); void load(); onAccount(() => void load());
