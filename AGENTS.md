@@ -18,7 +18,7 @@ Rounds is a testnet cap-table demo. Live app: https://roundcap.vercel.app. Start
 | `make check-readme` | node | `PASS summary: <n> tagged numbers checked, 0 failed` |
 | `make summary` | node, python-generated conformance files, cargo (to list sandbox tests) | rewrites `results/summary.json` |
 | `make web` / `make web-dev` | node | static site in `dist/` / dev server |
-| `make test-contract` | rust (wasm32 target), cargo-near, network for the sandbox binary | 18 sandbox tests pass |
+| `make test-contract` | rust (wasm32 target), cargo-near, network for the sandbox binary | 20 sandbox tests pass |
 | `make demo` | `near` CLI (near-cli-rs), network, public faucet | scripted testnet run; **creates fresh throwaway accounts; do not run casually** |
 
 `make verify-onchain` and `make replay` read `results/demo-*.json` (committed) and the testnet contract named in `results/demo-addresses.json`.
