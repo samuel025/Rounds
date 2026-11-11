@@ -28,7 +28,8 @@ export const N = {
   shareRun: "Run it for real on the same company: propose, fund, approve, and the contract pays each holder once.",
   sharePaid: "Every row says paid.",
   verify: "You do not have to trust the page: it recomputes each plan's fingerprint in your browser and compares it with the chain.",
-  review: "Voting is clearer too. Each board proposal is decoded and checked against the chain, showing who pays what and who ends up with how many shares.",
+  review: "Voting is clearer too. Here is a real board proposal, decoded and checked against the chain. It says who pays what, and how many shares each person ends up holding, so a voter knows exactly what they are approving.",
+  review2: "A payout proposal is checked the same way. The amounts a voter sees are the amounts the contract will pay.",
   tokens: "Token sales work the same way. On a second contract, the DAO approved a conversion plan, and the contract computed every investor's tokens itself.",
   close2: "That is Rounds: a private cap table, a DAO vote that means something exact, and checks anyone can run. Built on NEAR testnet with play money, and not legal advice. Thanks for watching.",
 };

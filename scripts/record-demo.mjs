@@ -296,30 +296,16 @@ if (/FAIL/.test(chainTxt) || !/PASS/.test(chainTxt)) throw new Error("the on-cha
 }
 // voting: the board's proposals on the finished demo, then the token contract
 if (PART === "all" || PART === "tail") {
-await narrate(N.review, async () => {
-  await point("#pre-demo", 0.5, 0.5); await click("#pre-demo");
-  await waitFor(`!!document.querySelector("#proposal-4")`);
-  await ev(`document.getElementById("proposal-4").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
-  await point("#proposal-4 .rv-h", 0.5, 0.5); await sleep(2200);
-  await point("#proposal-4 table", 0.5, 0.4); await sleep(2200);
-  await ev(`document.getElementById("proposal-9").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
-  await point("#proposal-9 .rv-h", 0.5, 0.5); await sleep(1500); await point("#proposal-9 table", 0.5, 0.4);
-});
+// calm pacing: scroll first (no narration over the movement), then the picture holds still while the line is read
+await click("#pre-demo"); await waitFor(`!!document.querySelector("#proposal-4")`);
+await ev(`document.getElementById("proposal-4").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1800);
+await narrate(N.review, async () => { await point("#proposal-4 .rv-h", 0.5, 0.5); await sleep(4500); await point("#proposal-4 table", 0.5, 0.3); await sleep(4500); await point("#proposal-4 table", 0.5, 0.8); });
+await ev(`document.getElementById("proposal-9").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1800);
+await narrate(N.review2, async () => { await point("#proposal-9 .rv-h", 0.5, 0.5); await sleep(3500); await point("#proposal-9 table", 0.5, 0.4); });
 const reviewTxt = await ev(`document.getElementById("review-body").innerText`);
 if (/DOES NOT MATCH/.test(reviewTxt) || !/VERIFIED/.test(reviewTxt)) throw new Error("the review card did not verify the demo's proposals");
-await narrate(N.tokens, async () => {
-  await ev(`document.getElementById("contract").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
-  await click("#contract"); // typed one letter at a time, so the viewer sees an account being entered
-  for (let i = 1; i <= "rounds-tok-332657.testnet".length; i++) { await ev(`document.getElementById("contract").value=${JSON.stringify("rounds-tok-332657.testnet".slice(0, i))}`); await sleep(55); }
-  await sleep(500); await click("#chain-btn");
-  await waitFor(`!!document.querySelector("#proposal-14")`);
-  await ev(`document.getElementById("proposal-14").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
-  await point("#proposal-14 .rv-h", 0.5, 0.5); await sleep(1800); await point("#proposal-14 table", 0.5, 0.4); await sleep(2500);
-  await point("#proposal-14 .rv-f", 0.5, 0.5);
-});
-
-await ev(`window.scrollTo({top:0,behavior:"smooth"})`); await sleep(1200);
-await narrate(N.close2, async () => { await point("h1", 0.4, 0.5); });
+await ev(`window.scrollTo({top:0,behavior:"smooth"})`); await sleep(2000);
+await narrate(N.close2, async () => { await point("h1", 0.4, 0.5); await sleep(5000); await point("h1", 0.6, 0.8); });
 await sleep(800);
 }
 
