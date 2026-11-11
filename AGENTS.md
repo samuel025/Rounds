@@ -36,7 +36,7 @@ Rounds is a testnet cap-table demo. Live app: https://roundcap.vercel.app. Start
 
 ## Out of scope
 
-Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet. The wallet is testnet-only; no mainnet. No confidential mode. No NEAR AI Cloud assistant. SAFE terms not modelled: MFN, pro-rata side letters.
+Legal documents, KYC, banking, secondary markets, tax, real securities, mainnet. The wallet is testnet-only; no mainnet. Confidential mode is optional and partial (holdings only; dev trusted setup); see README. No NEAR AI Cloud assistant. SAFE terms not modelled: MFN, pro-rata side letters.
 
 ## Known slow or flaky steps
 

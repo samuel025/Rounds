@@ -162,8 +162,8 @@ Be aware of what this run does and does not show:
 
 - Not legal advice; no legal validity for any instrument.
 - Simplified post-money SAFE: no MFN, no pro-rata side letters, no liquidity-event or dissolution mechanics beyond the exit waterfall. RULES.md now maps each SAFE rule to the clause in the YC post-money forms (Valuation Cap Only, Discount Only, MFN Only; downloaded 2026-11-07). Three things go beyond or differ from those forms: a SAFE with both a cap and a discount is Rounds' own extension, Promised Options are not modelled, and exits before a SAFE converts are not modelled. The mapping is not legal advice.
-- Preferred is 1x non-participating only; no convertible notes, participating preferred, pro-rata rights, transfers or confidential mode.
-- Holdings, deposits and payouts are public on chain.
+- Preferred is 1x non-participating only; no convertible notes, participating preferred, pro-rata rights or transfers.
+- In public mode, holdings, deposits and payouts are public on chain. The optional confidential mode hides holdings only (see its section: deposits, payout amounts and the pot stay public).
 - The contract credits the issuances in the approved plan; it does not recompute the equity math (rounds, exits, shared payouts), with one exception: SAFT conversion (R11), which it computes itself and refuses to credit if the plan differs. The safety argument is the board's approval of the plan hash plus anyone re-verifying with the engine.
 - Payout receivers must already be registered with the token (NEP-145); otherwise their payout fails and stays retryable. `distribute` is capped per call by the contract constant `MAX_DISTRIBUTE` (an estimate, not a measured limit).
 - The shared payout (RULES.md R10) is checked by a hand-derived vector (GV-8, computed with independent integer arithmetic), a property test, the on-chain run and `make verify-onchain`; it is **not** in the Python reference or its 1,000-scenario conformance. It is a plain per-holder floor division, but the independence caveat above applies to it in full. Who is eligible is the engine's choice (every holder, every class, not the unissued pool): a group that wants a different rule (by class, by vesting, by reputation) would change the plan the board approves, not the contract.
@@ -177,16 +177,17 @@ Be aware of what this run does and does not show:
 
 - *Why a blockchain at all?* Only for approvals and payouts that anyone can verify against a plan hash; the equity math itself stays off chain.
 - *Why not Carta?* Carta works, is legally grounded and integrates with lawyers and banks. Rounds' pitch is cost and open, checkable records, which matters only if the record has legal standing, and this does not.
-- *What is weak?* Public holdings (a real cap table is confidential), no legal status, simplified SAFE terms, and an off-chain engine whose correctness rests on tests, not proofs.
+- *What is weak?* Public holdings in the default mode (a real cap table is confidential; the optional zero-knowledge mode hides them, with a development-only trusted setup), no legal status, simplified SAFE terms, and an off-chain engine whose correctness rests on tests, not proofs.
 - *Why build it anyway?* The failure it targets is real: nobody can check a cap table. A reproducible engine, a board vote on a hash and a read-only verifier are a small, honest step toward fixing that.
 
 ## Tracks
 
-**Entered in two tracks, selected in the submission form: Social Money and Open Innovation.** The hackathon FAQ allows a project to select every track it fits ("one submission per project"); this is one project in two tracks. The same entrant has a second, independent project in a different track, Tremor ([github.com/samuel025/tremor](https://github.com/samuel025/tremor), Memecoins With Mechanics); each README names the other, as the FAQ requires (see the disclosures below).
+**Entered in three tracks, selected in the submission form: Social Money, Open Innovation and Privacy.** The hackathon FAQ allows a project to select every track it fits ("one submission per project"); this is one project in three tracks. The same entrant has a second, independent project in a different track, Tremor ([github.com/samuel025/tremor](https://github.com/samuel025/tremor), Memecoins With Mechanics); each README names the other, as the FAQ requires (see the disclosures below).
 
 - **Social Money.** Collective ownership on top of Sputnik DAO: a group's pooled money, its shared ownership record, its contributor grants and its payouts all run through the group's own DAO, which approves each one by exact plan hash (the demo run uses an unmodified 2-of-3 Sputnik DAO v2, which is also the treasury that receives the pooled money). The DAO is used as it is; Rounds adds what the group does with it, including a shared payout: the DAO treasury funds a pot, the board approves its plan hash, and the contract pays every shareholder pro rata (demo step 10, the app's "Share a pot" card, which any visitor can run on a sandbox). Voters can check what they approve in the Board proposals card. See the table at the top, "Testnet addresses and transactions" and the `make verify-onchain` output for the proof. Not used: Trezu (looked up, not integrated; see above).
 - **Open Innovation.** New ways for money and ownership to work together: an exact equity engine, a second implementation that agrees with it on seeded random scenarios, a contract that recomputes SAFT token conversions itself, a read-only verifier that anyone can run, and a live app where you run a whole round and a shared payout yourself on testnet.
-- **Not entered:** Privacy (holdings are public on chain and there is no confidential mode), the AI and agent tracks (NEAR AI Cloud and NEAR Intents are not used), and Real-World Money (everything here is a no-value test token; there are no payment rails, invoicing or payroll).
+- **Privacy (optional mode).** An opt-in zero-knowledge confidential mode keeps each holding off the chain: the contract stores only a sealed fingerprint of the cap table, checks a Groth16 proof of it, and pays a holder's share without saying which row is theirs. Honest limits: deposits, payout amounts and pot totals are public, the trusted setup is a single-contributor development one, and the board approves a root it checks against a private table file rather than reading numbers on chain.
+- **Not entered:** the AI and agent tracks (NEAR AI Cloud and NEAR Intents are not used), and Real-World Money (everything here is a no-value test token; there are no payment rails, invoicing or payroll).
 
 ## Check before you vote
 
@@ -222,7 +223,7 @@ Limits: the first demo contract (`rounds-core-332657`) and the open sandboxes we
 
 ## Zero-Knowledge Confidential Mode
 
-**This branch (`feat/zk-confidential`) adds an opt-in confidential mode. The default branch does not have it.** Public mode is unchanged: all the earlier tests still pass on this branch.
+**An opt-in confidential mode, merged into the default branch.** Public mode is unchanged and remains the default; confidential mode is a separate card in the app on its own testnet sandbox.
 
 **What it does.** A round can keep its cap table private. The chain stores a Poseidon Merkle root, the total shares and the raise, plus a zero-knowledge proof (Groth16 over BN254, checked by the contract with NEAR's `alt_bn128` functions) that the private table adds up to that total. A later payout is a **private payout**: the DAO funds a pot and approves it, then each holder uses a **receipt** (a file only they have) to prove, in their own browser, that they are in the committed table and are owed exactly `floor(shares × pot ÷ total shares)`, and names any fresh account to receive it.
 
@@ -254,9 +255,9 @@ Limits: the first demo contract (`rounds-core-332657`) and the open sandboxes we
 - The proving keys are about 39 MB (the page downloads them when you prove) and are committed on this branch under `web/public/zk/`.
 - Not covered: confidential deposits and payments (token transfers are public), SAFTs and token grants in confidential rounds, and any confidential exit other than the pro-rata payout.
 
-## Path to privacy (not built)
+## Path to fuller privacy (not built)
 
-Holdings, deposits and payouts are public on chain today, so this is not a confidential product. What would change that, in order of what it would hide:
+In confidential mode only holdings are hidden; deposits and payouts are public on chain, so this is not a fully confidential product. What would change that, in order of what it would hide:
 
 1. **Hash commitments for holdings and round plans.** The chain would store a salted fingerprint per holding instead of holder names and share counts, and each holder would keep a receipt that proves their holding. This hides who holds how many shares, but deposits and exit payouts are ordinary token transfers, so an investor's payment and an exit payout would still be visible; the plan would also no longer be re-checkable by someone without the plan file.
 2. **Zero-knowledge proofs** (for example that a round's class totals add up) in place of reading a plan, which would remove most of the leaks of a commitment tree. This needs circuits, a proving setup and an on-chain verifier.
