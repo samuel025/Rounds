@@ -43,10 +43,15 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
   const key = (w: string) => `zk:${d.contract}:${acct ?? "-"}:${w}`;
   const myRound = () => { const id = store.get(key("round")); return v && id ? v.rounds.find((r) => r.id === id) ?? null : null; };
   const myExit = () => { const id = store.get(key("pexit")); return id ? pexits.find((e) => e.id === id) ?? null : null; };
+  // A browser wallet takes you away from the page to approve and then back, which reloads it: keep the files in this tab's session storage so they survive
+  // that round trip (demo mode: they include the demo holder keys). They are still only in this tab; download them.
+  const persistBuilt = (b: Built) => store.set(key("built"), { ...b, total: b.total.toString() });
+  const restoreBuilt = (): Built | null => { const x = store.get(key("built")); return x ? { ...x, total: BigInt(x.total) } : null; };
 
   async function refresh() {
     try { v = await loadChain(d.rpc, d.contract); readError = ""; } catch (e) { readError = (e as Error).message; }
     acct = account();
+    if (!built && acct) { built = restoreBuilt(); if (built) (window as any).__zkBuilt = built; }
     if (acct && v) { try { bal = BigInt(await call(d.rpc, d.token, "ft_balance_of", { account_id: acct })); } catch { /* keep */ } }
     const list: any[] = []; for (let i = 1; i <= 30; i++) { try { const e = await call(d.rpc, d.contract, "private_exit", { exit_id: i }); if (!e) break; list.push(e); } catch { break; } } pexits = list;
     if (v && acct) { // a proposal sent before a wallet redirect: find its round by the root it carries
@@ -88,7 +93,7 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
       + `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 12px"><label for="zk-pot" style="margin:0;white-space:nowrap">Payout pot</label><select id="zk-pot" style="width:auto;min-width:130px">${POTS.map((p) => `<option value="${p}" ${p === pot ? "selected" : ""}>$${p.toLocaleString("en-US")}</option>`).join("")}</select>
         <label for="zk-pass" style="margin:0;white-space:nowrap">Board passphrase (optional, 12+ characters)</label><input type="text" id="zk-pass" value="${esc(pass)}" placeholder="encrypts a backup copy for the board" autocomplete="off" style="width:auto;min-width:240px" ${r ? "disabled" : ""}/></div>`
       + `<ol class="flow">` + rows().map((x) => `<li class="flow-row ${x.st}"><span class="flow-n">${x.st === "done" ? "✓" : x.n}</span><div class="flow-t"><b>${esc(x.title)}</b><span class="muted">${esc(x.help)}</span></div>${x.label ? `<button class="btn ${x.st === "current" ? "primary" : ""} sm" data-zk="${x.act}" ${x.off || busy ? "disabled" : ""}>${esc(x.label)}</button>` : `<span class="flow-ok">done</span>`}</li>`).join("") + `</ol>`
-      + `<div class="flow-result">${built ? `<b>The files exist only in this tab.</b> Download them now. The <b>claim files</b> hold no secret and can be re-issued from the table file; each <b>holder key</b> is that holder's only secret (real holders create their own, and the table is built from their public codes); the <b>table file</b> is for the board and is private. ${dl.map(([k, t]) => `<button class="btn sm" data-zk="dl-${k}" style="margin:4px 6px 0 0">${t}</button>`).join("")}` : `<span class="muted">When the round is proved, the files appear here.</span>`}${r ? `<br/><span class="muted">Public on chain: the root, ${built ? built.total.toLocaleString("en-US") : "the"} total shares, the raise and who paid it. Private: every holding, and who is behind each key.</span>` : ""}</div>`;
+      + `<div class="flow-result">${built ? `<b>The files exist only in this browser tab</b> (they survive a wallet redirect, not closing the tab). Download them now. The <b>claim files</b> hold no secret and can be re-issued from the table file; each <b>holder key</b> is that holder's only secret (real holders create their own, and the table is built from their public codes); the <b>table file</b> is for the board and is private. ${dl.map(([k, t]) => `<button class="btn sm" data-zk="dl-${k}" style="margin:4px 6px 0 0">${t}</button>`).join("")}` : `<span class="muted">When the round is proved, the files appear here.</span>`}${r ? `<br/><span class="muted">Public on chain: the root, ${built ? built.total.toLocaleString("en-US") : "the"} total shares, the raise and who paid it. Private: every holding, and who is behind each key.</span>` : ""}</div>`;
     host.querySelectorAll<HTMLButtonElement>("button[data-zk]").forEach((b) => (b.onclick = () => void act(b.dataset.zk!)));
     const sel = host.querySelector<HTMLSelectElement>("#zk-pot"); if (sel) sel.onchange = () => { pot = +sel.value; draw(); };
     const pw = host.querySelector<HTMLInputElement>("#zk-pass"); if (pw) pw.oninput = () => { pass = pw.value; };
@@ -121,6 +126,7 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
         let escrow: EscrowFile | null = null, escrowHash: string | null = null;
         if (pass) { status = "Encrypting the board copy …"; draw(); escrow = await zk.encryptEscrow(b.tableFile, pass); escrowHash = await zk.escrowHash(escrow); }
         built = { claimFiles: b.claimFiles, keys: b.keys, tableFile: b.tableFile, escrow, total: b.totalShares };
+        persistBuilt(built); // survive a wallet redirect
         (window as any).__zkBuilt = built; // dev/test hook: lets scripts/e2e-zk.mjs hand the files to the claim panel
         const next: number = await call(d.rpc, d.contract, "next_round_id", {});
         status = "Proving in your browser (this can take a little while the first time) …"; draw();

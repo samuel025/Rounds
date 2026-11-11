@@ -5,10 +5,10 @@ PASS all eleven steps are on screen from the start
 PASS step 2: the judge gets test USDC
      signer: storage_deposit+faucet -> rsbx-usdc-967540.testnet
      signer: act -> rsbx-zkboard-556554.test
-     step 3 (officer) took 30.1 s
+     step 3 (officer) took 14.2 s
 PASS step 3: the open board makes the judge an officer
      signer: propose_confidential_round -> rsbx-zkrounds-556554.tes
-     step 4 (propose) took 17.2 s
+     step 4 (propose) took 19.9 s
 PASS step 4: the cap table is built, PROVED in the browser, an encrypted board copy is made, and the root is proposed
 PASS the plan on chain has no field that could carry a holding: the root, the total, the raise, the deadline and the escrow commitment
 PASS the encrypted board copy's hash is committed inside the plan the board approves
@@ -17,33 +17,33 @@ PASS Board check: the encrypted copy matches the committed hash and re-seals to 
 PASS Board check: a table with one number changed is refused
 PASS Board check: the wrong passphrase does not open the encrypted copy
      signer: ft_transfer_call -> rsbx-usdc-967540.testnet
-     step 5 (fund) took 14.5 s
+     step 5 (fund) took 14.0 s
 PASS step 5: the judge funds the raise
      signer: act -> rsbx-zkboard-556554.test
-     step 6 (approve) took 13.2 s
+     step 6 (approve) took 17.4 s
 PASS step 6: the board approves the plan hash
      signer: close_round -> rsbx-zkrounds-556554.tes
-     step 7 (close) took 14.6 s
+     step 7 (close) took 13.6 s
 PASS step 7: the round closes and the root is committed
      signer: propose_private_exit -> rsbx-zkrounds-556554.tes
-     step 8 (pexit) took 13.6 s
+     step 8 (pexit) took 14.0 s
 PASS step 8: a private payout is opened
      signer: ft_transfer_call -> rsbx-usdc-967540.testnet
-     step 9 (pfund) took 14.0 s
+     step 9 (pfund) took 14.3 s
 PASS step 9: the pot is funded
      signer: act -> rsbx-zkboard-556554.test
-     step 10 (papprove) took 14.8 s
+     step 10 (papprove) took 15.2 s
 PASS step 10: the board approves the payout
-PASS a fresh recipient account exists and is NOT registered with the token (rsbx-zkburner-8866298.testnet)
+PASS a fresh recipient account exists and is NOT registered with the token (rsbx-zkburner-9436275.testnet)
 PASS the relayer option is offered and on by default
-     page: [zk] claim() {"recipient":"rsbx-zkburner-8866298.testnet","exitId":2,"haveClaim":true,"haveExit":true}
+     page: [zk] claim() {"recipient":"rsbx-zkburner-9436275.testnet","exitId":3,"haveClaim":true,"haveExit":true}
      page: [zk] claim proved
-     claim (proof + relayer) took 9.1 s
-PASS the private claim was proved in the browser and submitted by the relayer (DONE $3,333.333333 claimed to rsbx-zkburner-8866298.testnet, submitted by the relayer rsbx-ada-973123.testnet )
+     claim (proof + relayer) took 9.9 s
+PASS the private claim was proved in the browser and submitted by the relayer (DONE $3,333.333333 claimed to rsbx-zkburner-9436275.testnet, submitted by the relayer rsbx-ada-973123.testnet )
 PASS the holder's wallet signed nothing for the claim: the relayer paid and submitted it
 PASS the unregistered account was registered by the contract and received exactly the holder's pro-rata share (3333333333 micro-dollars)
 PASS the contract's claimed total equals the one payout
-     page: [zk] claim() {"recipient":"rsbx-zkburner-8866298.testnet","exitId":2,"haveClaim":true,"haveExit":true}
+     page: [zk] claim() {"recipient":"rsbx-zkburner-9436275.testnet","exitId":3,"haveClaim":true,"haveExit":true}
      page: [zk] claim proved
      page: [zk] claim failed this receipt has already been claimed (ERR_NULLIFIER_USED)
 PASS claiming the same receipt again is refused (FAIL this receipt has already been claimed (ERR_NULLIFIER_USED) ×)
