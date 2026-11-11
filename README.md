@@ -37,6 +37,10 @@ Rounds makes the math checkable:
 
 Who it is for: a **founder or contributor** modelling and running a round; an **investor** verifying the shares they paid for; a **team member** checking vesting and exit value; a **board member** approving one exact plan.
 
+## Deploying the app (Vercel)
+
+The app is a static site. `vercel.json` already sets the install command, the build command (`node scripts/rules-html.mjs && npx vite build`), the output folder (`dist`) and security headers, and `.vercelignore` keeps the upload small. Import the GitHub repository in Vercel and press Deploy (no environment variables are needed), or run `vercel --prod` from the repository root. A clean clone with only the files the build needs was built to check this. It reads the testnet chain directly from the visitor's browser.
+
 ## How another person can use it today
 
 This is a hackathon prototype on NEAR **testnet**: fake money only. The app connects a NEAR **testnet** wallet (wallet-selector: MyNearWallet, Meteor) to sign real testnet transactions. The app is a static site (`vercel.json` builds it on Vercel from this repo) and reads the testnet contract directly from the chain. Three levels of use:

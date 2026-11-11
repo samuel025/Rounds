@@ -20,5 +20,8 @@
     "@near-wallet-selector/my-near-wallet": "^10.1.4",
     "buffer": "^6.0.3",
     "near-api-js": "^6.5.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

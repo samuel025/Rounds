@@ -1,0 +1,14 @@
+# Not needed to build the static site (the build reads web/, src/engine/, RULES.md and scripts/rules-html.mjs).
+# Keeps a `vercel` CLI upload small; Git-based deploys honour it too.
+contract
+spike
+ref
+results
+demo
+docs
+test
+vectors
+.state
+target
+dist
+node_modules
