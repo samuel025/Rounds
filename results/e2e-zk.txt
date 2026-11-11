@@ -1,0 +1,54 @@
+confidential sandbox rsbx-zkrounds-556554.testnet, holder rsbx-bayo-913009.testnet, relayer rsbx-ada-973123.testnet
+PASS the Confidential mode section is shown when a confidential sandbox is configured
+PASS all ten steps are on screen from the start
+     step 2 (faucet) took 0.0 s
+PASS step 2: the judge gets test USDC
+     signer: storage_deposit+faucet -> rsbx-usdc-967540.testnet
+     signer: act -> rsbx-zkboard-556554.test
+     step 3 (officer) took 19.5 s
+PASS step 3: the open board makes the judge an officer
+     signer: propose_confidential_round -> rsbx-zkrounds-556554.tes
+     step 4 (propose) took 24.7 s
+PASS step 4: the cap table is built, PROVED in the browser, an encrypted board copy is made, and the root is proposed
+PASS the plan on chain has no field that could carry a holding: the root, the total, the raise, the deadline and the escrow commitment
+PASS the files the page holds belong to the round on chain (root 1647483044… vs 1647483044…)
+PASS the encrypted board copy's hash is committed inside the plan the board approves
+PASS no claim file and no table file contains a holder's secret key
+     board out: "PASS this encrypted copy is exactly the one the proposer committed to in the roundPASS the table re-seals to exactly the root on chain and adds up to 13,500,000 sharesBy class: Common 7,750,000 · SAFE 1 shadow preferred 1,000,000 · SAFE 2 shadow preferred 250,000 · Series A Preferred 4,500,000Holder (private label)ClassSharesShare of totalrsbx-ada-796946.testnet (founder)Common5,000,00037.03%rsbx-"
+PASS Board check: the encrypted copy matches the committed hash and re-seals to the on-chain root
+PASS Board check: a table with one number changed is refused
+PASS Board check: the wrong passphrase does not open the encrypted copy
+     signer: ft_transfer_call -> rsbx-usdc-967540.testnet
+     step 5 (fund) took 20.6 s
+PASS step 5: the judge funds the raise
+     signer: act -> rsbx-zkboard-556554.test
+     step 6 (approve) took 22.4 s
+PASS step 6: the board approves the plan hash
+     signer: close_round -> rsbx-zkrounds-556554.tes
+     step 7 (close) took 21.0 s
+PASS step 7: the round closes and the root is committed
+     signer: propose_private_exit -> rsbx-zkrounds-556554.tes
+     step 8 (pexit) took 20.9 s
+PASS step 8: a private payout is opened
+     signer: ft_transfer_call -> rsbx-usdc-967540.testnet
+     step 9 (pfund) took 20.7 s
+PASS step 9: the pot is funded
+     signer: act -> rsbx-zkboard-556554.test
+     step 10 (papprove) took 19.7 s
+PASS step 10: the board approves the payout
+PASS a fresh recipient account exists and is NOT registered with the token (rsbx-zkburner-5613794.testnet)
+     claim files: 0:rsbx-ada-796946.testne:5000000 | 1:rsbx-bayo-796946.testn:2750000 | 2:rsbx-chidi-796946.test:1000000 | 3:rsbx-dayo-796946.testn:250000 | 4:rsbx-bayo-913009.testn:4500000 -> using index 4
+PASS the relayer option is offered and on by default
+     claim panel says: oes not sign or appear on chain) Claim file: rsbx-bayo-913009.testnet · Series A Preferred · you would receive $3,333.333333. Holder key loaded. Prove and claim privately
+     page: [zk] claim() {"recipient":"rsbx-zkburner-5613794.testnet","exitId":8,"haveClaim":true,"haveExit":true}
+     page: [zk] claim proved
+     claim (proof + relayer) took 9.9 s
+PASS the private claim was proved in the browser and submitted by the relayer (DONE $3,333.333333 claimed to rsbx-zkburner-5613794.testnet, submitted by the relayer rsbx-ada-973123.testnet )
+PASS the holder's wallet signed nothing for the claim: the relayer paid and submitted it
+PASS the unregistered account was registered by the contract and received exactly the holder's pro-rata share (3333333333 micro-dollars)
+PASS the contract's claimed total equals the one payout
+     page: [zk] claim() {"recipient":"rsbx-zkburner-5613794.testnet","exitId":8,"haveClaim":true,"haveExit":true}
+     page: [zk] claim proved
+     page: [zk] claim failed this receipt has already been claimed (ERR_NULLIFIER_USED)
+PASS claiming the same receipt again is refused (FAIL this receipt has already been claimed (ERR_NULLIFIER_USED) ×)
+PASS summary: 25 checks, 0 failed

@@ -62,3 +62,20 @@ verify-tokens:
 .PHONY: e2e-share
 e2e-share:
 	node scripts/e2e-share.mjs
+
+# ---- confidential mode (ZK), branch feat/zk-confidential ----
+# compiles the circom circuits and runs a LOCAL, single-contributor Powers of Tau + Groth16 setup (dev/demo only; see README)
+.PHONY: circuits zk-fixtures e2e-zk
+circuits:
+	bash scripts/build-circuits.sh
+# regenerates the proofs the contract's sandbox test replays (needs `make circuits` first)
+zk-fixtures:
+	npx vite-node scripts/zk-fixtures.ts
+# drives the Confidential mode card with the DEV-only test signer on the confidential sandbox (needs `make web-dev` running); writes testnet transactions
+e2e-zk:
+	node scripts/e2e-zk.mjs
+
+# a local claim relayer so a holder's wallet never signs the claim (needs a funded testnet account: RELAYER_ACCOUNT=...)
+.PHONY: relayer
+relayer:
+	RELAYER_CONTRACT=$${RELAYER_CONTRACT:-$$(node -p 'require("./web/public/zk-sandbox.json").rounds')} RELAYER_CREDENTIALS=$${RELAYER_CREDENTIALS:-$$HOME/.near-credentials/testnet/$$RELAYER_ACCOUNT.json} RELAYER_ACCOUNT=$$RELAYER_ACCOUNT node scripts/relayer.mjs

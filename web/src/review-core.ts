@@ -35,6 +35,13 @@ function planOf(r: RoundRec): any | null { try { return JSON.parse(r.plan); } ca
 export function describeRound(r: RoundRec): { title: string; lines: string[] } {
   const p = planOf(r); const lines: string[] = [];
   if (!p) return { title: `Round ${r.id}: the plan on chain cannot be read`, lines };
+  if (typeof p.merkle_root === "string") { // a confidential round: the cap table is sealed, only the root and the total are public
+    const total = r.raise.reduce((a, [, x]) => a + BigInt(x), 0n);
+    for (const [who, amt] of r.raise) lines.push(`${who} pays ${usdExact(BigInt(amt))} into escrow (deposits are public)`);
+    lines.push(`seals a private cap table of ${n(p.total_shares)} shares under the root ${String(p.merkle_root).slice(0, 14)}…; no holding is on chain`);
+    lines.push(p.escrow_hash ? `commits to an encrypted copy of the table for the board (hash ${String(p.escrow_hash).slice(0, 12)}…)` : "commits to no encrypted copy of the table for the board");
+    return { title: `Approve confidential round ${r.id}${total > 0n ? ` (${usdExact(total)} raised)` : ""}`, lines };
+  }
   const issued: Record<string, bigint> = {};
   for (const i of p.issuances ?? []) issued[i.holder] = (issued[i.holder] ?? 0n) + BigInt(i.shares);
   for (const [who, amt] of r.raise) {
@@ -108,6 +115,7 @@ export async function reviewProposal(p: Proposal, v: ChainView): Promise<Review>
     if (p0 && Array.isArray(p0.raise)) base.findings.push(JSON.stringify(p0.raise) === JSON.stringify(r.raise) && p0.kind === r.kind ? ok("The investors and amounts the contract will collect are the ones inside the approved plan.") : bad("The investors or amounts differ from the ones inside the plan."));
     else base.findings.push(info("This contract is an older build: its hash covers the shares issued, not the money terms."));
     if (r.status !== "Funding") base.findings.push(info(`The round is already ${r.status}.`));
+    if (p0 && typeof p0.merkle_root === "string") base.findings.push(info("The cap table is sealed, so the numbers cannot be shown here. Before voting, open the Board check in the Confidential mode section with the table file the proposer gave you: it re-seals the table and compares it with this root."));
     const funded = r.raise.every(([, amt], k) => BigInt(r.deposits[k]?.[1] ?? "0") === BigInt(amt));
     if (r.raise.length) base.findings.push(info(funded ? "Every investor has paid into escrow." : "Not every investor has paid into escrow yet."));
     return done(d.title, { lines: d.lines, table: ownership(v, r), call });

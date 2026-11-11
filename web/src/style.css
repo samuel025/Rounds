@@ -83,3 +83,36 @@ input[disabled]{opacity:.55;cursor:not-allowed}
 .rv-f{display:grid;gap:4px;font-size:14px}
 .chip{font:500 11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line2);border-radius:999px;padding:3px 8px;color:var(--muted)}
 .chip.inprogress{color:#f99c00;border-color:#f99c00}.chip.approved{color:#44ffa4;border-color:#44ffa4}
+
+/* dropdowns: the open list is drawn by the browser, so it needs its own dark background or white text lands on a white list */
+select{color-scheme:dark;background-color:var(--panel);cursor:pointer}
+select option,select optgroup{background-color:#0a0a0a;color:#fafafa}
+/* file fields: one clear target instead of the browser's default control; also accepts a dropped file */
+.drop-field{margin:4px 0 12px}
+.drop{display:flex;align-items:center;gap:12px;border:1px dashed var(--line2);border-radius:12px;padding:11px 14px;cursor:pointer;background:var(--panel);transition:border-color .15s,background .15s;font-size:13px}
+.drop:hover,.drop.over{border-color:var(--fg);background:rgba(255,255,255,.05)}
+.drop .drop-b{flex:none;border:1px solid var(--line2);border-radius:999px;padding:6px 14px;font:500 13px var(--sans);color:var(--fg)}
+.drop .drop-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.drop.has{border-style:solid;border-color:#2ca86c}.drop.has .drop-n{color:var(--green)}
+.drop input{display:none}
+.fl{display:block;font-size:12px;letter-spacing:.04em;color:var(--muted);margin:12px 0 4px}
+/* confidential mode: two tabs in one card, and a compact step list that expands only the current step */
+.ztabs{display:flex;gap:6px;margin:-6px 0 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ztab{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font:500 14px var(--sans);padding:10px 14px;cursor:pointer;margin-bottom:-1px}
+.ztab:hover{color:var(--fg)}.ztab.on{color:var(--fg);border-bottom-color:var(--fg)}
+.zpanel[hidden]{display:none}
+.flow.compact .flow-row{min-height:0;padding:9px 0}
+.flow.compact .flow-row:not(.current) .flow-t span{display:none}
+.flow.compact .flow-row.current{padding:14px 0}
+.flow.compact .flow-t span{min-height:0}
+.zbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:2px 0 10px}
+.zbar label{margin:0;white-space:nowrap}
+details.zd{border:1px solid var(--line);border-radius:12px;padding:0 14px;margin-top:14px;background:rgba(255,255,255,.015)}
+details.zd>summary{cursor:pointer;padding:12px 0;font-size:14px;font-weight:500}
+details.zd[open]>summary{border-bottom:1px solid var(--line);margin-bottom:12px}
+
+/* the top bar must not wrap now that it has more links */
+nav a,.brand,.net,#wallet-btn{white-space:nowrap}
+nav{gap:14px;font-size:12.5px}
+@media (max-width:1240px){nav a[href^="https://github.com"]{display:none}}
+@media (max-width:1100px){.net{display:none}}

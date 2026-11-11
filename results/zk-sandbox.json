@@ -1,0 +1,41 @@
+{
+  "suffix": "556554",
+  "accounts": {
+    "ada": "rsbx-zkada-556554.testnet",
+    "usdc": "rsbx-usdc-967540.testnet",
+    "rounds": "rsbx-zkrounds-556554.testnet",
+    "board": "rsbx-zkboard-556554.testnet"
+  },
+  "deployment": {
+    "network": "testnet",
+    "rpc": "https://test.rpc.fastnear.com",
+    "explorer": "https://testnet.nearblocks.io",
+    "rounds": "rsbx-zkrounds-556554.testnet",
+    "board": "rsbx-zkboard-556554.testnet",
+    "treasury": "rsbx-zkada-556554.testnet",
+    "token": "rsbx-usdc-967540.testnet",
+    "openBoard": true,
+    "confidential": true,
+    "note": "CONFIDENTIAL-MODE SANDBOX (dev trusted setup, testnet, no value): anyone may become an officer and act as the board."
+  },
+  "txs": [
+    {
+      "step": "1",
+      "tx": "48Fhif2Z1GjV3wrLLJJeJRAMKim2W25JLaNSmcg9K2GW",
+      "what": "register rsbx-zkada-556554.testnet for test USDC",
+      "signer": "rsbx-zkada-556554.testnet"
+    },
+    {
+      "step": "1",
+      "tx": "4oV1pLJ7TyzRXmghayVj1xTavPuWJbNacvCPWs98NVAH",
+      "what": "register rsbx-zkrounds-556554.testnet for test USDC",
+      "signer": "rsbx-zkada-556554.testnet"
+    },
+    {
+      "step": "1",
+      "tx": "BoqiQYiaieHdGdQpncvNyKJpX1B7UbSpfRhKUNkWrsWe",
+      "what": "register rsbx-zkboard-556554.testnet for test USDC",
+      "signer": "rsbx-zkada-556554.testnet"
+    }
+  ]
+}
