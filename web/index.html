@@ -13,7 +13,7 @@
 <body>
   <header class="nav"><div class="wrap nav-in">
     <a class="brand" href="#top"><span class="dot"></span>Rounds</a>
-    <nav><a href="#cap">Cap table</a><a href="#model">Model a round</a><a href="#try" id="nav-try" hidden>Run it</a><a href="#people">Investors &amp; employees</a><a href="#exit">Exit</a><a href="#share">Share a pot</a><a href="#verify">Verify</a></nav><button class="btn sm" id="wallet-btn">Connect wallet</button>
+    <nav><a href="#cap">Cap table</a><a href="#model">Model a round</a><a href="#try" id="nav-try" hidden>Run it</a><a href="#people">Investors &amp; employees</a><a href="#exit">Exit</a><a href="#share">Share a pot</a><a href="#verify">Verify</a><a href="https://github.com/samuel025/Rounds" target="_blank" rel="noopener">GitHub ↗</a></nav><button class="btn sm" id="wallet-btn">Connect wallet</button>
     <span class="net"><i></i>NEAR testnet</span>
   </div></header>
   <main id="top">
@@ -21,7 +21,7 @@
       <p class="eyebrow">Collective ownership · Sputnik DAO · NEAR</p>
       <h1>The cap table that<br/>shows its work.</h1>
       <p class="lede">For groups that pool money and decide with a DAO: every change to who paid what and who owns what becomes an exact plan, the DAO approves its fingerprint, and any member can check the result.</p>
-      <div class="cta"><a class="btn primary" href="#model">Model a Series A</a><a class="btn" href="#verify">Verify a round</a></div>
+      <div class="cta"><a class="btn primary" href="#model">Model a Series A</a><a class="btn" href="#verify">Verify a round</a><a class="btn" href="https://github.com/samuel025/Rounds" target="_blank" rel="noopener">View the code on GitHub ↗</a></div>
       <div class="card intro" id="intro"><div class="card-h"><span class="mono muted">NEW HERE? WHAT YOU ARE LOOKING AT</span></div>
         <p><b>A cap table</b> is the list of who owns how much of a startup: the founders, early investors, employees with stock options, and anyone who invests later.</p>
         <p>For a group that funds something together (a crypto startup, an investment club, a contributor collective), that table is usually still a private spreadsheet, and the group's vote cannot be tied to the exact numbers it approved. <b>Rounds</b> works out the numbers exactly, holds the pooled money in escrow, has the group's DAO approve each round on the NEAR blockchain (the shares and the money paid for them, in one fingerprint), and lets anyone re-check it. It is a testnet prototype and models equity, SAFTs and a project-token reserve with vesting grants.</p>
@@ -64,7 +64,7 @@
       <div class="card" id="review"><div class="card-h"><span class="mono muted">BOARD PROPOSALS · CHECK BEFORE YOU VOTE</span></div><div id="review-body"><p class="note">Load a contract above to review its board's proposals.</p></div></div>
       <div class="card"><div class="card-h"><span class="mono muted">ON-CHAIN EVENTS</span><button class="btn primary sm" id="verify-btn">Verify</button></div><div id="events"></div><pre class="out" id="verify-out"></pre></div></section>
   </main>
-  <footer class="wrap foot"><p>Rounds is a model and a testnet demo, not a securities offering, and it has no legal validity. Holdings on the demo contract are public on chain. Test dollars have no value.</p></footer>
+  <footer class="wrap foot"><p><a href="https://github.com/samuel025/Rounds" target="_blank" rel="noopener">Source code, tests and every command that checks a claim: github.com/samuel025/Rounds ↗</a></p><p>Rounds is a model and a testnet demo, not a securities offering, and it has no legal validity. Holdings on the demo contract are public on chain. Test dollars have no value.</p></footer>
   <script type="module" src="./src/main.ts"></script>
 </body>
 </html>
