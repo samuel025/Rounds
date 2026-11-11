@@ -13,7 +13,7 @@
 | Pool money for a shared venture | Members deposit into escrow per round; refunded if the round is cancelled | demo steps 3 to 5, sandbox test `cancel_with_many_investors_refunds_everyone` |
 | Agree who owns what | The DAO approves one plan hash that fixes the shares **and** the money paid for them | demo steps 2 to 5, sandbox test `plan_hash_binds_raise_kind_and_deadline` |
 | Reward contributors over time | Vesting grants that are claims on a shared pool, exercised on chain | demo steps 7 and 9 |
-| Pay everyone their share | A DAO-approved payout list that the contract pays out, each holder once; and a shared pot paid pro rata by shares from the DAO's own treasury (RULES.md R10) | demo steps 8 and 10 (`make distribute`), the app's "Share a pot" card |
+| Pay everyone their share | A DAO-approved payout list that the contract pays out, each holder once; and a shared pot paid pro rata by shares from the DAO's own treasury (RULES.md R10) | demo steps 8 and 10 (`make distribute`), the app's "Share a pot" card, and a card where **any visitor can run a shared payout on a sandbox** (below) |
 | Know what you are voting on | Every board proposal decoded in the app: its hash is recomputed in your browser against the plan the contract holds, and the change is shown as numbers (who pays what, shares, price, ownership after) before you press Approve | app: Events & verify, "Board proposals" |
 | Let any member check all of it | Read-only verifier in the browser and `make verify-onchain` | Verify button |
 
@@ -72,6 +72,7 @@ Every number below is checked against `results/summary.json` by `make check-read
 | `make demo` | Scripted testnet run (needs `near` CLI, network and the faucet; see the note below) |
 | `make sandbox` | `near` CLI, network, faucet or spare testnet NEAR (`SANDBOX_FUND_FROM`): deploys a fresh open sandbox (founders and two SAFEs closed, Series A left to try) and adds it to the pool in `web/public/sandboxes.json` |
 | `make e2e-wallet` | needs `make web-dev` running, the `near` CLI, Chrome and the throwaway demo keys on this machine: drives the app's real wallet buttons against testnet with a test signer (with `E2E_SANDBOX=<a throwaway sandbox instance>` it also plays all eight guided steps and checks that the page height stays stable); last line `PASS summary: <n> checks, 0 failed` |
+| `make e2e-share` | needs `make web-dev` running, the `near` CLI, Chrome and a sandbox's throwaway keys: drives the "Share a pot" run card through the app's real buttons with the DEV-only test signer; last line `PASS summary: <n> checks, 0 failed`. Writes testnet transactions and leaves one paid payout on the sandbox; it does not use up the sandbox |
 | `make check-readme` | Fails if a number in this README differs from `results/summary.json` |
 
 **Wallet.** "Connect wallet" (top right) lets you sign real testnet transactions; no access key is requested, so every action opens your wallet for approval. What each action needs:
@@ -86,6 +87,8 @@ Every number below is checked against `results/summary.json` by `make check-read
 | Propose the modeled round (`propose_round`, with your account as investor) | an officer of that contract |
 
 Buttons your account cannot use are shown disabled or answered with the contract's own refusal message. On the committed **demo contract** the board, officers and investors are throwaway demo accounts, so a visitor can use the faucet and see refusals but cannot vote or propose there.
+
+**Run a shared payout yourself.** On the open sandbox the **Share a pot** section has a second guided card (seven steps: wallet, test USDC, officer, propose, fund, approve, pay out). You act as the treasury: pick a pot, the page works out each holder's share from the contract's cap table, you pay it into escrow, approve its plan hash as the open board, and the contract pays every shareholder once. It uses the contract's existing payout functions, so it does not use up the sandbox and any number of visitors can run it; each run is its own payout, found again after a wallet redirect by its plan hash. It was run through the app's buttons with the test signer (every step and an independent recomputation of every amount checked); it has not been run with a real wallet.
 
 **Open sandbox (try the whole flow yourself).** The page has a section **Run a round on testnet** (nav: "Run it") that walks through eight steps in order: connect a wallet, get test USDC, make yourself an officer, set the round (the modeler above), propose it, fund it, approve it as the board, and close it. Each step shows whether it is done, current or waiting, and the layout never moves while chain data refreshes. It runs on a second, separate Rounds contract on testnet with the founders and two SAFEs already closed and the Series A left for you; "Load the open sandbox" in the contract box shows the same contract's cap table and re-checks its hashes.
 

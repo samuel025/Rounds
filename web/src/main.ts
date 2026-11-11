@@ -1,6 +1,7 @@
 import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { renderReview } from "./review";
+import { mountShareFlow } from "./shareflow";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { usd, usdExact, price4 } from "./format";
@@ -306,6 +307,7 @@ async function initChain() {
   reloadChain = () => { setTimeout(() => void run(true), 2500); }; // let the transaction finalise, then refresh the tables and the actions panel
   if (sb?.rounds && sb.board && sb.token) {
     $("try").hidden = false; $("nav-try").hidden = false;
+    $("share-run").hidden = false; mountShareFlow($("share-run-body"), { rpc: dep.rpc, explorer: dep.explorer, contract: sb.rounds, board: sb.board, token: sb.token });
     mountFlow($("flow"), { rpc: dep.rpc, explorer: dep.explorer, contract: sb.rounds, board: sb.board, token: sb.token, modelSummary, raiseMicro: () => BigInt(state.raise) * M, propose: (c) => proposeModeled(c),
       onChain: (v) => { if (!state.locked && !v.rounds.some((r) => r.kind === "Priced")) void syncModelToChain(v, sb.rounds!); },
       showResult: () => { input.value = sb.rounds!; void run(); document.getElementById("verify")?.scrollIntoView({ behavior: "smooth" }); } });

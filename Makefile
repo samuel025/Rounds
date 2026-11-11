@@ -57,3 +57,8 @@ tokens:
 	npx vite-node scripts/tokens.ts
 verify-tokens:
 	@npx vite-node scripts/verify-tokens.ts > results/verify-tokens.txt; code=$$?; cat results/verify-tokens.txt; exit $$code
+
+# drives the "Share a pot on testnet" card with the DEV-only test signer on an open sandbox (needs `make web-dev` running); writes a few testnet transactions
+.PHONY: e2e-share
+e2e-share:
+	node scripts/e2e-share.mjs

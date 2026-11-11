@@ -14,6 +14,7 @@ Rounds is a testnet cap-table demo. Start with README.md; every claim there has 
 | `make e2e-wallet` | `make web-dev` running, near CLI, Chrome, demo keys in `~/.near-credentials` | drives the app's wallet buttons on testnet via a DEV-only test signer; `PASS summary: 11 checks, 0 failed`. Writes a few testnet transactions on a superseded deployment |
 | `make distribute` | node, `near` CLI, network, the demo accounts' keys (after `make demo`) | Demo step 10 on testnet: the DAO treasury shares a $100,000 pot pro rata (RULES.md R10); once per deployment (a second run stops at "exit 2 already exists"); appends to `results/demo-*.json` and `web/public/events.json` |
 | `make tokens` / `make verify-tokens` | node, `near` CLI, network, demo accounts' keys, ~8 testnet NEAR via `TOKENS_FUND_FROM=<old suffixes>` | Demo step 11: SAFTs and a project token on a second Rounds contract (`rounds-tok-<suffix>`); once per deployment; `verify-tokens` is read-only and ends `PASS summary: <n> checks, 0 failed` |
+| `make e2e-share` | `make web-dev` running, near CLI, Chrome, a sandbox's keys | Drives the "Share a pot" run card on a sandbox with the DEV-only test signer; `PASS summary: <n> checks, 0 failed`; writes testnet transactions, does not use up the sandbox |
 | `make check-readme` | node | `PASS summary: <n> tagged numbers checked, 0 failed` |
 | `make summary` | node, python-generated conformance files, cargo (to list sandbox tests) | rewrites `results/summary.json` |
 | `make web` / `make web-dev` | node | static site in `dist/` / dev server |
