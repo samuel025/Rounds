@@ -1,0 +1,22 @@
+{
+  "network": "testnet",
+  "suffix": "332657",
+  "rounds": "rounds-tok-332657.testnet",
+  "token": "rounds-tkn-332657.testnet",
+  "dao": "rounds-board-332657.sputnik-v2.testnet",
+  "payment_token": "rounds-usdc-332657.testnet",
+  "decimals": 6,
+  "accounts": {
+    "ada": "rounds-ada-332657.testnet",
+    "fund": "rounds-fund-332657.testnet",
+    "indep": "rounds-indep-332657.testnet",
+    "bayo": "rounds-bayo-332657.testnet",
+    "chidi": "rounds-chidi-332657.testnet",
+    "dayo": "rounds-dayo-332657.testnet",
+    "efe": "rounds-efe-332657.testnet",
+    "zed": "rounds-zed-332657.testnet",
+    "core": "rounds-core-332657.testnet",
+    "usdc": "rounds-usdc-332657.testnet",
+    "fake": "rounds-fake-332657.testnet"
+  }
+}

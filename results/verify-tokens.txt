@@ -1,0 +1,19 @@
+PASS config: the board is the demo DAO rounds-board-332657.sputnik-v2.testnet and the payment token is the demo USDC
+PASS the project token is rounds-tkn-332657.testnet with 6 decimals, named once by the board
+PASS the Saft round is Closed
+PASS the plan on chain equals the committed plan, and its hash equals sha256 of it
+PASS the investors and amounts on chain are the ones inside the approved plan, paid in full ($500,000, $250,000)
+PASS SAFT saft1: the contract holds the terms of the plan and has converted it
+PASS SAFT saft2: the contract holds the terms of the plan and has converted it
+PASS the committed conversion plan equals the plan the engine computes from the SAFT terms and the launch inputs
+PASS token grant 1: rounds-chidi-332657.testnet holds 25000000000000 units from saft1 (cap price), equal to the engine and to what the contract computed itself
+PASS token grant 2: rounds-dayo-332657.testnet holds 20833333333333 units from saft2 (discount price), equal to the engine and to what the contract computed itself
+PASS token grant 3: the contributor's tokens equal the board-approved grant, and all three follow the same 6-month schedule with a 2-month cliff
+PASS every grant is fully vested at the end of its term and has been claimed in full
+PASS the DAO's convert_safts proposal is Approved and carries exactly the committed plan and its hash
+PASS the DAO's grant_tokens proposal is Approved and carries exactly the committed grant and its hash
+PASS token balances equal the engine: chidi 25000000000000, dayo 20833333333333, efe 1000000000000
+PASS reserve accounting: 100000000000000 funded by the DAO, 46833333333333 paid out, 53166666666667 left, nothing in flight, no open claims
+PASS ledger: the SAFT escrow was forwarded to the treasury, nothing is left in custody (ledger_total = 0)
+PASS attack "an officer proposes a $500,000 SAFT that its investor buys for $1": transaction BDDfVwDf… exists on chain and failed ("an investor's raise must equal their SAFT amounts")
+PASS summary: 18 checks, 0 failed

@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { reviewProposal, describeRound, proposalText, type Proposal } from "../web/src/review-core";
-import { planHash, canonicalJson } from "../src/engine/index";
+import { planHash, canonicalJson, saftConversionPlan } from "../src/engine/index";
 import { demoPlans, type Accounts } from "../scripts/plans";
 import type { ChainView, RoundRec } from "../web/src/chain";
 
+const M = 1_000_000n;
 const A: Accounts = { ada: "ada.t", bayo: "bayo.t", chidi: "chidi.t", dayo: "dayo.t", fund: "fund.t", efe: "efe.t", zed: "zed.t" };
 const CORE = "core.t", TOKEN = "usdc.t", DAO = "board.sputnik-v2.t";
 const b64 = (o: unknown) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64");
@@ -95,5 +96,45 @@ describe("check before you vote", () => {
     const t = proposalText(v.rounds[3], "https://x/?contract=core.t#review");
     expect(t).toContain("Approve Priced round 4 ($9,000,000 raised)"); expect(t).toContain("$2.0000 a share"); expect(t).toContain("https://x/?contract=core.t#review");
     expect(describeRound(v.rounds[1]).lines[1]).toContain("SAFE safe1: chidi.t invests $500,000 with a $5,000,000 post-money cap");
+  });
+});
+
+describe("check before you vote: SAFTs and tokens", () => {
+  const base = { holder: "chidi.t", amountMicro: 500_000n * M, fdvCapMicro: 20_000_000n * M, discountBps: 0 };
+  const safts = [{ id: "saft1", ...base }, { id: "saft2", ...base, holder: "dayo.t", amountMicro: 250_000n * M, discountBps: 2000 }];
+  const tge = { totalSupply: 10n ** 15n, launchPriceMicro: 15_000n, decimals: 6 };
+  const vesting = { startNs: 1_794_000_000_000_000_000n, termMonths: 6, cliffMonths: 2 };
+  async function tokenWorld() {
+    const { v } = await world(); v.projectToken = "tkn.t"; v.tokenDecimals = 6; return v;
+  }
+  it("a conversion plan is re-hashed and every token count is recomputed from the SAFT terms", async () => {
+    const v = await tokenWorld(); const plan = canonicalJson(saftConversionPlan(safts, tge, vesting));
+    const r = await reviewProposal(prop(CORE, "convert_safts", { plan_hash: await planHash(plan), plan }), v);
+    expect(r.verdict).toBe("match"); expect(r.findings.filter((f) => f.level === "fail")).toEqual([]);
+    expect(r.title).toContain("Convert 2 SAFT(s) into 45,833,333.333333 tokens");
+    expect(r.table!.rows[0]).toEqual(["saft1", "chidi.t", "$500,000", "cap", "25,000,000", "$0.02", "ok"]);
+    expect(r.table!.rows[1].slice(3, 5)).toEqual(["discount", "20,833,333.333333"]);
+  });
+  it("a plan whose token counts were changed (and re-hashed) is flagged by the recomputation, not by the hash", async () => {
+    const v = await tokenWorld(); const p = saftConversionPlan(safts, tge, vesting); p.conversions[0].tokens = "30000000000000";
+    const plan = canonicalJson(p);
+    const r = await reviewProposal(prop(CORE, "convert_safts", { plan_hash: await planHash(plan), plan }), v);
+    expect(r.verdict).toBe("mismatch");
+    expect(r.findings.some((f) => f.level === "pass" && /hashes to exactly/.test(f.text))).toBe(true);
+    expect(r.findings.some((f) => f.level === "fail" && /differs from the recomputation/.test(f.text))).toBe(true);
+    expect(r.table!.rows[0][6]).toBe("DIFFERS");
+  });
+  it("a conversion vote with the wrong hash is flagged", async () => {
+    const v = await tokenWorld(); const plan = canonicalJson(saftConversionPlan(safts, tge, vesting));
+    expect((await reviewProposal(prop(CORE, "convert_safts", { plan_hash: "00".repeat(32), plan }), v)).verdict).toBe("mismatch");
+  });
+  it("a token grant's terms must hash to the fingerprint; the reserve deposit is described in whole tokens", async () => {
+    const v = await tokenWorld();
+    const plan = canonicalJson({ cliff_months: 2, grantee: "efe.t", start_ns: "1794000000000000000", term_months: 6, tokens: "1000000000000" });
+    const g = await reviewProposal(prop(CORE, "grant_tokens", { plan_hash: await planHash(plan), plan }), v);
+    expect(g.verdict).toBe("match"); expect(g.title).toBe("Grant 1,000,000 tokens to efe.t");
+    expect((await reviewProposal(prop(CORE, "grant_tokens", { plan_hash: "00".repeat(32), plan }), v)).verdict).toBe("mismatch");
+    const res = await reviewProposal(prop("tkn.t", "ft_transfer_call", { receiver_id: CORE, amount: "100000000000000", msg: JSON.stringify({ action: "reserve" }) }), v);
+    expect(res.title).toBe("Put 100,000,000 project tokens into the token reserve");
   });
 });

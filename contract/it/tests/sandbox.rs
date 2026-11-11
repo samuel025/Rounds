@@ -529,3 +529,133 @@ async fn cancelled_exit_refunds_its_funders() -> anyhow::Result<()> {
     assert!(!e.board.call(e.rounds.id(), "cancel_exit").args_json(json!({"exit_id": x2})).transact().await?.is_success(), "payouts have started");
     Ok(())
 }
+
+// ---------- tokens and SAFTs ----------
+async fn project_token(e: &Env) -> anyhow::Result<Contract> {
+    let pt = e.w.dev_deploy(&std::fs::read(FT_WASM)?).await?;
+    pt.call("new").args_json(json!({"faucet_cap": 10u128.pow(18).to_string()})).transact().await?.into_result()?;
+    register(&pt, &[e.zed.id(), e.rounds.id(), e.chidi.id(), e.dayo.id(), e.efe.id()]).await;
+    pt.call("faucet").args_json(json!({"account_id": e.zed.id(), "amount": 10u128.pow(15).to_string()})).transact().await?.into_result()?;
+    Ok(pt)
+}
+impl Env {
+    async fn board_call(&self, method: &str, args: Value) -> bool {
+        self.board.call(self.rounds.id(), method).args_json(args).max_gas().transact().await.unwrap().is_success()
+    }
+    async fn fund_reserve(&self, pt: &Contract, units: u128) {
+        self.zed.call(pt.id(), "ft_transfer_call").args_json(json!({"receiver_id": self.rounds.id(), "amount": units.to_string(), "msg": json!({"action": "reserve"}).to_string()}))
+            .deposit(ONE).max_gas().transact().await.unwrap().into_result().unwrap();
+    }
+    async fn token_info(&self) -> Vec<Value> { self.rounds.view("token_info").await.unwrap().json::<Vec<Value>>().unwrap() }
+    async fn tnum(&self, i: usize) -> u128 { self.token_info().await[i].as_str().unwrap().parse().unwrap() }
+}
+
+/// A SAFT is sold like a SAFE, converted at launch by the contract's own arithmetic (R11), and paid out as it vests from a reserve the DAO funds.
+#[tokio::test]
+async fn saft_converts_by_the_contracts_own_maths_and_pays_vested_tokens() -> anyhow::Result<()> {
+    let e = setup().await?; let pt = project_token(&e).await?;
+    assert!(!e.fund.call(e.rounds.id(), "set_project_token").args_json(json!({"token": pt.id(), "decimals": 6})).transact().await?.is_success(), "only the board names the project token");
+    assert!(!e.board_call("set_project_token", json!({"token": e.ft.id(), "decimals": 6})).await, "the project token cannot be the payment token");
+    assert!(e.board_call("set_project_token", json!({"token": pt.id(), "decimals": 6})).await);
+    assert!(!e.board_call("set_project_token", json!({"token": pt.id(), "decimals": 6})).await, "the project token is set once");
+
+    // the SAFT round: investors pay exactly their SAFT amounts
+    let (c, d) = (e.chidi.id().to_string(), e.dayo.id().to_string());
+    let body = json!({"safts": [
+        {"id": "saft1", "holder": c, "amount": "500000000000", "fdv_cap": "20000000000000", "discount_bps": 0, "converted": false},
+        {"id": "saft2", "holder": d, "amount": "250000000000", "fdv_cap": "20000000000000", "discount_bps": 2000, "converted": false}]}).to_string();
+    let raise = json!([[e.chidi.id(), "500000000000"], [e.dayo.id(), "250000000000"]]);
+    let cheap = json!([[e.chidi.id(), "1"], [e.dayo.id(), "250000000000"]]);
+    let p = seal("Saft", &body, &cheap, u64::MAX);
+    assert!(!e.ada.call(e.rounds.id(), "propose_round").args_json(json!({"kind": "Saft", "plan_hash": h(&p), "plan_uri": "x", "plan": p, "raise": cheap, "deadline_ns": u64::MAX})).transact().await?.is_success(), "a SAFT cannot be bought for less than its amount");
+    let as_safe = seal("Safe", &body, &raise, u64::MAX);
+    assert!(!e.ada.call(e.rounds.id(), "propose_round").args_json(json!({"kind": "Safe", "plan_hash": h(&as_safe), "plan_uri": "x", "plan": as_safe, "raise": raise, "deadline_ns": u64::MAX})).transact().await?.is_success(), "only a Saft round carries SAFTs");
+    let r = e.propose("Saft", &body, raise).await;
+    e.deposit(&e.chidi, r, 500_000).await; e.deposit(&e.dayo, r, 250_000).await;
+    assert!(e.approve(r, &body).await); assert!(e.close(r).await);
+    assert_eq!(e.status(r).await, "Closed");
+    assert_eq!(balance(&e.ft, e.treasury.id()).await, 750_000 * USD, "the SAFT money went to the treasury");
+    let s1: Value = e.rounds.view("saft").args_json(json!({"id": "saft1"})).await?.json()?; assert_eq!(s1["converted"], false);
+
+    // launch: 1,000,000,000 tokens with 6 decimals = 1e15 base units; launch price $0.015 a token
+    let now = e.w.view_block().await?.timestamp();
+    let plan = |t1: &str, t2: &str, id2: &str| json!({"tge": {"decimals": 6, "launch_price_micro": "15000", "total_supply": "1000000000000000"},
+        "vesting": {"cliff_months": 2, "start_ns": now.to_string(), "term_months": 6},
+        "conversions": [{"id": "saft1", "tokens": t1}, {"id": id2, "tokens": t2}]}).to_string();
+    // worked out by hand: saft1 is cap-only, $500,000 / $0.02 = 25,000,000 tokens; saft2 has a 20% discount, $0.012 beats the $0.02 cap, $250,000 / $0.012 = 20,833,333.333333 tokens
+    let good = plan("25000000000000", "20833333333333", "saft2");
+    let convert = |who: &Account, p: &str| who.call(e.rounds.id(), "convert_safts").args_json(json!({"plan_hash": h(p), "plan": p})).max_gas().transact();
+    assert!(!convert(&e.board, &good).await?.is_success(), "no tokens in the reserve yet");
+    e.fund_reserve(&pt, 100_000_000_000_000).await;
+    assert_eq!(e.tnum(2).await, 100_000_000_000_000, "the reserve holds what the DAO put in");
+    assert!(!convert(&e.board, &plan("25000000000001", "20833333333333", "saft2")).await?.is_success(), "one token unit too many is refused: the contract recomputes");
+    assert!(!convert(&e.board, &plan("25000000000000", "25000000000000", "saft2")).await?.is_success(), "the cap price is not the better one for the discounted SAFT");
+    assert!(!convert(&e.board, &plan("25000000000000", "20833333333333", "nosuch")).await?.is_success(), "an unknown SAFT is refused");
+    assert!(!convert(&e.efe, &good).await?.is_success(), "only the board converts");
+    assert!(convert(&e.board, &good).await?.is_success(), "the exact numbers are accepted");
+    assert!(!convert(&e.board, &good).await?.is_success(), "a SAFT converts once");
+    let g1: Value = e.rounds.view("token_grant").args_json(json!({"grant_id": 1})).await?.json()?;
+    assert_eq!((g1["grantee"].as_str().unwrap(), g1["tokens"].as_str().unwrap(), g1["saft_id"].as_str().unwrap()), (c.as_str(), "25000000000000", "saft1"));
+    assert_eq!(e.tnum(4).await, 45_833_333_333_333, "open claims");
+    assert_eq!(e.tnum(5).await, 100_000_000_000_000 - 45_833_333_333_333, "free reserve");
+
+    // a SAFT whose cap is below its price would convert to more tokens than exist
+    let body3 = json!({"safts": [{"id": "saft3", "holder": e.zed.id(), "amount": "500000000000", "fdv_cap": "100000000000", "discount_bps": 0, "converted": false}]}).to_string();
+    let r3 = e.propose("Saft", &body3, json!([[e.zed.id(), "500000000000"]])).await;
+    e.deposit(&e.zed, r3, 500_000).await; assert!(e.approve(r3, &body3).await); assert!(e.close(r3).await);
+    let over = json!({"tge": {"decimals": 6, "launch_price_micro": "0", "total_supply": "1000000000000000"}, "vesting": {"cliff_months": 0, "start_ns": now.to_string(), "term_months": 6},
+        "conversions": [{"id": "saft3", "tokens": "5000000000000000"}]}).to_string();
+    assert!(!convert(&e.board, &over).await?.is_success(), "investors cannot be given more tokens than exist");
+
+    // claims: everything has vested after the 6-month term (1 s a month here)
+    e.w.fast_forward(200).await?;
+    let claim = |who: &Account, id: u64| who.call(e.rounds.id(), "claim_tokens").args_json(json!({"grant_id": id})).max_gas().transact();
+    assert!(claim(&e.efe, 1).await?.is_success(), "anyone may trigger a claim; it pays the grantee");
+    assert_eq!(balance(&pt, e.chidi.id()).await, 25_000_000_000_000);
+    assert!(!claim(&e.efe, 1).await?.is_success(), "nothing left to claim");
+    assert_eq!(e.tnum(2).await, 100_000_000_000_000 - 25_000_000_000_000, "the reserve paid it out");
+    assert_eq!(e.tnum(3).await, 0, "nothing in flight");
+    // a failing transfer restores the claim, then the retry pays
+    pt.call("set_fail_transfers").args_json(json!({"fail": true})).transact().await?.into_result()?;
+    let _ = claim(&e.efe, 2).await?;
+    let g2: Value = e.rounds.view("token_grant").args_json(json!({"grant_id": 2})).await?.json()?;
+    assert_eq!(g2["claimed"], "0", "a failed transfer restores the claim");
+    assert_eq!(balance(&pt, e.dayo.id()).await, 0);
+    pt.call("set_fail_transfers").args_json(json!({"fail": false})).transact().await?.into_result()?;
+    assert!(claim(&e.efe, 2).await?.is_success());
+    assert_eq!(balance(&pt, e.dayo.id()).await, 20_833_333_333_333);
+    assert_eq!(e.tnum(3).await, 0);
+    Ok(())
+}
+
+/// Token grants for contributors are claims on the same reserve: they cannot promise more than it holds, and ending a grant frees the unvested part.
+#[tokio::test]
+async fn token_grants_cannot_exceed_the_reserve() -> anyhow::Result<()> {
+    let e = setup().await?; let pt = project_token(&e).await?;
+    let now = e.w.view_block().await?.timestamp();
+    let future = now + 1_000_000_000_000_000; // not started: nothing has vested
+    let plan = |who: &Account, tokens: u128| json!({"grantee": who.id(), "tokens": tokens.to_string(), "start_ns": future.to_string(), "term_months": 12, "cliff_months": 3}).to_string();
+    let grant = |who: &Account, tokens: u128| { let p = plan(who, tokens); let board = &e.board; let rounds = e.rounds.id().clone(); async move { board.call(&rounds, "grant_tokens").args_json(json!({"plan_hash": h(&p), "plan": p})).max_gas().transact().await.unwrap().is_success() } };
+    assert!(!grant(&e.efe, 1).await, "no project token yet");
+    assert!(e.board_call("set_project_token", json!({"token": pt.id(), "decimals": 6})).await);
+    assert!(!grant(&e.efe, 1).await, "an empty reserve backs nothing");
+    // money that is not a reserve deposit is returned in full
+    let before = balance(&pt, e.zed.id()).await;
+    e.zed.call(pt.id(), "ft_transfer_call").args_json(json!({"receiver_id": e.rounds.id(), "amount": "1000", "msg": json!({"action": "round", "id": 1}).to_string()})).deposit(ONE).max_gas().transact().await?.into_result()?;
+    assert_eq!((balance(&pt, e.zed.id()).await, e.tnum(2).await), (before, 0), "a wrong message returns the tokens and funds nothing");
+    e.fund_reserve(&pt, 1_000_000).await;
+    assert!(!e.efe.call(e.rounds.id(), "grant_tokens").args_json(json!({"plan_hash": h(&plan(&e.efe, 1)), "plan": plan(&e.efe, 1)})).max_gas().transact().await?.is_success(), "only the board grants tokens");
+    assert!(grant(&e.efe, 600_000).await, "the first claim fits");
+    assert!(!grant(&e.dayo, 500_000).await, "a second claim cannot exceed the reserve");
+    assert!(grant(&e.dayo, 400_000).await, "the rest of the reserve can be claimed");
+    assert_eq!((e.tnum(4).await, e.tnum(5).await), (1_000_000, 0));
+    assert!(!e.efe.call(e.rounds.id(), "claim_tokens").args_json(json!({"grant_id": 1})).max_gas().transact().await?.is_success(), "nothing has vested before the start");
+    // ending a grant before anything vested frees its whole claim
+    assert!(!e.efe.call(e.rounds.id(), "terminate_token_grant").args_json(json!({"grant_id": 1})).transact().await?.is_success(), "only the board ends a grant");
+    assert!(e.board_call("terminate_token_grant", json!({"grant_id": 1})).await);
+    assert!(!e.board_call("terminate_token_grant", json!({"grant_id": 1})).await, "a grant ends once");
+    assert_eq!((e.tnum(4).await, e.tnum(5).await), (400_000, 600_000));
+    assert!(grant(&e.chidi, 600_000).await, "the freed part can be granted again");
+    assert_eq!(e.tnum(5).await, 0);
+    Ok(())
+}

@@ -9,13 +9,15 @@ const sandbox = execSync("cargo test -- --list 2>/dev/null", { cwd: "contract/it
 const conf = rd("conformance-summary.json");
 const txs = rd("demo-txs.json"), ev = rd("demo-events.json");
 const tail = (f) => { if (!existsSync(`results/${f}`)) return null; const m = readFileSync(`results/${f}`, "utf8").trim().split("\n").pop().match(/summary: (\d+) checks?, (\d+) failed/); return m ? { checks: +m[1], failed: +m[2] } : null; };
-const ver = tail("verify-onchain.txt"), rep = tail("replay.txt");
+const ver = tail("verify-onchain.txt"), rep = tail("replay.txt"), vtok = tail("verify-tokens.txt");
+const tokTx = existsSync("results/tokens-txs.json") ? rd("tokens-txs.json").length : 0, tokEv = existsSync("results/tokens-events.json") ? rd("tokens-events.json").length : 0;
 const summary = {
   tests: { engine: v.numTotalTests, engine_failed: v.numFailedTests, engine_files: v.numTotalTestSuites ? v.testResults.length : 0, properties: titles.filter((x) => /^P\d+ /.test(x.t)).length, golden_vector_tests: titles.filter((x) => /GV-\d/.test(x.full)).length, sandbox },
   conformance: { scenarios: conf.scenarios, rejected_inputs: conf.rejected_inputs, mismatches: conf.mismatches },
   canonical: { cases: conf.canonical_cases, mismatches: conf.canonical_mismatches },
   demo: { transactions: txs.length, events: ev.length, rounds_closed: ev.filter((e) => e.name === "round_closed").length, payouts: ev.filter((e) => e.name === "payout_sent").length },
   verify_onchain: ver, replay: rep,
+  tokens: { transactions: tokTx, events: tokEv, claims: existsSync("results/tokens-events.json") ? rd("tokens-events.json").filter((e) => e.name === "tokens_claimed").length : 0 }, verify_tokens: vtok,
 };
 writeFileSync("results/summary.json", JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary));

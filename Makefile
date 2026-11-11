@@ -49,3 +49,11 @@ sandbox:
 .PHONY: distribute
 distribute:
 	npx vite-node scripts/distribute.ts
+
+# demo step 11 (after `make demo`): SAFTs and a project token on a second Rounds contract; needs ~8 testnet NEAR from old demo accounts
+# (TOKENS_FUND_FROM=<old suffixes>) and runs once per demo deployment; `make verify-tokens` re-checks it read-only
+.PHONY: tokens verify-tokens
+tokens:
+	npx vite-node scripts/tokens.ts
+verify-tokens:
+	@npx vite-node scripts/verify-tokens.ts > results/verify-tokens.txt; code=$$?; cat results/verify-tokens.txt; exit $$code

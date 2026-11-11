@@ -1,11 +1,11 @@
 {
   "tests": {
-    "engine": 72,
+    "engine": 77,
     "engine_failed": 0,
     "engine_files": 12,
     "properties": 11,
-    "golden_vector_tests": 16,
-    "sandbox": 16
+    "golden_vector_tests": 17,
+    "sandbox": 18
   },
   "conformance": {
     "scenarios": 1000,
@@ -28,6 +28,15 @@
   },
   "replay": {
     "checks": 11,
+    "failed": 0
+  },
+  "tokens": {
+    "transactions": 36,
+    "events": 12,
+    "claims": 3
+  },
+  "verify_tokens": {
+    "checks": 18,
     "failed": 0
   }
 }

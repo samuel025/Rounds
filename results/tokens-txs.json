@@ -1,0 +1,218 @@
+[
+  {
+    "step": "11",
+    "tx": "6hnC45jo6vcNnJ1tTgGzjje7qH3gGSSjmRCBZcTWYuKA",
+    "what": "deploy the project token (a test NEP-141, 6 decimals, no value)",
+    "signer": "rounds-tkn-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "13khZ9BmFYnVdSTeU7eWcn3JLpj7g4oVD6e7fmbxfvvG",
+    "what": "deploy a second Rounds contract: the DAO is its board and treasury, the demo USDC its payment token",
+    "signer": "rounds-tok-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "412hXNQyirvgMp7GWa1sQCeT3pr69qgpMXEpG3QyR9ax",
+    "what": "register the contract for test USDC",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "GBxbaSZh4aCQiXZSTDrH187kX2woATZL6URP8jPc8Uq1",
+    "what": "register rounds-board-332657.sputnik-v2.testnet for the project token",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "FSviNU5Ny13gju5os2vp2qygzMpKsdgUiDgiqxmkDCRq",
+    "what": "register rounds-tok-332657.testnet for the project token",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "Lgdfmxvpze8JxLPV2n3JZ2o4qj71Qk3cXxwiijScyk6",
+    "what": "register rounds-chidi-332657.testnet for the project token",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "EsZ6N8hwE4QQbkwUsBLdxdpPKCB9CkSrGrkVmV8MbGoX",
+    "what": "register rounds-dayo-332657.testnet for the project token",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "3zCP74YkPu5HbEvMQj8GucLdFKzeD912E4nRQAXW1Dct",
+    "what": "register rounds-efe-332657.testnet for the project token",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "GiAnqERGSmgjwLuBtjMV83dpcUaD1s75DgFFmvo6jay4",
+    "what": "faucet: chidi $500,000 test USDC",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "HcxDTAk13hmxfJ7aXsM3LA3ZKDFP4qR7LPpa69xVNNJX",
+    "what": "faucet: dayo $250,000 test USDC",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "4emkHF3HSbVggsifb1uSYoo7yQYvadNfqNsbcrWpY6mx",
+    "what": "faucet: the DAO receives 100,000,000 project tokens",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "33pSFBVGC5Dou12TiJJH3ZqKU6D7d45eYgRa4VbcayNx",
+    "what": "DAO proposal: board makes ada an officer",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "3RLTQ8e6S6cxe3XpZLUCq6UYgzfL6fa4UeSgb9zxwSGZ",
+    "what": "DAO vote 1/2 (fund) on #10",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "J15s2PvnJtRLexxR2QVrYdiHoayWGbSSCnkAZr8x4By2",
+    "what": "DAO vote 2/2 (indep) on #10: executes set_officer",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "6NP7MosmD4Ax2QN8hQDNLiGLvKvSdfony8U3J8pZw9Rh",
+    "what": "DAO proposal: board names the project token (6 decimals), once",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "EmXvy7kast3o2rJvwd8iy1dd6BswFFouvcQvPRszCeQT",
+    "what": "DAO vote 1/2 (fund) on #11",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "HCBGnEGy2UWqS7aykGj1JCFVxuMQ9xdqsiz7mqcaf3e7",
+    "what": "DAO vote 2/2 (indep) on #11: executes set_project_token",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "78De4CKxnWiY2Y3eUo7DzDv3L4zFiafXNnkDQiD1VA9t",
+    "what": "ada proposes the Saft round",
+    "signer": "rounds-ada-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "EQ2KUinccv8gcYHNNXoYQ7Hr5Fstsra9CVZVtARNXe5F",
+    "what": "saft1 holder pays $500,000 into escrow",
+    "signer": "rounds-chidi-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "3DT4U4RT7xMy1sE94iL7usx8bXD2MzA4tAmb9DQCZSV8",
+    "what": "saft2 holder pays $250,000 into escrow",
+    "signer": "rounds-dayo-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "69p32pjrJYD45dLSrJ3JXESpHconV9DyKCZNA4DVUJ1S",
+    "what": "DAO proposal: board approves the Saft round by plan hash",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "GGVuEWX63fvq7JGZuSW5krsNSGMkkXyzqAHukPerPHoB",
+    "what": "DAO vote 1/2 (fund) on #12",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "CvvWdWVmXQLwrU98KRkW4ut2wyQZWcUnH9tN5Hn7xcxZ",
+    "what": "DAO vote 2/2 (indep) on #12: executes approve_round",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "A4CEtCtQr2LexHgRtXWQzgHWpcg5ndCbGR1fvPo7wh8p",
+    "what": "anyone closes the Saft round",
+    "signer": "rounds-zed-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "8CLBPSxgGceSAitwZC2EqS9cT6wBUhHBrypebc9SkMdc",
+    "what": "DAO proposal: board funds the token reserve from the treasury (100,000,000 tokens)",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "H5j3AUJnf75nhqyAxhE7dEjjJXJcy2LizWvnN5RgnYuq",
+    "what": "DAO vote 1/2 (fund) on #13",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "CFmRVB6XiU1ut21wS6LnjRN83TW5DuwigrS4hMZ3j6Mi",
+    "what": "DAO vote 2/2 (indep) on #13: executes ft_transfer_call",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "DyYTnJTCG2hy9Spm18wjGBZeaMcvJhpGVYRbeLc3qbxi",
+    "what": "DAO proposal: board converts the SAFTs by plan hash",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "BuiJrKE22Dp7BaJzqcWCA2fBvCTTpnCxHW82yCyh4Syd",
+    "what": "DAO vote 1/2 (fund) on #14",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "GjFkKvfhK5Kra1GFzsjqxtd9AUgj8USiVHaCar4Sp1at",
+    "what": "DAO vote 2/2 (indep) on #14: executes convert_safts",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "Hg8rgTQFVX72eB7NGwjsB4hsEY2ws1tsfPyWgde19WP1",
+    "what": "DAO proposal: board rewards a contributor with 1,000,000 tokens from the same reserve",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "FAYQXMwKZeTGT8Vk64GGjDLkNxMHo7EDvb97N1D8VGBN",
+    "what": "DAO vote 1/2 (fund) on #15",
+    "signer": "rounds-fund-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "9uGcUToQGRTGSEPuamMMoWfimQmhn5HerED3pcnma4Go",
+    "what": "DAO vote 2/2 (indep) on #15: executes grant_tokens",
+    "signer": "rounds-indep-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "G37EX8kKMzhzL8KZFpFLKLoHdinQ1iV7ArrnNagnT1NZ",
+    "what": "anyone claims vested tokens for grant 1",
+    "signer": "rounds-zed-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "HXsc2eRBzf5WyJ8yvfYT9gLFfugjw2DbiBtmMRUTo28f",
+    "what": "anyone claims vested tokens for grant 2",
+    "signer": "rounds-zed-332657.testnet"
+  },
+  {
+    "step": "11",
+    "tx": "24BW7h5dHkUQbmZvn4Wf3yjUzn4zQ4f5BtPPtFeGdz1t",
+    "what": "anyone claims vested tokens for grant 3",
+    "signer": "rounds-zed-332657.testnet"
+  }
+]

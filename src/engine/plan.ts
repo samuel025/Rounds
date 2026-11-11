@@ -19,7 +19,7 @@ export async function planHash(canonical: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export type RoundKind = "Founder" | "Safe" | "Priced";
+export type RoundKind = "Founder" | "Safe" | "Priced" | "Saft";
 /** deadline_ns for a round with no funding deadline (u64 max, as a string: plans never carry numbers above 2^53). */
 export const NO_DEADLINE = "18446744073709551615";
 /** Put a round's money terms inside the plan, so the hash the board approves covers them too (RULES.md R9):

@@ -29,7 +29,7 @@ export async function renderReview(host: HTMLElement, v: ChainView, rpc: string,
   catch { host.innerHTML = `<p class="note">${esc(v.board)} has no proposal list to read (it is not a Sputnik DAO; an open sandbox board has no votes). Nothing to review here.</p>`; return; }
   const props: Proposal[] = last > 0 ? await call(rpc, v.board, "get_proposals", { from_index: Math.max(0, last - 40), limit: 40 }) : [];
   // proposals that call the Rounds contract, or the treasury paying into it
-  const mine = props.filter((p) => { const r = p.kind?.FunctionCall?.receiver_id; return r === v.contract || r === v.token; }).reverse();
+  const mine = props.filter((p) => { const r = p.kind?.FunctionCall?.receiver_id; return r === v.contract || r === v.token || (!!v.projectToken && r === v.projectToken); }).reverse();
   const reviews = await Promise.all(mine.map((p) => reviewProposal(p, v)));
   const open = reviews.filter((r) => r.status === "InProgress"), past = reviews.filter((r) => r.status !== "InProgress");
   const bond = String(policy.proposal_bond ?? "100000000000000000000000");

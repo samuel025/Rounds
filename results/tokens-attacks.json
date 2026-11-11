@@ -1,0 +1,9 @@
+[
+  {
+    "step": "11",
+    "what": "an officer proposes a $500,000 SAFT that its investor buys for $1",
+    "signer": "rounds-ada-332657.testnet",
+    "tx": "BDDfVwDf4PaHRSrzYfzS4e5MnERgjqmRak1fHYZrmrbJ",
+    "error": "an investor's raise must equal their SAFT amounts"
+  }
+]

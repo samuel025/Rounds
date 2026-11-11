@@ -6,6 +6,7 @@ export interface ExitRec { id: number; plan_hash: string; plan_uri: string; appr
 export interface ChainView {
   contract: string; board: string; token: string; classes: { id: string; authorized: string }[];
   holdings: [string, string, string][]; rounds: RoundRec[]; exits: ExitRec[];
+  /** set when the contract has a project token (SAFT / token support) */ projectToken?: string; tokenDecimals?: number;
 }
 export const validAccount = (s: string) => /^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$/.test(s) && s.length >= 2;
 export const esc = (s: unknown) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -24,7 +25,9 @@ export async function loadChain(rpc: string, contract: string, max = 50): Promis
   for (let from = 0; ; from += 100) { const page = await call(rpc, contract, "cap_table", { from, limit: 100 }); holdings.push(...page); if (page.length < 100 || from > 1000) break; }
   const rounds: RoundRec[] = []; for (let i = 1; i <= max; i++) { const r = await call(rpc, contract, "round", { round_id: i }); if (!r) break; rounds.push(r); }
   const exits: ExitRec[] = []; for (let i = 1; i <= max; i++) { const e = await call(rpc, contract, "exit", { exit_id: i }); if (!e) break; exits.push(e); }
-  return { contract, board, token, classes, holdings, rounds, exits };
+  let projectToken: string | undefined, tokenDecimals: number | undefined;
+  try { const ti = await call(rpc, contract, "token_info", {}); if (ti?.[0]) { projectToken = ti[0]; tokenDecimals = ti[1]; } } catch { /* an older contract has no tokens */ }
+  return { contract, board, token, classes, holdings, rounds, exits, projectToken, tokenDecimals };
 }
 
 // Recompute a round's plan hash locally and compare with the one the chain holds.

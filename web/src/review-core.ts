@@ -1,7 +1,7 @@
 // "Check before you vote": turns a Sputnik DAO proposal into what it will really do, and re-checks the hash it approves
 // against the plan the Rounds contract holds. Pure functions (no DOM, no network) so they can be tested; review.ts draws them.
 // Nothing here trusts the proposer's description: the verdict comes from decoding the call and recomputing hashes.
-import { planHash, canonicalJson } from "../../src/engine/index";
+import { planHash, canonicalJson, convertSaft } from "../../src/engine/index";
 import { usdExact, price4 } from "./format";
 import type { ChainView, RoundRec } from "./chain";
 
@@ -139,6 +139,48 @@ export async function reviewProposal(p: Proposal, v: ChainView): Promise<Review>
       "the shares come out of the unissued option pool; the contract refuses a grant larger than what is left in it"] });
   }
 
+  if (receiver === v.contract && method === "convert_safts") {
+    const local = await planHash(String(a.plan ?? ""));
+    base.findings.push(local === a.plan_hash ? ok("The plan below hashes to exactly the fingerprint in this vote (recomputed here, in your browser).") : bad("The plan does NOT hash to the fingerprint in this vote. The contract would refuse it."));
+    let p: any = null; try { p = JSON.parse(a.plan); } catch { /* shown as unreadable */ }
+    if (!p?.conversions || !p?.tge) { base.findings.push(bad("The conversion plan is not readable.")); return done("Convert SAFTs to tokens", { call }); }
+    const dec = Number(p.tge.decimals ?? 0), unit = 10n ** BigInt(dec);
+    const whole = (units: bigint) => { const w = units / unit, f = (units % unit).toString().padStart(dec, "0").replace(/0+$/, ""); return `${w.toLocaleString("en-US")}${f ? "." + f : ""}`; };
+    let allMatch = true, total = 0n; const rows: string[][] = [];
+    for (const c of p.conversions) {
+      let again: ReturnType<typeof convertSaft> | null = null;
+      try { again = convertSaft({ id: c.id, holder: c.holder, amountMicro: BigInt(c.amount_micro), fdvCapMicro: BigInt(c.fdv_cap_micro), discountBps: Number(c.discount_bps) }, { totalSupply: BigInt(p.tge.total_supply), launchPriceMicro: BigInt(p.tge.launch_price_micro), decimals: dec }); } catch { /* shown as a mismatch */ }
+      const match = !!again && again.tokens === BigInt(c.tokens) && again.regime === c.regime; if (!match) allMatch = false; total += BigInt(c.tokens);
+      rows.push([c.id, c.holder, usdExact(BigInt(c.amount_micro)), c.regime, whole(BigInt(c.tokens)), again ? usdExact(again.price.num * unit / again.price.den) : "?", match ? "ok" : "DIFFERS"]);
+    }
+    base.findings.push(allMatch ? ok("Every token count was recomputed here from the SAFT terms in the plan (RULES.md R11) and matches.") : bad("At least one token count differs from the recomputation. The contract would refuse the plan."));
+    base.findings.push(total <= BigInt(p.tge.total_supply) ? ok(`Together the SAFTs receive ${whole(total)} of ${whole(BigInt(p.tge.total_supply))} tokens.`) : bad("The SAFTs would receive more tokens than exist."));
+    base.findings.push(info("The contract recomputes the same numbers from the SAFTs it stored when they were sold, so terms in this plan that differ from those are refused, and it checks that its token reserve covers every claim."));
+    return done(`Convert ${p.conversions.length} SAFT(s) into ${whole(total)} tokens`, { call,
+      lines: [`launch price ${usdExact(BigInt(p.tge.launch_price_micro))} a token; each holder's tokens then vest over ${p.vesting?.term_months} months, nothing before month ${p.vesting?.cliff_months}`],
+      table: { title: "Conversions", head: ["SAFT", "Holder", "Paid", "Price rule", "Tokens", "Price per token", "Recomputed"], rows } });
+  }
+
+  if (receiver === v.contract && method === "grant_tokens") {
+    const local = await planHash(String(a.plan ?? ""));
+    base.findings.push(local === a.plan_hash ? ok("The grant's terms hash to exactly the fingerprint in this vote (recomputed here, in your browser).") : bad("The grant's terms do NOT hash to the fingerprint in this vote."));
+    let g: any = null; try { g = JSON.parse(a.plan); } catch { /* shown as unreadable */ }
+    if (!g) { base.findings.push(bad("The grant's terms are not readable.")); return done("Grant tokens", { call }); }
+    const dec = v.tokenDecimals ?? 0, unit = 10n ** BigInt(dec), t = BigInt(g.tokens);
+    const amount = `${(t / unit).toLocaleString("en-US")}${t % unit ? "." + (t % unit).toString().padStart(dec, "0").replace(/0+$/, "") : ""}`;
+    base.findings.push(info("The contract refuses a grant larger than what is left in the token reserve after every other claim."));
+    return done(`Grant ${amount} tokens to ${g.grantee}`, { call, lines: [`${g.grantee} may claim ${amount} tokens as they vest over ${g.term_months} months, nothing before month ${g.cliff_months}`, "the tokens come out of the reserve the DAO funded"] });
+  }
+
+  if (v.projectToken && receiver === v.projectToken && method === "ft_transfer_call") {
+    let m: any = null; try { m = JSON.parse(a.msg); } catch { /* not a Rounds message */ }
+    if (a.receiver_id === v.contract && m?.action === "reserve") {
+      const dec = v.tokenDecimals ?? 0, t = BigInt(a.amount);
+      base.findings.push(info("This moves project tokens from the DAO's treasury into the contract's token reserve. Grants and SAFT conversions can only promise what the reserve holds."));
+      return done(`Put ${(t / 10n ** BigInt(dec)).toLocaleString("en-US")} project tokens into the token reserve`, { call, lines: [`${a.amount} token units leave the treasury for the reserve`] });
+    }
+  }
+
   if (receiver === v.token && method === "ft_transfer_call") {
     let m: any = null; try { m = JSON.parse(a.msg); } catch { /* not a Rounds message */ }
     if (a.receiver_id === v.contract && m?.action === "exit") {
@@ -158,6 +200,7 @@ export async function reviewProposal(p: Proposal, v: ChainView): Promise<Review>
       set_officer: `${a.enabled ? "Make" : "Stop being"} ${a.account} ${a.enabled ? "an officer (may propose rounds and exits)" : "an officer"}`,
       cancel_round: `Cancel round ${a.round_id}: deposits are refunded`, cancel_exit: `Cancel exit ${a.exit_id}: funders can take their money back`,
       withdraw_strikes: `Send ${a.amount ? usdExact(BigInt(a.amount)) : "?"} of held exercise strikes to the treasury`, terminate: `Terminate grant ${a.grant_id}: unvested options lapse`,
+      set_project_token: `Name ${a.token} (${a.decimals} decimals) as the project token, once; SAFTs can be converted and tokens granted only after this`, terminate_token_grant: `Terminate token grant ${a.grant_id}: unvested tokens return to the reserve's free balance`,
       add_class: `Authorize a new share class "${a.class?.id}" of up to ${a.class?.authorized ? n(a.class.authorized) : "?"} shares` };
     base.findings.push(info("This call carries no plan hash; what it does is described in words from its arguments."));
     return done(words[method] ?? `Calls ${method} on the Rounds contract`, { call, lines: [] });

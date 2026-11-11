@@ -1,0 +1,15 @@
+{
+  "round": {
+    "id": 1,
+    "plan": "{\"deadline_ns\":\"18446744073709551615\",\"kind\":\"Saft\",\"raise\":[[\"rounds-chidi-332657.testnet\",\"500000000000\"],[\"rounds-dayo-332657.testnet\",\"250000000000\"]],\"safts\":[{\"amount\":\"500000000000\",\"converted\":false,\"discount_bps\":0,\"fdv_cap\":\"20000000000000\",\"holder\":\"rounds-chidi-332657.testnet\",\"id\":\"saft1\"},{\"amount\":\"250000000000\",\"converted\":false,\"discount_bps\":2000,\"fdv_cap\":\"20000000000000\",\"holder\":\"rounds-dayo-332657.testnet\",\"id\":\"saft2\"}]}"
+  },
+  "conversion": {
+    "plan": "{\"conversions\":[{\"amount_micro\":\"500000000000\",\"discount_bps\":0,\"fdv_cap_micro\":\"20000000000000\",\"holder\":\"rounds-chidi-332657.testnet\",\"id\":\"saft1\",\"regime\":\"cap\",\"tokens\":\"25000000000000\"},{\"amount_micro\":\"250000000000\",\"discount_bps\":2000,\"fdv_cap_micro\":\"20000000000000\",\"holder\":\"rounds-dayo-332657.testnet\",\"id\":\"saft2\",\"regime\":\"discount\",\"tokens\":\"20833333333333\"}],\"tge\":{\"decimals\":6,\"launch_price_micro\":\"15000\",\"total_supply\":\"1000000000000000\"},\"vesting\":{\"cliff_months\":2,\"start_ns\":\"1794355388504000000\",\"term_months\":6}}",
+    "hash": "5e671929f21b099bb7746a58f79882de2b57c778e9428223f2541d9103baf649"
+  },
+  "grant": {
+    "plan": "{\"cliff_months\":2,\"grantee\":\"rounds-efe-332657.testnet\",\"start_ns\":\"1794355388504000000\",\"term_months\":6,\"tokens\":\"1000000000000\"}",
+    "hash": "ee95ee78b056540f52b65de780f041c52847a8422aa34dcfdb5073cf5933cf52"
+  },
+  "vestingStartNs": "1794355388504000000"
+}

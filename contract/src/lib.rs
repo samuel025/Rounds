@@ -17,6 +17,8 @@ pub const MAX_EXIT_FUNDERS: usize = 16;
 pub const MAX_DISTRIBUTE: u64 = 8; // 8 payouts x 25 Tgas + overhead < 300 Tgas (open question 6)
 /// Cap on grants ever created: `grant` and the claim views scan every grant, so this bounds their gas.
 pub const MAX_GRANTS: u64 = 256;
+/// Cap on token grants ever created: the claim views scan every grant.
+pub const MAX_TOKEN_GRANTS: u64 = 256;
 const YOCTO: NearToken = NearToken::from_yoctonear(1);
 /// Holder id under which a round's unissued option pool is credited. Options are a claim on this pool:
 /// exercising shares moves them out of the pool instead of minting new ones.
@@ -24,7 +26,7 @@ const POOL: &str = "unissued_pool";
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Debug)]
-pub enum RoundKind { Founder, Safe, Priced }
+pub enum RoundKind { Founder, Safe, Priced, Saft }
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Debug)]
 pub enum RoundStatus { Funding, Approved, Closing, Closed, Cancelled }
@@ -47,11 +49,16 @@ struct Issuance { holder: String, class: String, shares: U128 }
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug)]
 pub struct SafeRec { pub id: String, pub holder: AccountId, pub amount: U128, pub post_money_cap: U128, pub discount_bps: u32, pub converted: bool }
+/// A SAFT: money paid now for tokens at launch (the project token does not exist yet). Converted by `convert_safts`.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug)]
+pub struct SaftRec { pub id: String, pub holder: AccountId, pub amount: U128, pub fdv_cap: U128, pub discount_bps: u32, pub converted: bool }
 #[derive(Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 struct RoundPlan {
     #[serde(default)] issuances: Vec<Issuance>,
     #[serde(default)] safes: Vec<SafeRec>,
+    #[serde(default)] safts: Vec<SaftRec>,
     #[serde(default)] converted_safes: Vec<String>,
     // The money terms are part of the hashed plan (RULES.md R9): the board's approval of the hash covers who
     // pays how much, the kind of round and the funding deadline, not only the shares issued.
@@ -66,6 +73,29 @@ pub struct Grant {
     pub id: u64, pub grantee: AccountId, pub shares: U128, pub exercised: U128, pub strike_micro: U128,
     pub start_ns: u64, pub term_months: u32, pub cliff_months: u32, pub terminated_at_ns: Option<u64>,
 }
+/// Tokens a holder may claim as they vest: from a converted SAFT or a contributor grant, both paid out of the token reserve.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug)]
+pub struct TokenGrant {
+    pub id: u64, pub grantee: AccountId, pub tokens: U128, pub claimed: U128,
+    pub start_ns: u64, pub term_months: u32, pub cliff_months: u32, pub terminated_at_ns: Option<u64>, pub saft_id: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct TokenGrantPlan { grantee: AccountId, tokens: U128, start_ns: U64, term_months: u32, cliff_months: u32 }
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct TgeInputs { total_supply: U128, launch_price_micro: U128, decimals: u8 }
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct VestingPlan { start_ns: U64, term_months: u32, cliff_months: u32 }
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct ConversionItem { id: String, tokens: U128 }
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+struct SaftConversionPlan { tge: TgeInputs, vesting: VestingPlan, conversions: Vec<ConversionItem> }
+
 #[derive(Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 struct GrantPlan { grantee: AccountId, shares: U128, strike_micro: U128, start_ns: u64, term_months: u32, cliff_months: u32 }
@@ -85,7 +115,7 @@ struct ExitPlan { payouts: Vec<(AccountId, U128)> }
 
 #[derive(Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-struct Msg { action: String, id: u64, shares: Option<U128> }
+struct Msg { action: String, #[serde(default)] id: u64, shares: Option<U128> }
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -102,6 +132,10 @@ pub struct Rounds {
     pending_issued: IterableMap<String, u128>,
     pending_safes: IterableSet<String>,
     pending_converts: IterableSet<String>,
+    // Tokens and SAFTs: the project token is set once by the board at launch, the DAO funds a reserve of it, and token grants are
+    // claims on that reserve (a claim can never exceed it). SAFTs convert to token grants by the contract's own arithmetic.
+    project_token: Option<AccountId>, token_decimals: u8, token_reserve: u128, token_in_flight: u128, saft_tokens_total: u128, tge_supply: u128,
+    safts: IterableMap<String, SaftRec>, token_grants: IterableMap<u64, TokenGrant>, next_token_grant: u64,
 }
 
 fn event(name: &str, data: &str) {
@@ -110,6 +144,31 @@ fn event(name: &str, data: &str) {
 fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{:02x}", x)).collect() }
 fn check_hash(plan: &str, plan_hash: &str) { require!(hex(&env::sha256(plan.as_bytes())) == plan_hash, "plan hash mismatch"); }
 fn key(holder: &str, class: &str) -> String { format!("{}|{}", holder, class) }
+fn pow10(d: u8) -> u128 { 10u128.checked_pow(d as u32).unwrap_or_else(|| env::panic_str("decimals too large")) }
+/// RULES.md R11, computed on chain. Tokens (in the token's base units) = floor(amount / price), price = the lower of the cap price
+/// (fdv_cap / total supply) and the discounted launch price (launch x (1 - discount)); a lower price buys more, so take the larger count.
+fn saft_tokens(s: &SaftRec, tge: &TgeInputs) -> u128 {
+    let mut best: Option<u128> = None;
+    if s.fdv_cap.0 > 0 {
+        let num = s.amount.0.checked_mul(tge.total_supply.0).unwrap_or_else(|| env::panic_str("amount x supply is too large to convert exactly"));
+        best = Some(num / s.fdv_cap.0);
+    }
+    if s.discount_bps > 0 {
+        require!(tge.launch_price_micro.0 > 0, "a discount needs a launch price");
+        let num = s.amount.0.checked_mul(pow10(tge.decimals)).and_then(|v| v.checked_mul(10_000)).unwrap_or_else(|| env::panic_str("amount is too large to convert exactly"));
+        let den = tge.launch_price_micro.0.checked_mul(10_000 - s.discount_bps as u128).unwrap_or_else(|| env::panic_str("launch price is too large"));
+        let t = num / den;
+        best = Some(best.map_or(t, |b| b.max(t)));
+    }
+    best.unwrap_or_else(|| env::panic_str("a SAFT needs a cap or a discount"))
+}
+/// Same rule as option vesting (R7): nothing before the cliff, then linear by month, all at the term.
+fn vest(total: u128, start_ns: u64, term: u32, cliff: u32, end_ns: u64, month_ns: u64) -> u128 {
+    if end_ns < start_ns { return 0 }
+    let m = (end_ns - start_ns) / month_ns;
+    if m < cliff as u64 { 0 } else if m >= term as u64 { total }
+    else { total.checked_mul(m as u128).unwrap_or_else(|| env::panic_str("vesting overflow")) / term as u128 }
+}
 
 #[near]
 impl Rounds {
@@ -128,6 +187,8 @@ impl Rounds {
             safes: IterableMap::new(b"s"), grants: IterableMap::new(b"g"), exits: IterableMap::new(b"x"),
             next_round: 1, next_grant: 1, next_exit: 1, escrow_total: 0, exit_funds_total: 0, strike_balance: 0, strikes_in_flight: 0,
             pending_issued: IterableMap::new(b"p"), pending_safes: IterableSet::new(b"P"), pending_converts: IterableSet::new(b"q"),
+            project_token: None, token_decimals: 0, token_reserve: 0, token_in_flight: 0, saft_tokens_total: 0, tge_supply: 0,
+            safts: IterableMap::new(b"f"), token_grants: IterableMap::new(b"k"), next_token_grant: 1,
         }
     }
     fn only_board(&self) { require!(env::predecessor_account_id() == self.board, "only the board"); }
@@ -173,6 +234,16 @@ impl Rounds {
         }
         let mut seen = std::collections::HashSet::new();
         require!(raise.iter().all(|(a, _)| seen.insert(a.clone())), "duplicate investor");
+        require!(kind == RoundKind::Saft || parsed.safts.is_empty(), "only a Saft round carries SAFTs");
+        if kind == RoundKind::Saft {
+            require!(!parsed.safts.is_empty() && parsed.issuances.is_empty() && parsed.safes.is_empty() && parsed.converted_safes.is_empty(), "a Saft round carries SAFTs and nothing else");
+            for s in &parsed.safts {
+                require!(s.amount.0 > 0 && (s.fdv_cap.0 > 0 || s.discount_bps > 0) && s.discount_bps < 10_000 && !s.converted, "bad SAFT terms");
+                let paid = parsed.safts.iter().filter(|t| t.holder == s.holder).try_fold(0u128, |a, t| a.checked_add(t.amount.0)).unwrap_or_else(|| env::panic_str("SAFT amount overflow"));
+                require!(raise.iter().any(|(w, a)| w == &s.holder && a.0 == paid), "an investor's raise must equal their SAFT amounts");
+            }
+            require!(raise.iter().all(|(w, _)| parsed.safts.iter().any(|s| &s.holder == w)), "every investor in the raise must hold a SAFT");
+        }
         if kind == RoundKind::Safe {
             require!(!parsed.safes.is_empty(), "safe round needs safes");
             // each investor pays exactly the purchase amounts of the SAFEs issued to them
@@ -191,6 +262,14 @@ impl Rounds {
 
     /// NEP-141 receiver. Anything not understood is returned in full.
     pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> U128 {
+        if Some(env::predecessor_account_id()) == self.project_token {
+            // the project token: only a deposit into the reserve is understood
+            let ok = near_sdk::serde_json::from_str::<Msg>(&msg).map(|m| m.action == "reserve").unwrap_or(false);
+            if !ok { return amount; }
+            self.token_reserve = self.token_reserve.checked_add(amount.0).unwrap_or_else(|| env::panic_str("reserve overflow"));
+            event("token_reserve_funded", &format!("{{\"from\":\"{}\",\"amount\":\"{}\"}}", sender_id, amount.0));
+            return U128(0);
+        }
         if env::predecessor_account_id() != self.payment_token { return amount; }
         let m: Msg = match near_sdk::serde_json::from_str(&msg) { Ok(m) => m, Err(_) => return amount };
         let accepted = match m.action.as_str() {
@@ -281,7 +360,10 @@ impl Rounds {
         }
         let mut fresh: HashSet<&str> = HashSet::new();
         for s in &p.safes {
-            require!(self.safes.get(&s.id).is_none() && !self.pending_safes.contains(&s.id) && fresh.insert(s.id.as_str()), "safe id exists");
+            require!(self.safes.get(&s.id).is_none() && self.safts.get(&s.id).is_none() && !self.pending_safes.contains(&s.id) && fresh.insert(s.id.as_str()), "safe id exists");
+        }
+        for s in &p.safts {
+            require!(self.safes.get(&s.id).is_none() && self.safts.get(&s.id).is_none() && !self.pending_safes.contains(&s.id) && fresh.insert(s.id.as_str()), "saft id exists");
         }
         let mut converting: HashSet<&str> = HashSet::new();
         for id in &p.converted_safes {
@@ -306,6 +388,7 @@ impl Rounds {
             self.pending_issued.insert(class, cur.checked_add(extra).unwrap_or_else(|| env::panic_str("pending overflow")));
         }
         for s in &p.safes { self.pending_safes.insert(s.id.clone()); }
+        for s in &p.safts { self.pending_safes.insert(s.id.clone()); }
         for id in &p.converted_safes { self.pending_converts.insert(id.clone()); }
     }
     fn release_plan(&mut self, r: &Round) {
@@ -324,11 +407,13 @@ impl Rounds {
             self.pending_issued.insert(class, cur.saturating_sub(extra));
         }
         for s in &p.safes { self.pending_safes.remove(&s.id); }
+        for s in &p.safts { self.pending_safes.remove(&s.id); }
         for id in &p.converted_safes { self.pending_converts.remove(id); }
     }
     fn credit_round(&mut self, r: &Round) {
         let p: RoundPlan = near_sdk::serde_json::from_str(&r.plan).unwrap_or_else(|_| env::panic_str("bad plan"));
         for i in &p.issuances { self.credit(&i.holder, &i.class, i.shares.0); }
+        for s in p.safts { require!(self.safts.get(&s.id).is_none() && self.safes.get(&s.id).is_none(), "saft id exists"); self.safts.insert(s.id.clone(), SaftRec { converted: false, ..s }); }
         for s in p.safes { require!(self.safes.get(&s.id).is_none(), "safe id exists"); self.safes.insert(s.id.clone(), SafeRec { converted: false, ..s }); }
         for id in &p.converted_safes {
             let mut s = self.safes.get(id).cloned().unwrap_or_else(|| env::panic_str("unknown safe"));
@@ -471,6 +556,111 @@ impl Rounds {
         event("strikes_swept", &format!("{{\"amount\":\"{}\"}}", amount.0));
     }
 
+    // ---------- tokens and SAFTs ----------
+    /// The board names the project token once, at launch. Until then SAFTs can be sold but not converted.
+    pub fn set_project_token(&mut self, token: AccountId, decimals: u8) {
+        self.only_board();
+        require!(self.project_token.is_none(), "project token already set");
+        require!(token != self.payment_token, "the project token cannot be the payment token");
+        require!(decimals <= 24, "decimals too large");
+        self.project_token = Some(token.clone()); self.token_decimals = decimals;
+        event("project_token_set", &format!("{{\"token\":\"{}\",\"decimals\":{}}}", token, decimals));
+    }
+    fn vested_tokens(&self, g: &TokenGrant) -> u128 {
+        let end = g.terminated_at_ns.unwrap_or(u64::MAX).min(env::block_timestamp());
+        vest(g.tokens.0, g.start_ns, g.term_months, g.cliff_months, end, self.month_ns)
+    }
+    /// Tokens that grants may still claim: all unclaimed tokens while active; after termination only what had vested.
+    fn open_token_claims(&self) -> u128 {
+        self.token_grants.values().fold(0u128, |acc, g| {
+            let unclaimed = g.tokens.0.saturating_sub(g.claimed.0);
+            let claim = if g.terminated_at_ns.is_some() { self.vested_tokens(g).saturating_sub(g.claimed.0).min(unclaimed) } else { unclaimed };
+            acc.checked_add(claim).unwrap_or_else(|| env::panic_str("claim overflow"))
+        })
+    }
+    fn token_free(&self) -> u128 { self.token_reserve.saturating_sub(self.token_in_flight).saturating_sub(self.open_token_claims()) }
+    /// At launch the board converts SAFTs. The plan names the tokens for each SAFT, but the contract computes them itself (R11) from the
+    /// SAFT's own terms and refuses the call if any number differs, if the investors would hold more than the supply, or if the reserve
+    /// cannot cover every claim. Each SAFT becomes a vesting token grant for its holder.
+    pub fn convert_safts(&mut self, plan_hash: String, plan: String) -> u64 {
+        self.only_board(); require!(plan.len() <= 65_536, "plan too large"); check_hash(&plan, &plan_hash);
+        require!(self.project_token.is_some(), "set the project token first");
+        let p: SaftConversionPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad conversion plan"));
+        require!(p.tge.decimals == self.token_decimals, "decimals differ from the project token's");
+        require!(p.tge.total_supply.0 > 0, "total supply must be positive");
+        require!(self.tge_supply == 0 || self.tge_supply == p.tge.total_supply.0, "total supply differs from an earlier conversion");
+        require!(!p.conversions.is_empty() && p.conversions.len() <= 32, "1 to 32 conversions");
+        require!(p.vesting.term_months > 0 && p.vesting.cliff_months <= p.vesting.term_months, "bad vesting terms");
+        require!(self.next_token_grant - 1 + p.conversions.len() as u64 <= MAX_TOKEN_GRANTS, "too many token grants");
+        let mut seen = std::collections::HashSet::new(); let mut items: Vec<(SaftRec, u128)> = vec![]; let mut total = 0u128;
+        for c in &p.conversions {
+            require!(seen.insert(c.id.clone()), "duplicate conversion");
+            let s = self.safts.get(&c.id).cloned().unwrap_or_else(|| env::panic_str("unknown SAFT"));
+            require!(!s.converted, "SAFT already converted");
+            require!(saft_tokens(&s, &p.tge) == c.tokens.0, "tokens differ from what the SAFT's terms give");
+            require!(c.tokens.0 > 0, "a SAFT must convert to at least one token unit");
+            total = total.checked_add(c.tokens.0).unwrap_or_else(|| env::panic_str("token overflow"));
+            items.push((s, c.tokens.0));
+        }
+        let all = self.saft_tokens_total.checked_add(total).unwrap_or_else(|| env::panic_str("token overflow"));
+        require!(all <= p.tge.total_supply.0, "the SAFTs would hold more tokens than exist");
+        require!(self.token_free() >= total, "token reserve too small to cover every claim");
+        let first = self.next_token_grant;
+        for (mut s, tokens) in items {
+            let id = self.next_token_grant; self.next_token_grant += 1;
+            self.token_grants.insert(id, TokenGrant { id, grantee: s.holder.clone(), tokens: U128(tokens), claimed: U128(0), start_ns: p.vesting.start_ns.0, term_months: p.vesting.term_months, cliff_months: p.vesting.cliff_months, terminated_at_ns: None, saft_id: Some(s.id.clone()) });
+            s.converted = true; self.safts.insert(s.id.clone(), s);
+        }
+        self.saft_tokens_total = all; self.tge_supply = p.tge.total_supply.0;
+        event("safts_converted", &format!("{{\"first_grant\":{},\"count\":{},\"tokens\":\"{}\"}}", first, p.conversions.len(), total));
+        first
+    }
+    /// A board-approved token reward for a contributor, backed by the reserve like any other claim.
+    pub fn grant_tokens(&mut self, plan_hash: String, plan: String) -> u64 {
+        self.only_board(); require!(plan.len() <= 65_536, "plan too large"); check_hash(&plan, &plan_hash);
+        require!(self.project_token.is_some(), "set the project token first");
+        let g: TokenGrantPlan = near_sdk::serde_json::from_str(&plan).unwrap_or_else(|_| env::panic_str("bad token grant"));
+        require!(g.tokens.0 > 0, "grant needs tokens");
+        require!(g.term_months > 0 && g.cliff_months <= g.term_months, "bad vesting terms");
+        require!(self.next_token_grant <= MAX_TOKEN_GRANTS, "too many token grants");
+        require!(self.token_free() >= g.tokens.0, "token reserve too small to cover every claim");
+        let id = self.next_token_grant; self.next_token_grant += 1;
+        self.token_grants.insert(id, TokenGrant { id, grantee: g.grantee.clone(), tokens: g.tokens, claimed: U128(0), start_ns: g.start_ns.0, term_months: g.term_months, cliff_months: g.cliff_months, terminated_at_ns: None, saft_id: None });
+        event("token_grant_created", &format!("{{\"grant_id\":{},\"grantee\":\"{}\",\"tokens\":\"{}\"}}", id, g.grantee, g.tokens.0));
+        id
+    }
+    pub fn terminate_token_grant(&mut self, grant_id: u64) {
+        self.only_board();
+        let mut g = self.token_grants.get(&grant_id).cloned().unwrap_or_else(|| env::panic_str("no such token grant"));
+        require!(g.terminated_at_ns.is_none(), "already terminated");
+        g.terminated_at_ns = Some(env::block_timestamp()); // vesting freezes; the unvested part returns to the reserve's free balance
+        self.token_grants.insert(grant_id, g);
+        event("token_grant_terminated", &format!("{{\"grant_id\":{}}}", grant_id));
+    }
+    /// Anyone may trigger the payout of what has vested to the grant's holder. The claim is locked before the transfer and restored if it fails.
+    pub fn claim_tokens(&mut self, grant_id: u64) -> Promise {
+        require!(env::prepaid_gas() >= Gas::from_tgas(40), "attach at least 40 Tgas");
+        let token = self.project_token.clone().unwrap_or_else(|| env::panic_str("no project token"));
+        let mut g = self.token_grants.get(&grant_id).cloned().unwrap_or_else(|| env::panic_str("no such token grant"));
+        let avail = self.vested_tokens(&g).saturating_sub(g.claimed.0);
+        require!(avail > 0, "nothing to claim yet");
+        g.claimed = U128(g.claimed.0.checked_add(avail).unwrap_or_else(|| env::panic_str("claim overflow")));
+        let to = g.grantee.clone(); self.token_grants.insert(grant_id, g);
+        self.token_in_flight = self.token_in_flight.checked_add(avail).unwrap_or_else(|| env::panic_str("in-flight overflow"));
+        Promise::new(token)
+            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", to, avail).into_bytes(), YOCTO, GAS_FT)
+            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_token_claim(grant_id, U128(avail)))
+    }
+    #[private]
+    pub fn on_token_claim(&mut self, grant_id: u64, amount: U128, #[callback_result] res: Result<(), PromiseError>) -> bool {
+        self.token_in_flight = self.token_in_flight.saturating_sub(amount.0);
+        let mut g = self.token_grants.get(&grant_id).cloned().unwrap_or_else(|| env::panic_str("no such token grant"));
+        if res.is_err() { g.claimed = U128(g.claimed.0.saturating_sub(amount.0)); self.token_grants.insert(grant_id, g); return false } // retryable
+        self.token_reserve = self.token_reserve.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("reserve underflow"));
+        event("tokens_claimed", &format!("{{\"grant_id\":{},\"grantee\":\"{}\",\"amount\":\"{}\"}}", grant_id, g.grantee, amount.0));
+        true
+    }
+
     // ---------- exits ----------
     pub fn propose_exit(&mut self, plan_hash: String, plan_uri: String, plan: String) -> u64 {
         self.only_officer(); require!(plan.len() <= 65_536, "plan too large"); check_hash(&plan, &plan_hash);
@@ -588,6 +778,11 @@ impl Rounds {
         U128(t)
     }
     pub fn strike_balance(&self) -> U128 { U128(self.strike_balance) }
+    /// (project token, decimals, reserve, in flight, open claims, free)
+    pub fn token_info(&self) -> (Option<AccountId>, u8, U128, U128, U128, U128) { (self.project_token.clone(), self.token_decimals, U128(self.token_reserve), U128(self.token_in_flight), U128(self.open_token_claims()), U128(self.token_free())) }
+    pub fn token_grant(&self, grant_id: u64) -> Option<TokenGrant> { self.token_grants.get(&grant_id).cloned() }
+    pub fn token_vested(&self, grant_id: u64) -> U128 { U128(self.vested_tokens(&self.token_grants.get(&grant_id).unwrap_or_else(|| env::panic_str("no such token grant")))) }
+    pub fn saft(&self, id: String) -> Option<SaftRec> { self.safts.get(&id).cloned() }
     pub fn treasury(&self) -> AccountId { self.treasury.clone() }
     /// Shares promised to live grants, and the pool shares not yet promised.
     pub fn open_claims(&self) -> U128 { U128(self.open_claim_shares()) }
