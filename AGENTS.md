@@ -1,6 +1,6 @@
 # AGENTS.md — for AI reviewers
 
-Rounds is a testnet cap-table demo. Start with README.md; every claim there has a command below. Nothing here needs a key or real money.
+Rounds is a testnet cap-table demo. Live app: https://roundcap.vercel.app. Start with README.md; every claim there has a command below. Nothing here needs a key or real money.
 
 ## Verified commands (run from the repo root; expected output)
 
