@@ -114,18 +114,43 @@ async fn confidential_round_private_exit_and_claims_to_new_accounts() -> anyhow:
     assert!(e.claim(&e.zed, 1, c_fnd, "burner2.test.near", &c_fnd["proof"]).await.is_success());
     assert_eq!(balance(&e.ft, burner2.id()).await, 3_000 * USD);
 
-    // ---- a payout that cannot be delivered (the recipient is not registered with the token) frees its nullifier, then the claim can be retried
+    // ---- the contract registers an unregistered recipient itself: no visible registration transaction from the claimant
+    let burner3_id: near_workspaces::AccountId = "burner3.test.near".parse()?;
+    // a payout that cannot be delivered (the token is failing transfers) frees its nullifier, then the claim can be retried
+    let burner3 = account(&e.w, "burner3").await;
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": true})).transact().await?.into_result()?;
     let _ = e.claim(&e.zed, 1, c_ang, "burner3.test.near", &c_ang["proof"]).await;
     assert!(!e.used(&c_ang["nullifier"]).await, "a failed transfer restores the nullifier");
     let ex: Value = e.rounds.view("private_exit").args_json(json!({"exit_id": 1})).await?.json()?;
     assert_eq!(ex["claimed"], (9_000 * USD).to_string(), "and the claimed total");
-    let burner3 = account(&e.w, "burner3").await; register(&e.ft, burner3.id()).await;
-    assert!(e.claim(&e.zed, 1, c_ang, "burner3.test.near", &c_ang["proof"]).await.is_success());
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": false})).transact().await?.into_result()?;
+    assert_eq!(e.ft.view("ft_balance_of").args_json(json!({"account_id": burner3_id})).await?.json::<String>()?, "0", "burner3 holds nothing and was never registered by anyone");
+    assert!(e.claim(&e.zed, 1, c_ang, "burner3.test.near", &c_ang["proof"]).await.is_success(), "an unregistered recipient is registered by the contract and paid");
     assert_eq!(balance(&e.ft, burner3.id()).await, 1_000 * USD);
     let ex: Value = e.rounds.view("private_exit").args_json(json!({"exit_id": 1})).await?.json()?;
     assert_eq!(ex["claimed"], pot.to_string(), "every holder has been paid exactly their share");
     assert_eq!(e.ledger().await, 0, "the pot is fully paid out");
     assert_eq!(balance(&e.ft, e.rounds.id()).await, 0);
     let _ = &e.board; let _ = &attacker;
+    Ok(())
+}
+
+/// An optional commitment to an encrypted copy of the private table: part of the plan the board approves.
+#[tokio::test]
+async fn escrow_hash_is_committed_in_the_plan_the_board_approves() -> anyhow::Result<()> {
+    let e = setup().await?; let f = fx();
+    let root = f["merkle_root"].clone();
+    let with = |hash: Value| e.ada.call(e.rounds.id(), "propose_confidential_round")
+        .args_json(json!({"merkle_root": root, "total_shares": "1000", "raise": [], "deadline_ns": u64::MAX, "proof": f["commit_proof"], "escrow_hash": hash})).max_gas().transact();
+    assert!(failed(&with(json!("not-a-hash")).await?, "ERR_BAD_ESCROW_HASH"), "a malformed commitment is refused");
+    assert!(failed(&with(json!("ABCDEF".repeat(10) + "abcd")).await?, "ERR_BAD_ESCROW_HASH"), "upper case or wrong length is refused");
+    let good = "ab".repeat(32);
+    let ok = with(json!(good)).await?;
+    assert!(ok.is_success(), "{:?}", ok);
+    let round: Value = e.rounds.view("round").args_json(json!({"round_id": 1})).await?.json()?;
+    let plan = round["plan"].as_str().unwrap();
+    assert!(plan.contains(&format!("\"escrow_hash\":\"{}\"", good)), "the commitment is inside the plan: {}", plan);
+    assert_eq!(h(plan), round["plan_hash"].as_str().unwrap(), "so the board's approval of the plan hash covers it");
+    let _ = (&e.board, &e.treasury, &e.investor, &e.zed);
     Ok(())
 }

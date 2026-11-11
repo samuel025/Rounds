@@ -137,4 +137,16 @@ describe("check before you vote: SAFTs and tokens", () => {
     const res = await reviewProposal(prop("tkn.t", "ft_transfer_call", { receiver_id: CORE, amount: "100000000000000", msg: JSON.stringify({ action: "reserve" }) }), v);
     expect(res.title).toBe("Put 100,000,000 project tokens into the token reserve");
   });
+
+  it("a confidential round shows only the root, the total and the raise, and points the board to the check", async () => {
+    const v = await tokenWorld();
+    const plan = JSON.stringify({ deadline_ns: "1794938764000000000", escrow_hash: "ab".repeat(32), kind: "Confidential", merkle_root: "123456789012345678901234567890", raise: [["inv.t", "1000000000"]], total_shares: "1000" });
+    const round = { id: 9, kind: "Confidential", status: "Funding", plan_hash: await planHash(plan), plan_uri: "confidential", plan, raise: [["inv.t", "1000000000"]] as [string, string][], deposits: [["inv.t", "0"]] as [string, string][] };
+    v.rounds.push(round as any);
+    const r = await reviewProposal(prop(CORE, "approve_round", { round_id: 9, plan_hash: round.plan_hash }), v);
+    expect(r.verdict).toBe("match"); expect(r.title).toBe("Approve confidential round 9 ($1,000 raised)");
+    expect(r.lines.join(" ")).toContain("seals a private cap table of 1,000 shares"); expect(r.lines.join(" ")).toContain("commits to an encrypted copy");
+    expect(r.findings.some((f) => /Board check/.test(f.text))).toBe(true);
+    expect(r.table).toBeUndefined(); // no ownership table: there is nothing public to show
+  });
 });

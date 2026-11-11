@@ -2,7 +2,7 @@ import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { renderReview } from "./review";
 import { mountShareFlow } from "./shareflow";
-import { mountZkFlow, mountPrivateClaim } from "./zkflow";
+import { mountZkFlow, mountPrivateClaim, mountBoardCheck } from "./zkflow";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { usd, usdExact, price4 } from "./format";
@@ -327,7 +327,7 @@ async function initChain() {
   if (zkSb?.rounds && zkSb.board && zkSb.token) {
     $("zk").hidden = false; $("nav-zk").hidden = false;
     const zd = { rpc: dep.rpc, explorer: dep.explorer, contract: zkSb.rounds, board: zkSb.board, token: zkSb.token };
-    mountZkFlow($("zk-run"), { ...zd, model: zkModel }); mountPrivateClaim($("zk-claim-body"), { ...zd, model: zkModel });
+    mountZkFlow($("zk-run"), { ...zd, model: zkModel }); mountBoardCheck($("zk-board-body"), { ...zd, model: zkModel }); mountPrivateClaim($("zk-claim-body"), { ...zd, model: zkModel });
   }
   $("chain-btn").onclick = () => void run();
   input.onkeydown = (e) => { if (e.key === "Enter") void run(); };

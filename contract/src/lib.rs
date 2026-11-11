@@ -148,6 +148,8 @@ pub struct Rounds {
     // Confidential mode (opt-in): per confidential round its Poseidon Merkle root and proven total shares; private exits; spent nullifiers.
     confidential_roots: LookupMap<u64, String>, confidential_supply: LookupMap<u64, u128>,
     used_nullifiers: LookupSet<String>, private_exits: IterableMap<u64, PrivateExit>, next_private_exit: u64, private_funds_total: u128,
+    /// NEAR the contract attaches when it registers a claim's recipient with the payment token (0 for test tokens; a real NEP-141 token asks for about 0.00125 NEAR)
+    registration_deposit: u128,
 }
 
 fn event(name: &str, data: &str) {
@@ -202,7 +204,7 @@ impl Rounds {
             project_token: None, token_decimals: 0, token_reserve: 0, token_in_flight: 0, saft_tokens_total: 0, tge_supply: 0,
             safts: IterableMap::new(b"f"), token_grants: IterableMap::new(b"k"), next_token_grant: 1,
             confidential_roots: LookupMap::new(b"R"), confidential_supply: LookupMap::new(b"S"), used_nullifiers: LookupSet::new(b"N"),
-            private_exits: IterableMap::new(b"X"), next_private_exit: 1, private_funds_total: 0,
+            private_exits: IterableMap::new(b"X"), next_private_exit: 1, private_funds_total: 0, registration_deposit: 0,
         }
     }
     fn only_board(&self) { require!(env::predecessor_account_id() == self.board, "only the board"); }
@@ -785,19 +787,22 @@ impl Rounds {
     /// holding, that the private table's 64-bit share amounts add up to `total_shares` and hash to the Poseidon root `merkle_root`; it is checked
     /// here, before anything else. The money terms are public. The round then goes through the ordinary approve_round / deposit / close_round.
     /// `round_id` is a public input of the proof, so it must be the id this round is going to get (the `next_round_id` view).
-    pub fn propose_confidential_round(&mut self, merkle_root: String, total_shares: U128, raise: Vec<(AccountId, U128)>, deadline_ns: u64, proof: Groth16Proof) -> u64 {
+    pub fn propose_confidential_round(&mut self, merkle_root: String, total_shares: U128, raise: Vec<(AccountId, U128)>, deadline_ns: u64, proof: Groth16Proof, escrow_hash: Option<String>) -> u64 {
         self.only_officer();
         require!(env::prepaid_gas() >= Gas::from_tgas(100), "attach at least 100 Tgas to verify the proof");
         require!(total_shares.0 > 0 && total_shares.0 < (1u128 << 64), "ERR_TOTAL_SHARES_OUT_OF_RANGE");
         require!(raise.len() <= 32 && raise.iter().all(|(_, a)| a.0 > 0), "raise must be positive");
         let mut seen = std::collections::HashSet::new();
         require!(raise.iter().all(|(a, _)| seen.insert(a.clone())), "duplicate investor");
+        // optional commitment to an encrypted copy of the private table for the board: part of the plan the board approves, so it cannot be swapped or withheld afterwards
+        if let Some(h) = &escrow_hash { require!(h.len() == 64 && h.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)), "ERR_BAD_ESCROW_HASH"); }
         let id = self.next_round;
         let public = [zk::field_element(&merkle_root), zk::field_from_u128(total_shares.0), zk::field_from_u64(id)];
         require!(zk::verify(&zk::cap_table_key(), &proof, &public), "ERR_INVALID_PROOF");
         // the plan the board approves by hash: canonical (sorted keys), so anyone can rebuild and re-hash it
         let raise_json = raise.iter().map(|(a, v)| format!("[\"{}\",\"{}\"]", a, v.0)).collect::<Vec<_>>().join(",");
-        let plan = format!("{{\"deadline_ns\":\"{}\",\"kind\":\"Confidential\",\"merkle_root\":\"{}\",\"raise\":[{}],\"total_shares\":\"{}\"}}", deadline_ns, merkle_root, raise_json, total_shares.0);
+        let escrow_json = escrow_hash.as_ref().map(|h| format!("\"escrow_hash\":\"{}\",", h)).unwrap_or_default();
+        let plan = format!("{{\"deadline_ns\":\"{}\",{}\"kind\":\"Confidential\",\"merkle_root\":\"{}\",\"raise\":[{}],\"total_shares\":\"{}\"}}", deadline_ns, escrow_json, merkle_root, raise_json, total_shares.0);
         let plan_hash = hex(&env::sha256(plan.as_bytes()));
         self.next_round += 1;
         let deposits = raise.iter().map(|(a, _)| (a.clone(), U128(0))).collect();
@@ -850,10 +855,17 @@ impl Rounds {
         require!(zk::verify(&zk::claim_key(), &proof, &public), "ERR_INVALID_PROOF");
         self.used_nullifiers.insert(nullifier.clone());
         e.claimed = U128(e.claimed.0 + payout_amount.0); self.private_exits.insert(exit_id, e);
+        // The contract registers the recipient with the token itself (paying the storage deposit), so the claimant never has to send a visible
+        // registration transaction from their own wallet. Then the payout; the callback looks only at the payout's result.
         Promise::new(self.payment_token.clone())
-            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", recipient_id, payout_amount.0).into_bytes(), YOCTO, GAS_FT)
+            .function_call("storage_deposit", format!("{{\"account_id\":\"{}\",\"registration_only\":true}}", recipient_id).into_bytes(), NearToken::from_yoctonear(self.registration_deposit), GAS_FT)
+            .then(Promise::new(self.payment_token.clone())
+                .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", recipient_id, payout_amount.0).into_bytes(), YOCTO, GAS_FT))
             .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_private_claim(exit_id, nullifier, payout_amount))
     }
+    /// The board sets how much NEAR the contract attaches when registering a claim's recipient with the payment token.
+    pub fn set_registration_deposit(&mut self, yocto: U128) { self.only_board(); self.registration_deposit = yocto.0; }
+    pub fn registration_deposit(&self) -> U128 { U128(self.registration_deposit) }
     #[private]
     pub fn on_private_claim(&mut self, exit_id: u64, nullifier: String, amount: U128, #[callback_result] res: Result<(), PromiseError>) -> bool {
         let mut e = self.private_exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such private exit"));

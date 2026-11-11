@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { initPoseidon, H, FIELD, SLOTS, buildTree, generateShareholderReceipts, recipientHashOf, payoutOf, nullifierOf, proveCapTableCommit, provePrivateClaim, verifyZkProof, type CapEntry } from "../src/engine/zk";
+import { initPoseidon, H, FIELD, SLOTS, buildTree, generateShareholderReceipts, generateHolderKey, buildConfidentialTable, claimFilesFromTable, checkTableFile, encryptEscrow, decryptEscrow, escrowHash, recipientHashOf, payoutOf, nullifierOf, proveCapTableCommit, provePrivateClaim, verifyZkProof, type CapEntry } from "../src/engine/zk";
 
 // These tests run the real circuits (web/public/zk, built by `make circuits`): a commit proof takes tens of seconds.
 const Z = "web/public/zk", have = existsSync(`${Z}/cap_table_commit_final.zkey`);
@@ -47,7 +47,7 @@ describe.skipIf(!have)("zero-knowledge confidential mode", () => {
   const exit = { exitId: 3n, totalShares: 1000n, totalPot: 10_000_000_000n };
   it("private_claim: each holder proves their exact pro-rata payout to one recipient; the nullifier is per leaf and per exit", async () => {
     for (const [i, want] of [[0, 6_000_000_000n], [1, 3_000_000_000n], [2, 1_000_000_000n]] as const) {
-      const c = await provePrivateClaim(built.receipts[i], exit, "burner.test.near", claimFiles);
+      const c = await provePrivateClaim(built.receipts[i], built.receipts[i].holderSecret, exit, "burner.test.near", claimFiles);
       expect(c.payoutAmount).toBe(want);
       expect(c.publicSignals).toEqual([built.root.toString(), c.nullifier.toString(), "3", "1000", "10000000000", want.toString(), c.recipientHash.toString()]);
       expect(await verifyZkProof(vkey("private_claim"), c.publicSignals, c.proof)).toBe(true);
@@ -58,7 +58,7 @@ describe.skipIf(!have)("zero-knowledge confidential mode", () => {
   }, T);
 
   it("private_claim: a proof for one recipient does not verify for another, nor with a changed payout, nullifier or exit", async () => {
-    const c = await provePrivateClaim(built.receipts[0], exit, "burner.test.near", claimFiles);
+    const c = await provePrivateClaim(built.receipts[0], built.receipts[0].holderSecret, exit, "burner.test.near", claimFiles);
     const bad = (idx: number, v: bigint) => c.publicSignals.map((s, i) => (i === idx ? v.toString() : s));
     const vk = vkey("private_claim");
     expect(await verifyZkProof(vk, bad(6, await recipientHashOf("attacker.test.near")), c.proof)).toBe(false); // front-run with another receiver
@@ -72,10 +72,62 @@ describe.skipIf(!have)("zero-knowledge confidential mode", () => {
   it("private_claim: the prover refuses a wrong Merkle path, a wrong payout, a forged share amount and a wrong secret", async () => {
     const r = built.receipts[0];
     const wrongPath = { ...r, merklePath: { ...r.merklePath, elements: [(BigInt(r.merklePath.elements[0]) + 1n).toString(), ...r.merklePath.elements.slice(1)] } };
-    await expect(provePrivateClaim(wrongPath, exit, "burner.test.near", claimFiles)).rejects.toThrow();
-    await expect(provePrivateClaim({ ...r, merklePath: { ...r.merklePath, indices: r.merklePath.indices.map((x) => 1 - x) } }, exit, "burner.test.near", claimFiles)).rejects.toThrow();
-    await expect(provePrivateClaim({ ...r, shareAmount: "900" }, exit, "burner.test.near", claimFiles)).rejects.toThrow(); // not the committed amount
-    await expect(provePrivateClaim({ ...r, holderSecret: (BigInt(r.holderSecret) + 1n).toString() }, exit, "burner.test.near", claimFiles)).rejects.toThrow();
-    await expect(provePrivateClaim(r, { ...exit, totalPot: 10_000_000_001n }, "burner.test.near", claimFiles)).resolves.toBeTruthy(); // a different pot is a different, valid claim
+    await expect(provePrivateClaim(wrongPath, r.holderSecret, exit, "burner.test.near", claimFiles)).rejects.toThrow();
+    await expect(provePrivateClaim({ ...r, merklePath: { ...r.merklePath, indices: r.merklePath.indices.map((x) => 1 - x) } }, r.holderSecret, exit, "burner.test.near", claimFiles)).rejects.toThrow();
+    await expect(provePrivateClaim({ ...r, shareAmount: "900" }, r.holderSecret, exit, "burner.test.near", claimFiles)).rejects.toThrow(); // not the committed amount
+    await expect(provePrivateClaim(r, (BigInt(r.holderSecret) + 1n).toString(), exit, "burner.test.near", claimFiles)).rejects.toThrow();
+    await expect(provePrivateClaim(r, r.holderSecret, { ...exit, totalPot: 10_000_000_001n }, "burner.test.near", claimFiles)).resolves.toBeTruthy(); // a different pot is a different, valid claim
   }, T);
+
+  // ---- holder-made keys, the board's check, the encrypted backup
+  describe("holder keys, board check and escrow", () => {
+    it("a holder makes their own key; the table is built from public codes; claim files hold no secret and the proposer cannot claim", async () => {
+      const keys = await Promise.all(table.map(() => generateHolderKey()));
+      const b = await buildConfidentialTable(table.map((e, i) => ({ ...e, holderCode: keys[i].holderCode })), classes);
+      expect(b.claimFiles.length).toBe(3);
+      expect(JSON.stringify(b.claimFiles)).not.toContain(keys[0].holderSecret); // no secret anywhere in what the proposer holds
+      expect(JSON.stringify(b.tableFile)).not.toContain(keys[0].holderSecret);
+      // the right key claims; another holder's key is refused before any proof is made
+      const c = await provePrivateClaim(b.claimFiles[0], keys[0].holderSecret, { exitId: 5n, totalShares: 1000n, totalPot: 10_000_000_000n }, "burner.test.near", claimFiles);
+      expect(c.payoutAmount).toBe(6_000_000_000n);
+      expect(await verifyZkProof(vkey("private_claim"), c.publicSignals, c.proof)).toBe(true);
+      await expect(provePrivateClaim(b.claimFiles[0], keys[1].holderSecret, { exitId: 5n, totalShares: 1000n, totalPot: 10_000_000_000n }, "burner.test.near", claimFiles)).rejects.toThrow(/does not belong/);
+    }, T);
+
+    it("a lost claim file is re-issued from the table file, identical, and still works with the holder's own key", async () => {
+      const keys = await Promise.all(table.map(() => generateHolderKey()));
+      const b = await buildConfidentialTable(table.map((e, i) => ({ ...e, holderCode: keys[i].holderCode })), classes);
+      const again = await claimFilesFromTable(b.tableFile);
+      expect(again).toEqual(b.claimFiles);
+      const c = await provePrivateClaim(again[2], keys[2].holderSecret, { exitId: 1n, totalShares: 1000n, totalPot: 10_000_000_000n }, "burner.test.near", claimFiles);
+      expect(c.payoutAmount).toBe(1_000_000_000n);
+    }, T);
+
+    it("the board's check re-seals the table and lists every problem", async () => {
+      const keys = await Promise.all(table.map(() => generateHolderKey()));
+      const b = await buildConfidentialTable(table.map((e, i) => ({ ...e, holderCode: keys[i].holderCode })), classes);
+      const onChain = { merkleRoot: b.tableFile.merkleRoot, totalShares: b.tableFile.totalShares };
+      const good = await checkTableFile(b.tableFile, onChain);
+      expect(good.ok).toBe(true); expect(good.byClass).toEqual({ Common: 900n, Preferred: 100n });
+      const bumped = { ...b.tableFile, entries: b.tableFile.entries.map((e, i) => (i === 1 ? { ...e, shares: "301" } : e)) };
+      const r1 = await checkTableFile(bumped, onChain);
+      expect(r1.ok).toBe(false); expect(r1.problems.join(" ")).toMatch(/DIFFERENT root/);
+      expect((await checkTableFile(b.tableFile, { ...onChain, totalShares: "1001" })).problems.join(" ")).toMatch(/adds up to 1000/);
+      const dup = { ...b.tableFile, entries: b.tableFile.entries.map((e, i) => (i === 1 ? { ...e, holderCode: b.tableFile.entries[0].holderCode } : e)) };
+      expect((await checkTableFile(dup, onChain)).problems.join(" ")).toMatch(/share one holder code/);
+    });
+
+    it("the encrypted escrow copy opens only with the passphrase, detects tampering, and has a stable hash to commit", async () => {
+      const keys = await Promise.all(table.map(() => generateHolderKey()));
+      const b = await buildConfidentialTable(table.map((e, i) => ({ ...e, holderCode: keys[i].holderCode })), classes);
+      const esc = await encryptEscrow(b.tableFile, "a board passphrase 2026", 1000);
+      expect(JSON.stringify(esc)).not.toContain(b.tableFile.merkleRoot);
+      expect(await decryptEscrow(esc, "a board passphrase 2026")).toEqual(b.tableFile);
+      await expect(decryptEscrow(esc, "another passphrase!!")).rejects.toThrow(/wrong passphrase/);
+      await expect(decryptEscrow({ ...esc, ciphertext: esc.ciphertext.slice(0, -4) + "AAAA" }, "a board passphrase 2026")).rejects.toThrow(/wrong passphrase|changed/);
+      await expect(encryptEscrow(b.tableFile, "short")).rejects.toThrow(/at least 12/);
+      const h = await escrowHash(esc); expect(h).toMatch(/^[0-9a-f]{64}$/);
+      expect(await escrowHash({ ...esc })).toBe(h); expect(await escrowHash({ ...esc, iv: esc.iv.slice(0, -2) + "AA" })).not.toBe(h);
+    });
+  });
 });
