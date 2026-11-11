@@ -96,7 +96,9 @@ export function mountShareFlow(host: HTMLElement, d: ShareDeps) {
     if (!me || !v) return; const ex = exitOf();
     if (a === "faucet") await run("register and get $10,000,000 test USDC", d.token, [{ method: "storage_deposit", args: { account_id: me } }, { method: "faucet", args: { account_id: me, amount: (10_000_000n * M).toString() } }]);
     else if (a === "officer") { busy = true; draw(); await boardAct(d.explorer, d.board, "set_officer", { account: me, enabled: true }, `make ${me} an officer`, () => store.set(key("officer"), true)); await new Promise((res) => setTimeout(res, 2500)); busy = false; await refresh(); }
-    else if (a === "propose" && cur) {
+    else if (a === "propose") {
+      await refresh(); // the cap table may have changed since the card was drawn (for example a Series A just closed): propose what is on chain now
+      if (!cur) return;
       store.set(key("pending"), { n0: Math.max(0, ...v.exits.map((e) => e.id)), hash: cur.hash });
       await run("propose the shared payout", d.contract, [{ method: "propose_exit", args: { plan_hash: cur.hash, plan_uri: "app://shared-payout", plan: cur.canon }, gasTgas: 100 }], () => store.set(key("officer"), true));
     } else if (a === "fund" && ex) {

@@ -74,6 +74,7 @@ async function createAccount(k: string, acct: string) {
     if (!created) near(["account", "create-account", "fund-myself", acct, amt, "autogenerate-new-keypair", "save-to-legacy-keychain", "sign-as", best[0], "network-config", NET, "sign-with-legacy-keychain", "send"]);
     else near(["tokens", best[0], "send-near", acct, amt, "network-config", NET, "sign-with-legacy-keychain", "send"]);
     created = true; remaining -= Number(give.toFixed(2)); log(`funded ${k} ${amt} from ${best[0]}`);
+    await new Promise((r) => setTimeout(r, 4000)); // let the transfer finalise, or the same source is picked again on a stale balance and overdrawn
   }
 }
 

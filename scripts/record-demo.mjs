@@ -17,6 +17,7 @@ mkdirSync("demo", { recursive: true });
 const RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com";
 const rpcQ = async (params) => (await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params }) })).json());
 const viewC = async (acct, method, args) => { const j = await rpcQ({ request_type: "call_function", finality: "final", account_id: acct, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") }); const r = j.result?.result; return r ? JSON.parse(Buffer.from(r).toString()) : null; };
+const PART = process.env.PART ?? "all";
 const ONLY = process.env.ONLY; // ONLY=share records just the shared-payout scene: no sandbox is used up and no key is needed
 let SANDBOX = process.env.SANDBOX;
 if (!SANDBOX) for (const c of JSON.parse(readFileSync("web/public/sandboxes.json", "utf8"))) { if (ONLY || (await viewC(c.rounds, "round", { round_id: 4 })) === null) { SANDBOX = c.rounds; break; } }
@@ -77,7 +78,7 @@ await ev(`(() => {
   const c = document.createElement("div"); c.id = "rc"; c.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M3 2l7.5 19 2.6-7.9L21 10.5z" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>'; document.body.appendChild(c);
   const r = document.createElement("div"); r.id = "rr"; document.body.appendChild(r);
   const k = document.createElement("div"); k.id = "rcap"; document.body.appendChild(k);
-  const t = document.createElement("div"); t.id = "title"; t.innerHTML = '<h1>Rounds</h1><p>The cap table that shows its work</p><p style="font-size:18px">Cap table and fundraising on NEAR testnet</p>'; document.body.appendChild(t);
+  const t = document.createElement("div"); t.id = "title"; t.innerHTML = '<h1>Rounds</h1><p>Ownership and payouts a DAO approves, and anyone can check</p><p style="font-size:18px">A NEAR testnet prototype · built at NEAR HACKATHON</p>'; document.body.appendChild(t);
 })()`);
 
 await send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
@@ -99,7 +100,7 @@ const rect0 = (sel, fx = 0.5, fy = 0.5) => ev(`(()=>{const e=document.querySelec
 const scrollTo = async (sel, block = "start") => { await quiet(); await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"smooth",block:${JSON.stringify(block)}})`); await sleep(1200); };
 let cur = [640, 400];
 const moveXY = async (x, y, ms = 900) => { cur = [x, y]; await ev(`document.getElementById("rc").style.transform="translate(${x}px,${y}px)"`); await sleep(ms + 100); };
-const point = async (sel, fx, fy, ms) => { const [x, y] = await rect(sel, fx, fy); await moveXY(x, y, ms); };
+const point = async (sel, fx, fy, ms) => { let [x, y] = await rect(sel, fx, fy); if (y < 70 || y > H - 50) { await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"instant",block:"center"})`); await sleep(500); [x, y] = await rect0(sel, fx, fy); } await moveXY(x, y, ms); };
 const click = async (sel, fx, fy) => {
   await point(sel, fx, fy); const [x, y] = cur;
   await ev(`(()=>{const r=document.getElementById("rr");r.style.left="${x}px";r.style.top="${y}px";r.classList.remove("go");void r.offsetWidth;r.classList.add("go")})()`);
@@ -116,9 +117,9 @@ const drag = async (sel, from, to, steps = 24) => { // slider drag between fract
   await ev(`document.getElementById("rc").style.transition=""`); cur = [x1, y]; await sleep(600);
 };
 
-process.on("uncaughtException", async (e) => { try { console.log("DIAG", await ev(`JSON.stringify({u:location.href,n:document.querySelectorAll("[id]").length,t:!!document.getElementById("cap-table"),y:scrollY})`)); } catch {} console.log(String(e.message).slice(0,200)); chrome.kill(); process.exit(1); });
+process.on("uncaughtException", async (e) => { try { console.log("DIAG", await ev(`JSON.stringify({u:location.href,n:document.querySelectorAll("[id]").length,t:!!document.getElementById("cap-table"),y:scrollY,c:document.getElementById("contract")?.value,rv:document.getElementById("review-body")?.innerText.slice(0,100),co:document.getElementById("chain-out")?.innerText.slice(0,80)})`)); } catch {} console.log(String(e.message).slice(0,200)); chrome.kill(); process.exit(1); });
 // ---- script ----
-await sleep(ONLY ? 600 : 2200);
+await sleep(PART === "tail" ? 600 : 2200);
 await ev(`document.getElementById("title").style.opacity=0`); await sleep(900); await ev(`document.getElementById("title").remove()`);
 await ev(`window.scrollTo(0,0)`); await sleep(500);
 
@@ -133,26 +134,42 @@ const doStep = async (act, n) => {
   await click(flowBtn(act)); await waitRow(n, /done/);
 };
 
-if (!ONLY) {
+// the same for the "Share a pot" run card
+const sBtn = (a) => `#share-run-body [data-share="${a}"]`;
+const sRow = (n) => ev(`document.querySelectorAll("#share-run-body .flow-row")[${n - 1}]?.className ?? ""`);
+const doShare = async (act, n) => {
+  const t0 = performance.now(); let first = true;
+  if (/done/.test(await sRow(n))) return;
+  await ev(`document.querySelector(${JSON.stringify(sBtn(act))}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+  for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(sBtn(act))});return !!b&&!b.disabled})()`)); i++) await sleep(500);
+  await click(sBtn(act));
+  while (performance.now() - t0 < 180000) { if (/done/.test(await sRow(n))) return; await sleep(500); }
+  void first; throw new Error(`share step ${n} never finished`);
+};
+const waitFor = async (js, ms = 90000) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (await ev(js)) return true; await sleep(500); } throw new Error(`timed out waiting for ${js}`); };
+
+// PART=head records the guided flow and the shared payout (it uses up a sandbox); PART=tail records the voting and token scenes and the close
+// (read-only: it needs no unused sandbox, set ONLY=1 SANDBOX=<any sandbox>). The two are joined afterwards with ffmpeg.
+if (PART !== "tail") {
 await narrate(N.hook, async () => {
-  await sleep(2000); await point("h1", 0.4, 0.5); await sleep(7500);
+  await sleep(1500); await point("h1", 0.4, 0.5); await sleep(7500);
   await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
   await point("#hero-bars", 0.3, 0.3); await sleep(4500); await point("#hero-bars", 0.7, 0.8);
 });
 
 await narrate(N.basics, async () => {
   await ev(`document.getElementById("intro").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1300);
-  await point(".gloss summary", 0.3, 0.5); await click(".gloss summary"); await sleep(4500); await click(".gloss summary"); await sleep(600);
+  await point(".gloss summary", 0.3, 0.5); await click(".gloss summary"); await sleep(3500); await click(".gloss summary"); await sleep(500);
   await scrollTo("#cap"); await point("#cap-table", 0.5, 0.3);
 });
 
 await scrollTo("#model");
 await narrate(N.modeler, async () => {
-  await point("#form", 0.5, 0.08); await sleep(4000); await point("#ada", 0.5, 0.5); await sleep(5000); await point("#model-out", 0.5, 0.25);
+  await point("#form", 0.5, 0.08); await sleep(3500); await point("#ada", 0.5, 0.5); await sleep(4000); await point("#model-out", 0.5, 0.25);
 });
 
 await scrollTo("#try");
-await narrate(N.flow, async () => { await point("#flow", 0.5, 0.08); await sleep(6000); await point("#flow .flow-row:nth-child(1) .flow-n", 0.5, 0.5); });
+await narrate(N.flow, async () => { await point("#flow", 0.5, 0.08); await sleep(5000); await point("#flow .flow-row:nth-child(1) .flow-n", 0.5, 0.5); });
 await narrate(N.usdc, async () => { await doStep("faucet", 2); });
 await narrate(N.officer, async () => { await doStep("officer", 3); });
 await narrate(N.propose, async () => { await doStep("propose", 5); });
@@ -165,31 +182,65 @@ await narrate(N.result, async () => {
   await point("#flow .flow-result", 0.3, 0.5);
 });
 
+// shared payout: first the calculator, then a real run on this sandbox (it now has a Series A investor among its holders)
+await scrollTo("#share");
+await narrate(N.share, async () => { await sleep(4500); await drag("#pot", 0.1, 0.45, 20); await sleep(3000); await drag("#pot", 0.45, 0.1, 20); });
+await narrate(N.shareRun, async () => {
+  await ev(`document.getElementById("share-run").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
+  await waitFor(`document.querySelectorAll("#share-run-body .flow-result tr").length >= 3`);
+  await point("#share-run-body .flow-result table", 0.5, 0.4); await sleep(2500);
+  await doShare("officer", 3); await doShare("propose", 4);
+});
+await narrate(N.shareFund, async () => { await doShare("fund", 5); });
+await narrate(N.shareApprove, async () => { await doShare("approve", 6); });
+await narrate(N.sharePay, async () => {
+  await doShare("pay", 7);
+  await waitFor(`/every holder was paid once/.test(document.querySelector("#share-run-body .flow-result").innerText)`, 120000);
+  await point("#share-run-body .flow-result table", 0.5, 0.4);
+});
+
+// verify: the sandbox, re-hashed in the browser
 await scrollTo("#verify");
 await narrate(N.verify, async () => {
   await point("#pre-sandbox", 0.5, 0.5); await click("#pre-sandbox");
   for (let i = 0; i < 90 && !(await ev(`!!document.querySelector("#chain-out .chain-tbl")`)); i++) await sleep(500);
   await ev(`document.querySelectorAll("#chain-out .chain-tbl")[1].scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
-  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.6, 0.5); await sleep(7000);
+  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.6, 0.5); await sleep(6000);
   await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.95, 0.5);
 });
 const chainTxt = await ev(`document.getElementById("chain-out").innerText`);
 console.log(chainTxt.split("\n").filter((l) => /PASS|FAIL|Round/.test(l)).join("\n"));
 if (/FAIL/.test(chainTxt) || !/PASS/.test(chainTxt)) throw new Error("the on-chain check did not pass; not encoding");
 
-await scrollTo("#exit");
-await narrate(N.exit, async () => { await sleep(5000); await drag("#proceeds", 0.05, 0.2, 18); await sleep(4000); await drag("#proceeds", 0.2, 0.9, 30); });
-
 }
+// voting: the board's proposals on the finished demo, then the token contract
+if (PART !== "head") {
+await narrate(N.review, async () => {
+  await point("#pre-demo", 0.5, 0.5); await click("#pre-demo");
+  await waitFor(`!!document.querySelector("#proposal-4")`);
+  await ev(`document.getElementById("proposal-4").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
+  await point("#proposal-4 .rv-h", 0.5, 0.5); await sleep(5000);
+  await point("#proposal-4 table", 0.5, 0.4); await sleep(4500);
+  await ev(`document.getElementById("proposal-9").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
+  await point("#proposal-9 .rv-h", 0.5, 0.5); await sleep(3500); await point("#proposal-9 table", 0.5, 0.4);
+});
+const reviewTxt = await ev(`document.getElementById("review-body").innerText`);
+if (/DOES NOT MATCH/.test(reviewTxt) || !/VERIFIED/.test(reviewTxt)) throw new Error("the review card did not verify the demo's proposals");
+await narrate(N.tokens, async () => {
+  await ev(`document.getElementById("contract").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+  await click("#contract"); // typed one letter at a time, so the viewer sees an account being entered
+  for (let i = 1; i <= "rounds-tok-332657.testnet".length; i++) { await ev(`document.getElementById("contract").value=${JSON.stringify("rounds-tok-332657.testnet".slice(0, i))}`); await sleep(55); }
+  await sleep(500); await click("#chain-btn");
+  await waitFor(`!!document.querySelector("#proposal-14")`);
+  await ev(`document.getElementById("proposal-14").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
+  await point("#proposal-14 .rv-h", 0.5, 0.5); await sleep(4000); await point("#proposal-14 table", 0.5, 0.4); await sleep(5000);
+  await point("#proposal-14 .rv-f", 0.5, 0.5);
+});
 
-await scrollTo("#share");
-await narrate(N.share, async () => { await sleep(5000); await drag("#pot", 0.1, 0.45, 20); await sleep(4000); await drag("#pot", 0.45, 0.15, 20); });
-
-if (!ONLY) {
 await ev(`window.scrollTo({top:0,behavior:"smooth"})`); await sleep(1200);
 await narrate(N.close2, async () => { await point("h1", 0.4, 0.5); });
-}
 await sleep(800);
+}
 
 // ---- encode ----
 await send("Page.stopScreencast"); await sleep(300); ws.close(); chrome.kill();
