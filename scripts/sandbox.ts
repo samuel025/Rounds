@@ -9,8 +9,9 @@ import { canonicalJson, planHash, sealPlan, type RoundKind } from "../src/engine
 const NET = "testnet", RPC = process.env.RPC_URL ?? "https://test.rpc.fastnear.com", EXPLORER = "https://testnet.nearblocks.io";
 const M = 1_000_000n;
 const S = process.env.SANDBOX_SUFFIX ?? String(Date.now()).slice(-6);
-const id = (n: string) => `rsbx-${n}-${S}.testnet`;
-const A = { ada: id("ada"), bayo: id("bayo"), chidi: id("chidi"), dayo: id("dayo"), usdc: process.env.SANDBOX_TOKEN ?? id("usdc"), rounds: id("rounds"), board: id("board") }; // SANDBOX_TOKEN reuses an already deployed test token (saves testnet NEAR)
+const ZK = !!process.env.ZK; // ZK=1: a confidential-mode sandbox (the ZK methods, no founders or SAFEs), written to web/public/zk-sandbox.json
+const id = (n: string) => ZK ? `rsbx-zk${n}-${S}.testnet` : `rsbx-${n}-${S}.testnet`;
+const A: Record<string, string> = ZK ? { ada: id("ada"), usdc: process.env.SANDBOX_TOKEN ?? id("usdc"), rounds: id("rounds"), board: id("board") } : { ada: id("ada"), bayo: id("bayo"), chidi: id("chidi"), dayo: id("dayo"), usdc: process.env.SANDBOX_TOKEN ?? id("usdc"), rounds: id("rounds"), board: id("board") }; // SANDBOX_TOKEN reuses an already deployed test token (saves testnet NEAR)
 const MONTH_NS = 5_000_000_000n, WINDOW_NS = 15_000_000_000n; // demo clock: one "month" = 5 s
 const NEED: Record<string, number> = { ada: 1.5, rounds: 4.5, board: 1.5, usdc: 3.5, chidi: 0.8, dayo: 0.8, bayo: 0.5 }; // NEAR, only used for the fallback funding
 
@@ -95,9 +96,15 @@ async function main() {
   await deploy(A.usdc, "contract/mock-ft/target/near/mock_ft.wasm", "new", { faucet_cap: (100_000_000n * M).toString() }, "deployed sandbox test USDC (public faucet, no value)");
   const classes = ["Common", "Series A Preferred", "SAFE 1 shadow preferred", "SAFE 2 shadow preferred"].map((c) => ({ id: c, authorized: "100000000" }));
   await deploy(A.rounds, "contract/target/near/rounds.wasm", "new", { board: A.board, treasury: A.ada, payment_token: A.usdc, classes, month_ns: Number(MONTH_NS), exercise_window_ns: Number(WINDOW_NS) }, "deployed Rounds with the open board as its board and a real treasury");
-  for (const a of [A.ada, A.bayo, A.chidi, A.dayo, A.rounds, A.board]) call("1", `register ${a} for test USDC`, A.usdc, "storage_deposit", { account_id: a }, A.ada);
-  call("1", "faucet: chidi $500,000", A.usdc, "faucet", { account_id: A.chidi, amount: (500_000n * M).toString() }, A.ada);
-  call("1", "faucet: dayo $250,000", A.usdc, "faucet", { account_id: A.dayo, amount: (250_000n * M).toString() }, A.ada);
+  for (const a of ZK ? [A.ada, A.rounds, A.board] : [A.ada, A.bayo, A.chidi, A.dayo, A.rounds, A.board]) call("1", `register ${a} for test USDC`, A.usdc, "storage_deposit", { account_id: a }, A.ada);
+  if (!ZK) call("1", "faucet: chidi $500,000", A.usdc, "faucet", { account_id: A.chidi, amount: (500_000n * M).toString() }, A.ada);
+  if (!ZK) call("1", "faucet: dayo $250,000", A.usdc, "faucet", { account_id: A.dayo, amount: (250_000n * M).toString() }, A.ada);
+  if (ZK) {
+    const dep = { network: NET, rpc: RPC, explorer: EXPLORER, rounds: A.rounds, board: A.board, treasury: A.ada, token: A.usdc, openBoard: true, confidential: true, note: "CONFIDENTIAL-MODE SANDBOX (dev trusted setup, testnet, no value): anyone may become an officer and act as the board." };
+    mkdirSync("results", { recursive: true });
+    writeFileSync("web/public/zk-sandbox.json", JSON.stringify(dep, null, 2)); writeFileSync("results/zk-sandbox.json", JSON.stringify({ suffix: S, accounts: A, deployment: dep, txs }, null, 2));
+    log(`done. confidential sandbox contract ${A.rounds}, open board ${A.board}, token ${A.usdc}`); return;
+  }
   board("makes ada an officer", "set_officer", { account: A.ada, enabled: true });
 
   const propose = async (kind: string, plan: object, raise: [string, bigint][], uri: string) => {

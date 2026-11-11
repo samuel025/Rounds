@@ -2,6 +2,7 @@ import { mountFlow } from "./flow";
 import { initWalletUi, renderActions, toast, txLink } from "./actions";
 import { renderReview } from "./review";
 import { mountShareFlow } from "./shareflow";
+import { mountZkFlow, mountPrivateClaim } from "./zkflow";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { usd, usdExact, price4 } from "./format";
@@ -107,6 +108,13 @@ async function proposeModeled(contract: string) {
   const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":[[${JSON.stringify(acct)},"${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${deadline}}`;
   return send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
 }
+/** The modeled round as a flat cap table (pool excluded) for confidential mode, with the connected account as the new investor. */
+const zkModel = (acct: string) => {
+  const { r } = solve(); if (!r) return null;
+  const classes = ["Common", "Series A Preferred", "SAFE 1 shadow preferred", "SAFE 2 shadow preferred"];
+  const entries = ["ada", "bayo", "safe1", "safe2", "fund"].filter((k) => (r.holdings[k] ?? 0n) > 0n).map((k) => ({ holderId: k === "fund" ? acct : (names[k] ?? k), shareClass: CLASS_OF[k], shares: r.holdings[k] }));
+  return { entries, classes, raiseMicro: BigInt(state.raise) * M };
+};
 const modelSummary = () => { const { r, err } = solve(); return r ? `Pre-money ${usd(BigInt(state.pre) * M)} · new money ${usd(BigInt(state.raise) * M)} · pool ${state.pool}% → price ${price4(r.priceMicro)} per share` : `No valid solution: ${err}`; };
 
 /** Make the modeler describe the sandbox company that is really on chain: founders, pool and SAFEs are read and locked. */
@@ -311,6 +319,15 @@ async function initChain() {
     mountFlow($("flow"), { rpc: dep.rpc, explorer: dep.explorer, contract: sb.rounds, board: sb.board, token: sb.token, modelSummary, raiseMicro: () => BigInt(state.raise) * M, propose: (c) => proposeModeled(c),
       onChain: (v) => { if (!state.locked && !v.rounds.some((r) => r.kind === "Priced")) void syncModelToChain(v, sb.rounds!); },
       showResult: () => { input.value = sb.rounds!; void run(); document.getElementById("verify")?.scrollIntoView({ behavior: "smooth" }); } });
+  }
+  // confidential mode: shown when a ZK-enabled sandbox is configured; the modeler's toggle reveals it either way
+  const zkSb: { rounds?: string; board?: string; token?: string } | null = await fetch("zk-sandbox.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const zkToggle = $<HTMLInputElement>("zk-toggle");
+  zkToggle.onchange = () => { $("zk").hidden = !zkToggle.checked && !zkSb?.rounds; if (zkToggle.checked) document.getElementById("zk")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  if (zkSb?.rounds && zkSb.board && zkSb.token) {
+    $("zk").hidden = false; $("nav-zk").hidden = false;
+    const zd = { rpc: dep.rpc, explorer: dep.explorer, contract: zkSb.rounds, board: zkSb.board, token: zkSb.token };
+    mountZkFlow($("zk-run"), { ...zd, model: zkModel }); mountPrivateClaim($("zk-claim-body"), { ...zd, model: zkModel });
   }
   $("chain-btn").onclick = () => void run();
   input.onkeydown = (e) => { if (e.key === "Enter") void run(); };

@@ -1,0 +1,10 @@
+{
+  "name": "rounds-circuits",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Circom 2 circuits for Rounds' optional confidential mode (Groth16 over BN254, Poseidon).",
+  "dependencies": {
+    "circomlib": "^2.0.5",
+    "snarkjs": "^0.7.5"
+  }
+}

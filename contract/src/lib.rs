@@ -2,7 +2,9 @@
 //! Plans are canonical-JSON strings; plan_hash = hex(sha256(plan bytes)). See RULES.md R9.
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::Deserialize;
-use near_sdk::store::{IterableMap, IterableSet};
+use near_sdk::store::{IterableMap, IterableSet, LookupMap, LookupSet};
+mod zk;
+use zk::Groth16Proof;
 use near_sdk::{env, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError};
 
 const GAS_FT: Gas = Gas::from_tgas(10);
@@ -26,7 +28,7 @@ const POOL: &str = "unissued_pool";
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Debug)]
-pub enum RoundKind { Founder, Safe, Priced, Saft }
+pub enum RoundKind { Founder, Safe, Priced, Saft, Confidential }
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Debug)]
 pub enum RoundStatus { Funding, Approved, Closing, Closed, Cancelled }
@@ -59,6 +61,9 @@ struct RoundPlan {
     #[serde(default)] issuances: Vec<Issuance>,
     #[serde(default)] safes: Vec<SafeRec>,
     #[serde(default)] safts: Vec<SaftRec>,
+    // a confidential round: the Poseidon root of a private cap table and the total shares it proves (see `propose_confidential_round`)
+    #[serde(default)] merkle_root: Option<String>,
+    #[serde(default)] total_shares: Option<U128>,
     #[serde(default)] converted_safes: Vec<String>,
     // The money terms are part of the hashed plan (RULES.md R9): the board's approval of the hash covers who
     // pays how much, the kind of round and the funding deadline, not only the shares issued.
@@ -106,6 +111,10 @@ pub enum PayState { Pending, Sending, Paid }
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug)]
 pub struct Payout { pub holder: AccountId, pub amount: U128, pub state: PayState }
+/// An exit whose payouts are claimed privately: holders prove membership in a committed cap table instead of being named.
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug)]
+pub struct PrivateExit { pub id: u64, pub round_id: u64, pub total_shares: U128, pub pot: U128, pub funded: U128, pub approved: bool, pub claimed: U128 }
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug)]
 pub struct Exit { pub id: u64, pub plan_hash: String, pub plan_uri: String, pub approved: bool, pub total: U128, pub funded: U128, pub payouts: Vec<Payout>, pub funders: Vec<(AccountId, U128)>, pub cancelled: bool }
@@ -136,6 +145,9 @@ pub struct Rounds {
     // claims on that reserve (a claim can never exceed it). SAFTs convert to token grants by the contract's own arithmetic.
     project_token: Option<AccountId>, token_decimals: u8, token_reserve: u128, token_in_flight: u128, saft_tokens_total: u128, tge_supply: u128,
     safts: IterableMap<String, SaftRec>, token_grants: IterableMap<u64, TokenGrant>, next_token_grant: u64,
+    // Confidential mode (opt-in): per confidential round its Poseidon Merkle root and proven total shares; private exits; spent nullifiers.
+    confidential_roots: LookupMap<u64, String>, confidential_supply: LookupMap<u64, u128>,
+    used_nullifiers: LookupSet<String>, private_exits: IterableMap<u64, PrivateExit>, next_private_exit: u64, private_funds_total: u128,
 }
 
 fn event(name: &str, data: &str) {
@@ -189,6 +201,8 @@ impl Rounds {
             pending_issued: IterableMap::new(b"p"), pending_safes: IterableSet::new(b"P"), pending_converts: IterableSet::new(b"q"),
             project_token: None, token_decimals: 0, token_reserve: 0, token_in_flight: 0, saft_tokens_total: 0, tge_supply: 0,
             safts: IterableMap::new(b"f"), token_grants: IterableMap::new(b"k"), next_token_grant: 1,
+            confidential_roots: LookupMap::new(b"R"), confidential_supply: LookupMap::new(b"S"), used_nullifiers: LookupSet::new(b"N"),
+            private_exits: IterableMap::new(b"X"), next_private_exit: 1, private_funds_total: 0,
         }
     }
     fn only_board(&self) { require!(env::predecessor_account_id() == self.board, "only the board"); }
@@ -275,6 +289,7 @@ impl Rounds {
         let accepted = match m.action.as_str() {
             "round" => self.deposit_round(&sender_id, amount.0, m.id),
             "exit" => self.fund_exit(&sender_id, m.id, amount.0),
+            "pexit" => self.fund_private_exit(m.id, amount.0),
             "exercise" => self.exercise(&sender_id, amount.0, m.id, m.shares.map(|s| s.0).unwrap_or(0)),
             _ => 0,
         };
@@ -412,6 +427,13 @@ impl Rounds {
     }
     fn credit_round(&mut self, r: &Round) {
         let p: RoundPlan = near_sdk::serde_json::from_str(&r.plan).unwrap_or_else(|_| env::panic_str("bad plan"));
+        if r.kind == RoundKind::Confidential {
+            // no public holdings: the round's only effect is the committed root that private claims are checked against
+            let (root, total) = (p.merkle_root.clone().unwrap_or_else(|| env::panic_str("bad plan")), p.total_shares.unwrap_or_else(|| env::panic_str("bad plan")));
+            self.confidential_roots.insert(r.id, root.clone()); self.confidential_supply.insert(r.id, total.0);
+            event("confidential_round_closed", &format!("{{\"round_id\":{},\"merkle_root\":\"{}\",\"total_shares\":\"{}\"}}", r.id, root, total.0));
+            return;
+        }
         for i in &p.issuances { self.credit(&i.holder, &i.class, i.shares.0); }
         for s in p.safts { require!(self.safts.get(&s.id).is_none() && self.safes.get(&s.id).is_none(), "saft id exists"); self.safts.insert(s.id.clone(), SaftRec { converted: false, ..s }); }
         for s in p.safes { require!(self.safes.get(&s.id).is_none(), "safe id exists"); self.safes.insert(s.id.clone(), SafeRec { converted: false, ..s }); }
@@ -758,6 +780,95 @@ impl Rounds {
         event("payout_sent", &format!("{{\"exit_id\":{},\"holder\":\"{}\",\"amount\":\"{}\"}}", exit_id, h, a));
     }
 
+    // ---------- confidential mode ----------
+    /// An officer proposes a round whose cap table stays private. The Groth16 proof (circuit `cap_table_commit`) shows, without revealing any
+    /// holding, that the private table's 64-bit share amounts add up to `total_shares` and hash to the Poseidon root `merkle_root`; it is checked
+    /// here, before anything else. The money terms are public. The round then goes through the ordinary approve_round / deposit / close_round.
+    /// `round_id` is a public input of the proof, so it must be the id this round is going to get (the `next_round_id` view).
+    pub fn propose_confidential_round(&mut self, merkle_root: String, total_shares: U128, raise: Vec<(AccountId, U128)>, deadline_ns: u64, proof: Groth16Proof) -> u64 {
+        self.only_officer();
+        require!(env::prepaid_gas() >= Gas::from_tgas(100), "attach at least 100 Tgas to verify the proof");
+        require!(total_shares.0 > 0 && total_shares.0 < (1u128 << 64), "ERR_TOTAL_SHARES_OUT_OF_RANGE");
+        require!(raise.len() <= 32 && raise.iter().all(|(_, a)| a.0 > 0), "raise must be positive");
+        let mut seen = std::collections::HashSet::new();
+        require!(raise.iter().all(|(a, _)| seen.insert(a.clone())), "duplicate investor");
+        let id = self.next_round;
+        let public = [zk::field_element(&merkle_root), zk::field_from_u128(total_shares.0), zk::field_from_u64(id)];
+        require!(zk::verify(&zk::cap_table_key(), &proof, &public), "ERR_INVALID_PROOF");
+        // the plan the board approves by hash: canonical (sorted keys), so anyone can rebuild and re-hash it
+        let raise_json = raise.iter().map(|(a, v)| format!("[\"{}\",\"{}\"]", a, v.0)).collect::<Vec<_>>().join(",");
+        let plan = format!("{{\"deadline_ns\":\"{}\",\"kind\":\"Confidential\",\"merkle_root\":\"{}\",\"raise\":[{}],\"total_shares\":\"{}\"}}", deadline_ns, merkle_root, raise_json, total_shares.0);
+        let plan_hash = hex(&env::sha256(plan.as_bytes()));
+        self.next_round += 1;
+        let deposits = raise.iter().map(|(a, _)| (a.clone(), U128(0))).collect();
+        self.rounds.insert(id, Round { id, kind: RoundKind::Confidential, status: RoundStatus::Funding, plan_hash: plan_hash.clone(), plan_uri: "confidential".to_string(), plan, raise, deposits, deadline_ns });
+        event("round_proposed", &format!("{{\"round_id\":{},\"plan_hash\":\"{}\"}}", id, plan_hash));
+        id
+    }
+    pub fn next_round_id(&self) -> u64 { self.next_round }
+    pub fn confidential_root(&self, round_id: u64) -> Option<(String, U128)> { self.confidential_roots.get(&round_id).map(|r| (r.clone(), U128(self.confidential_supply.get(&round_id).copied().unwrap_or(0)))) }
+
+    /// An officer opens a payout of `pot` micro-dollars to the holders of a closed confidential round's cap table. The pot is funded like any
+    /// exit (token msg {"action":"pexit","id":n}), approved by the board, and then claimed holder by holder with `claim_private_payout`.
+    pub fn propose_private_exit(&mut self, round_id: u64, pot: U128) -> u64 {
+        self.only_officer();
+        let total = self.confidential_supply.get(&round_id).copied().unwrap_or_else(|| env::panic_str("round is not a closed confidential round"));
+        require!(pot.0 > 0 && pot.0 < (1u128 << 64), "ERR_POT_OUT_OF_RANGE");
+        let id = self.next_private_exit; self.next_private_exit += 1;
+        self.private_exits.insert(id, PrivateExit { id, round_id, total_shares: U128(total), pot, funded: U128(0), approved: false, claimed: U128(0) });
+        event("private_exit_proposed", &format!("{{\"exit_id\":{},\"round_id\":{},\"pot\":\"{}\"}}", id, round_id, pot.0));
+        id
+    }
+    fn fund_private_exit(&mut self, exit_id: u64, amount: u128) -> u128 {
+        let Some(mut e) = self.private_exits.get(&exit_id).cloned() else { return 0 };
+        let take = amount.min(e.pot.0.saturating_sub(e.funded.0));
+        if take == 0 { return 0 }
+        e.funded = U128(e.funded.0.checked_add(take).unwrap_or_else(|| env::panic_str("funded overflow")));
+        self.private_exits.insert(exit_id, e);
+        self.private_funds_total = self.private_funds_total.checked_add(take).unwrap_or_else(|| env::panic_str("private funds overflow"));
+        take
+    }
+    pub fn approve_private_exit(&mut self, exit_id: u64) {
+        self.only_board();
+        let mut e = self.private_exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such private exit"));
+        require!(!e.approved, "already approved"); require!(e.funded.0 == e.pot.0, "the pot must be fully funded first");
+        e.approved = true; self.private_exits.insert(exit_id, e);
+        event("private_exit_approved", &format!("{{\"exit_id\":{}}}", exit_id));
+    }
+    /// Anyone may submit a claim; the proof (circuit `private_claim`) shows that some holder of the exit's committed cap table is owed exactly
+    /// `payout_amount` = floor(shares * pot / total_shares), and the proof is bound to `recipient_id`, so a copy sent for another account fails.
+    /// The nullifier is recorded BEFORE the transfer and restored if it fails, so a leaf is paid at most once per exit.
+    pub fn claim_private_payout(&mut self, exit_id: u64, nullifier: String, payout_amount: U128, recipient_id: AccountId, proof: Groth16Proof) -> Promise {
+        require!(env::prepaid_gas() >= Gas::from_tgas(120), "attach at least 120 Tgas to verify the proof and pay");
+        let mut e = self.private_exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such private exit"));
+        require!(e.approved, "private exit not approved");
+        require!(!self.used_nullifiers.contains(&nullifier), "ERR_NULLIFIER_USED");
+        let root = self.confidential_roots.get(&e.round_id).cloned().unwrap_or_else(|| env::panic_str("no committed cap table"));
+        require!(payout_amount.0 > 0 && e.claimed.0.checked_add(payout_amount.0).map_or(false, |c| c <= e.pot.0), "payout exceeds what is left in the pot");
+        let public = [zk::field_element(&root), zk::field_element(&nullifier), zk::field_from_u64(exit_id), zk::field_from_u128(e.total_shares.0), zk::field_from_u128(e.pot.0),
+            zk::field_from_u128(payout_amount.0), zk::recipient_hash(recipient_id.as_str())];
+        require!(zk::verify(&zk::claim_key(), &proof, &public), "ERR_INVALID_PROOF");
+        self.used_nullifiers.insert(nullifier.clone());
+        e.claimed = U128(e.claimed.0 + payout_amount.0); self.private_exits.insert(exit_id, e);
+        Promise::new(self.payment_token.clone())
+            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", recipient_id, payout_amount.0).into_bytes(), YOCTO, GAS_FT)
+            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_private_claim(exit_id, nullifier, payout_amount))
+    }
+    #[private]
+    pub fn on_private_claim(&mut self, exit_id: u64, nullifier: String, amount: U128, #[callback_result] res: Result<(), PromiseError>) -> bool {
+        let mut e = self.private_exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such private exit"));
+        if res.is_err() {
+            // the payout did not go out (for example the recipient is not registered with the token): free the nullifier so the claim can be retried
+            self.used_nullifiers.remove(&nullifier); e.claimed = U128(e.claimed.0.saturating_sub(amount.0)); self.private_exits.insert(exit_id, e);
+            return false;
+        }
+        self.private_funds_total = self.private_funds_total.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("private funds underflow"));
+        event("private_payout_sent", &format!("{{\"exit_id\":{},\"nullifier\":\"{}\",\"amount\":\"{}\"}}", exit_id, nullifier, amount.0));
+        true
+    }
+    pub fn private_exit(&self, exit_id: u64) -> Option<PrivateExit> { self.private_exits.get(&exit_id).cloned() }
+    pub fn nullifier_used(&self, nullifier: String) -> bool { self.used_nullifiers.contains(&nullifier) }
+
     // ---------- views ----------
     pub fn cap_table(&self, from: u64, limit: u64) -> Vec<(String, String, U128)> {
         self.holdings.iter().skip(from as usize).take(limit.min(100) as usize).map(|(k, v)| {
@@ -774,7 +885,7 @@ impl Rounds {
     pub fn issued_of(&self, class: String) -> U128 { U128(self.issued.get(&class).copied().unwrap_or(0)) }
     /// Tokens the contract must still hold: unpaid deposits, funded-unpaid exits, unforwarded strikes.
     pub fn ledger_total(&self) -> U128 {
-        let t = self.escrow_total.checked_add(self.exit_funds_total).and_then(|v| v.checked_add(self.strike_balance)).and_then(|v| v.checked_add(self.strikes_in_flight)).unwrap_or_else(|| env::panic_str("ledger overflow"));
+        let t = self.escrow_total.checked_add(self.exit_funds_total).and_then(|v| v.checked_add(self.strike_balance)).and_then(|v| v.checked_add(self.strikes_in_flight)).and_then(|v| v.checked_add(self.private_funds_total)).unwrap_or_else(|| env::panic_str("ledger overflow"));
         U128(t)
     }
     pub fn strike_balance(&self) -> U128 { U128(self.strike_balance) }

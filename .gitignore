@@ -10,3 +10,8 @@ results/conformance-ts.json
 # third-party YC SAFE forms, kept locally for checking only
 ref/*.docx
 .vercel/
+
+# zero-knowledge circuits: build output and the Powers of Tau files are local; the final artifacts live in web/public/zk and contract/src/zk
+circuits/node_modules/
+circuits/build/
+circuits/ptau/

@@ -220,6 +220,38 @@ The testnet run (`rounds-tok-332657.testnet`, with the demo's DAO as board and t
 
 Limits: the first demo contract (`rounds-core-332657`) and the open sandboxes were deployed before this code and do not have token methods; only the second contract does, and the app's Verify and Board proposals views read it by pasting its account into the contract box. Token amounts are in the token's base units, and the exact conversion needs `amount × supply` to fit in 128 bits (fine for six-decimal tokens; an 18-decimal token with a very large supply would be refused, never mis-converted). The Python reference does not cover R11, so its independence caveat applies; the anchors are the hand-derived vectors GV-9a to GV-9d, the contract's own recomputation and the on-chain run. Whether a SAFT is a security is a legal question Rounds does not answer. There is no token price oracle: the launch price and supply are inputs the board approves, and a voter checks them in the review card.
 
+## Zero-Knowledge Confidential Mode
+
+**This branch (`feat/zk-confidential`) adds an opt-in confidential mode. The default branch does not have it.** Public mode is unchanged: all the earlier tests still pass on this branch.
+
+**What it does.** A round can keep its cap table private. The chain stores a Poseidon Merkle root, the total shares and the raise, plus a zero-knowledge proof (Groth16 over BN254, checked by the contract with NEAR's `alt_bn128` functions) that the private table adds up to that total. A later payout is a **private payout**: the DAO funds a pot and approves it, then each holder uses a **receipt** (a file only they have) to prove, in their own browser, that they are in the committed table and are owed exactly `floor(shares × pot ÷ total shares)`, and names any fresh account to receive it.
+
+| Stays private | Stays public |
+|---|---|
+| Every individual holding | The total raise and **who paid it** (deposits are ordinary token transfers) |
+| Which holder is behind which payout (the proof does not say which leaf is theirs; a spent leaf is marked by a one-time nullifier) | The total shares, the committed root, the payout pot |
+| The salts and secrets in the receipts | **The amount of every payout.** It follows from the pot and the total shares, so a payout reveals roughly how big the holder's stake is. This mode hides *who*, not *how much*. |
+| | The account that signs a claim. If that is your own wallet, the claim is linked to you: submit it from an unrelated account or a relayer. Registering a recipient with the token is also a visible transaction. |
+
+**Parts.**
+- `circuits/cap_table_commit.circom` (38,225 constraints): every share amount is a 64-bit number, the amounts sum to the public total, the 64 leaves hash to the public root, bound to a round id. `circuits/private_claim.circom` (2,723 constraints): Merkle membership, the nullifier `Poseidon(holder_secret, exit_id)`, the exact floor-division payout, and a binding to the recipient, so a proof copied by someone else for another account fails.
+- `contract/src/zk.rs`: a self-contained Groth16 verifier. New contract methods: `propose_confidential_round` (verifies the proof before accepting the round), `propose_private_exit`, `approve_private_exit`, `claim_private_payout`, with the nullifier recorded **before** the transfer and restored if the transfer fails. The confidential round goes through the ordinary board approval by plan hash, deposits and close.
+- `src/engine/zk.ts`: the tree builder, receipts, and the in-browser provers. The page has a **Confidential mode (ZK)** toggle in the round modeler, a card that builds, proves and proposes a confidential round and offers **Download shareholder receipts (.json)**, and a **Private claim** panel that takes a receipt and any fresh account.
+- Receipts are one per holder **and class**: each gets its own secret, so one holder's two classes have different nullifiers (the first draft of the design shared one secret and would have allowed only one claim per holder).
+
+**Evidence.**
+- `npx vitest run test/zk.test.ts`: the real circuits prove valid tables and claims, and the prover refuses a wrong total, a share amount over 64 bits or wrapping the field, a wrong Merkle path, a wrong secret and a forged amount; proofs do not verify for another recipient, payout, nullifier, exit or root.
+- `make test-contract` (contract tests `contract/it/tests/zk_sandbox.rs`): a confidential round with a valid proof, DAO approval, a funded private exit, and claims to brand-new accounts; plus tampered proof bytes, a proof for another total or root, a proof opened for another round, a replayed nullifier (`ERR_NULLIFIER_USED`), a valid proof front-run with another recipient (`ERR_INVALID_PROOF`), a wrong payout, an unapproved payout, and a payout to an unregistered account that restores its nullifier. A deliberate bug that made the verifier accept everything makes this test fail.
+- `make e2e-zk`: drives the page's buttons with the test signer on a testnet confidential sandbox (`web/public/zk-sandbox.json`): proves the table in the browser, proposes it, funds, approves and closes it, opens and funds a private payout, and claims a receipt to a fresh account.
+
+**Honest limits.**
+- **Trusted setup.** `make circuits` runs a Powers of Tau and a Groth16 setup with **one contributor (this machine)**. Anyone who knew that randomness could forge proofs, so this is a development setup for testnet play money. A real deployment needs a multi-party ceremony.
+- **The board cannot check a confidential round by itself.** It approves a root, not numbers. A real board would be given the table privately, rebuild the root and compare it. Nothing in the proofs stops a proposer from putting a leaf for a holder who does not exist.
+- **At most 64 table slots**, and a holder's receipt is the only way to claim: a lost receipt is a lost claim.
+- Verification needs about 120 Tgas attached to a claim and 100 Tgas to propose a round.
+- The proving keys are about 39 MB (the page downloads them when you prove) and are committed on this branch under `web/public/zk/`.
+- Not covered: confidential deposits and payments (token transfers are public), SAFTs and token grants in confidential rounds, and any confidential exit other than the pro-rata payout.
+
 ## Path to privacy (not built)
 
 Holdings, deposits and payouts are public on chain today, so this is not a confidential product. What would change that, in order of what it would hide:
