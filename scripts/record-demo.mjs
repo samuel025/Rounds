@@ -1,6 +1,6 @@
 // Records a captioned walkthrough of the web app: node scripts/record-demo.mjs [url] [out.mp4]
 // Drives headless Chrome over the DevTools protocol, shows a fake cursor + captions, encodes with ffmpeg.
-import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { N, VOICE as VOICE_, ttsFile } from "./demo-script.mjs";
 import { createHash } from "node:crypto";
@@ -9,7 +9,11 @@ import { join } from "node:path";
 
 const URL_ = process.argv[2] ?? "http://127.0.0.1:5173/";
 const OUT = process.argv[3] ?? "demo/rounds-demo.mp4";
-const W = 1280, H = 800, PORT = 9333;
+const W = 1280, H = 800;
+// Pick a debugging port nobody is listening on. If one is taken, Chrome starts without it and this script would silently drive
+// whatever browser owns the port (another tool's, or a stale one that still holds old page state), so never assume a fixed port.
+let PORT = Number(process.env.RECORD_PORT ?? 9560);
+for (; PORT < 9700; PORT++) { try { await fetch(`http://127.0.0.1:${PORT}/json/version`, { signal: AbortSignal.timeout(800) }); } catch { break; } }
 const work = join(process.env.REC_DIR ?? tmpdir(), "rounds-rec"); rmSync(work, { recursive: true, force: true }); mkdirSync(work, { recursive: true });
 mkdirSync("demo", { recursive: true });
 
@@ -27,8 +31,10 @@ if (!ONLY && !existsSync(`${process.env.HOME}/.near-credentials/testnet/${JUDGE}
 console.log(`sandbox ${SANDBOX}, signed in as ${JUDGE}`);
 async function signAndSend(signer, receiver, act) {
   const args = ["contract", "call-function", "as-transaction", receiver, act.method, "json-args", act.args, "prepaid-gas", `${act.gasTgas} Tgas`, "attached-deposit", `${act.depositYocto} yoctoNEAR`, "sign-as", signer, "network-config", "testnet", "sign-with-legacy-keychain", "display"];
-  const r = spawnSync("near", args, { encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
-  const out = ((r.stderr ?? "") + (r.stdout ?? "")).replace(/\x1b\[[0-9;]*m/g, "");
+  // asynchronous on purpose: a blocking call here stalls this process while the browser is streaming screencast frames, so the
+  // frames for the steps in between are dropped and the video jumps from "before" to "after" while the narration keeps its own clock
+  const raw = await new Promise((resolve) => { const p = spawn("near", args, { env: { ...process.env, NO_COLOR: "1" } }); let o = ""; p.stdout.on("data", (d) => (o += d)); p.stderr.on("data", (d) => (o += d)); p.on("close", () => resolve(o)); });
+  const out = raw.replace(/\x1b\[[0-9;]*m/g, "");
   const b64 = out.match(/serialized as base64\):\s*\n(\S+)/)?.[1]; if (!b64) throw new Error("signing failed: " + out.slice(-200));
   const j = await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "send_tx", params: { signed_tx_base64: b64, wait_until: "FINAL" } }) })).json();
   if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 200)); return j.result;
@@ -81,6 +87,10 @@ await ev(`(() => {
   const t = document.createElement("div"); t.id = "title"; t.innerHTML = '<h1>Rounds</h1><p>Ownership and payouts a DAO approves, and anyone can check</p><p style="font-size:18px">A NEAR testnet prototype · built at NEAR HACKATHON</p>'; document.body.appendChild(t);
 })()`);
 
+if (PART === "share") { // start capturing already at the Share a pot section, so the clip can replace that part of another recording
+  await ev(`document.getElementById("title")?.remove()`); await sleep(800);
+  await ev(`document.getElementById("share").scrollIntoView({behavior:"instant",block:"start"})`); await sleep(1500);
+}
 await send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
 
 const voice = []; let t0 = null;
@@ -119,9 +129,9 @@ const drag = async (sel, from, to, steps = 24) => { // slider drag between fract
 
 process.on("uncaughtException", async (e) => { try { console.log("DIAG", await ev(`JSON.stringify({u:location.href,n:document.querySelectorAll("[id]").length,t:!!document.getElementById("cap-table"),y:scrollY,c:document.getElementById("contract")?.value,rv:document.getElementById("review-body")?.innerText.slice(0,100),co:document.getElementById("chain-out")?.innerText.slice(0,80)})`)); } catch {} console.log(String(e.message).slice(0,200)); chrome.kill(); process.exit(1); });
 // ---- script ----
-await sleep(PART === "tail" ? 600 : 2200);
-await ev(`document.getElementById("title").style.opacity=0`); await sleep(900); await ev(`document.getElementById("title").remove()`);
-await ev(`window.scrollTo(0,0)`); await sleep(500);
+await sleep(PART === "tail" || PART === "share" ? 600 : 2200);
+await ev(`const t=document.getElementById("title"); if(t){t.style.opacity=0}`); await sleep(900); await ev(`document.getElementById("title")?.remove()`);
+if (PART !== "share") { await ev(`window.scrollTo(0,0)`); await sleep(500); }
 
 const flowBtn = (a) => `#flow [data-flow="${a}"]`;
 const rowCls = (n) => ev(`document.querySelectorAll("#flow .flow-row")[${n - 1}]?.className ?? ""`);
@@ -142,15 +152,17 @@ const doShare = async (act, n) => {
   if (/done/.test(await sRow(n))) return;
   await ev(`document.querySelector(${JSON.stringify(sBtn(act))}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
   for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(sBtn(act))});return !!b&&!b.disabled})()`)); i++) await sleep(500);
+  const rel = () => ((performance.now() - (frames[0]?.t ?? performance.now())) / 1000).toFixed(1);
+  console.log(`[${rel()}s] pressing ${act} (frames so far ${frames.length})`);
   await click(sBtn(act));
-  while (performance.now() - t0 < 180000) { if (/done/.test(await sRow(n))) return; await sleep(500); }
+  while (performance.now() - t0 < 180000) { if (/done/.test(await sRow(n))) { console.log(`[${rel()}s] step ${n} (${act}) done (frames so far ${frames.length})`); return; } await sleep(500); }
   void first; throw new Error(`share step ${n} never finished`);
 };
 const waitFor = async (js, ms = 90000) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (await ev(js)) return true; await sleep(500); } throw new Error(`timed out waiting for ${js}`); };
 
 // PART=head records the guided flow and the shared payout (it uses up a sandbox); PART=tail records the voting and token scenes and the close
 // (read-only: it needs no unused sandbox, set ONLY=1 SANDBOX=<any sandbox>). The two are joined afterwards with ffmpeg.
-if (PART !== "tail") {
+if (PART === "all" || PART === "head") {
 await narrate(N.hook, async () => {
   await sleep(1500); await point("h1", 0.4, 0.5); await sleep(7500);
   await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
@@ -182,6 +194,8 @@ await narrate(N.result, async () => {
   await point("#flow .flow-result", 0.3, 0.5);
 });
 
+}
+if (PART !== "tail") { // PART=share records only this block, on any sandbox, so the payout scenes can be redone without using one up
 // shared payout: first the calculator, then a real run on this sandbox (it now has a Series A investor among its holders)
 await scrollTo("#share");
 await narrate(N.share, async () => { await sleep(4500); await drag("#pot", 0.1, 0.45, 20); await sleep(3000); await drag("#pot", 0.45, 0.1, 20); });
@@ -193,12 +207,14 @@ await narrate(N.shareRun, async () => {
 });
 await narrate(N.shareFund, async () => { await doShare("fund", 5); });
 await narrate(N.shareApprove, async () => { await doShare("approve", 6); });
-await narrate(N.sharePay, async () => {
-  await doShare("pay", 7);
-  await waitFor(`/every holder was paid once/.test(document.querySelector("#share-run-body .flow-result").innerText)`, 120000);
-  await point("#share-run-body .flow-result table", 0.5, 0.4);
-});
+await narrate(N.sharePay, async () => { await doShare("pay", 7); });
+// the narration only claims "paid" once the table really says so
+await waitFor(`/every holder was paid once/.test(document.querySelector("#share-run-body .flow-result").innerText)`, 120000);
+await narrate(N.sharePaid, async () => { await ev(`document.querySelector("#share-run-body .flow-result").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1200); await point("#share-run-body .flow-result table", 0.5, 0.4); });
+if (!/Paid/.test(await ev(`document.querySelector("#share-run-body .flow-result").innerText`))) throw new Error("the payout table does not say Paid");
 
+}
+if (PART === "all" || PART === "head") {
 // verify: the sandbox, re-hashed in the browser
 await scrollTo("#verify");
 await narrate(N.verify, async () => {
@@ -214,7 +230,7 @@ if (/FAIL/.test(chainTxt) || !/PASS/.test(chainTxt)) throw new Error("the on-cha
 
 }
 // voting: the board's proposals on the finished demo, then the token contract
-if (PART !== "head") {
+if (PART === "all" || PART === "tail") {
 await narrate(N.review, async () => {
   await point("#pre-demo", 0.5, 0.5); await click("#pre-demo");
   await waitFor(`!!document.querySelector("#proposal-4")`);
