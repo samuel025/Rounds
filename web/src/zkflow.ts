@@ -228,9 +228,10 @@ function mountBoardCheck(host: HTMLElement, d: ZkDeps) {
 
 /** The Private Claim panel: a holder's own key, their claim file, any fresh recipient account, a proof made locally, and (if a relayer is configured) a submission that does not involve the holder's wallet. */
 function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
-  let claim: (ClaimFile & { holderSecret?: string }) | null = null, holderKey: HolderKey | null = null, claimName: string | null = null, keyName: string | null = null, exits: any[] = [], busy = false, status = "", exitId = 0, relayer: string | null = null, useRelayer = true, madeKey: HolderKey | null = null, recipientVal = "";
+  let claim: (ClaimFile & { holderSecret?: string }) | null = null, holderKey: HolderKey | null = null, claimName: string | null = null, keyName: string | null = null, exits: any[] = [], busy = false, reading = false, status = "", exitId = 0, relayer: string | null = null, useRelayer = true, madeKey: HolderKey | null = null, recipientVal = "";
   const roots = new Map<number, string>(); // round id -> the committed root, to match a claim file to the payouts of its own cap table
   async function load() {
+    reading = true; // while the chain is re-read, never claim that the file does not match
     relayer = await relayerUrl();
     // build the new list aside and swap it in, so a click while the chain is being read still sees the previous list instead of an empty one
     const list: any[] = []; for (let i = 1; i <= 30; i++) { try { const e = await call(d.rpc, d.contract, "private_exit", { exit_id: i }); if (!e) break; list.push(e); } catch { break; } }
@@ -238,12 +239,16 @@ function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
     for (const e of exits) if (!roots.has(e.round_id)) { try { const c = await call(d.rpc, d.contract, "confidential_root", { round_id: e.round_id }); if (c) roots.set(e.round_id, c[0]); } catch { /* not committed yet */ } }
     const own = claim ? [...exits].reverse().find((x) => roots.get(x.round_id) === claim!.merkleRoot) : undefined;
     exitId = own?.id ?? (exits.some((x) => x.id === exitId) ? exitId : exits[exits.length - 1]?.id ?? 0);
-    draw(true);
+    reading = false; draw(true);
   }
   function draw(keepChoice = false) {
     const oldRecipient = host.querySelector<HTMLInputElement>("#zk-recipient"); if (oldRecipient) recipientVal = oldRecipient.value; // a refresh must never erase what is being typed
     const oldExit = host.querySelector<HTMLSelectElement>("#zk-exit"); if (!keepChoice && oldExit && oldExit.value) exitId = +oldExit.value; // a reload has just picked the payout that matches the claim file: do not overwrite it with the old dropdown value
-    const e = exits.find((x) => x.id === exitId), mismatch = !!(claim && e && roots.get(e.round_id) !== claim.merkleRoot);
+    if (claim) { // a claim file belongs to one round: select that round's payout straight away instead of flashing a mismatch while the chain is re-read
+      const cur = exits.find((x) => x.id === exitId), own = [...exits].reverse().find((x) => roots.get(x.round_id) === claim!.merkleRoot);
+      if (own && (!cur || roots.get(cur.round_id) !== claim.merkleRoot)) exitId = own.id;
+    }
+    const e = exits.find((x) => x.id === exitId), mismatch = !!(claim && e && !reading && roots.get(e.round_id) !== claim.merkleRoot);
     const mine = claim && e && !mismatch ? (BigInt(claim.shareAmount) * BigInt(e.pot)) / BigInt(e.total_shares) : null;
     const keyOk = !!(claim && (holderKey || claim.holderSecret));
     host.innerHTML = `<p class="note">A holder proves, without saying which row is theirs, that they are in the committed cap table and are owed exactly their pro-rata share; the contract pays any account named in the proof and registers it with the token itself. <b>The amount paid is public.</b> If the claim is sent from your own wallet it is linked to you${relayer ? "; a relayer is available, so you can avoid that" : "; use an unrelated account or a relayer"}.</p>
@@ -253,8 +258,8 @@ function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
       <span class="fl">3 · Which payout</span><select id="zk-exit" style="width:auto;min-width:260px;max-width:100%">${exits.map((x) => `<option value="${x.id}" ${x.id === exitId ? "selected" : ""}>Payout ${x.id}: pot ${esc(usd(BigInt(x.pot)))}${x.approved ? "" : " (not approved yet)"}</option>`).join("") || `<option value="">no private payouts yet</option>`}</select>
       <span class="fl">4 · Receiving account (any fresh testnet account; the contract registers it with the token)</span><input type="text" id="zk-recipient" value="${esc(recipientVal)}" placeholder="fresh-account.testnet" autocomplete="off" spellcheck="false"/>
       ${relayer ? `<label style="display:flex;gap:8px;align-items:center;margin:10px 0 0"><input type="checkbox" id="zk-relay" style="width:auto" ${useRelayer ? "checked" : ""}/> Submit through the relayer (my wallet does not sign or appear on chain)</label>` : ""}
-      <p class="muted" style="margin:10px 0">${claim ? `Claim file: ${esc(claim.holderId)} · ${esc(claim.shareClass)}${mine !== null ? ` · you would receive ${esc(usd(mine))}` : ""}.` : "No claim file yet."} ${keyOk ? "Holder key loaded." : claim ? "Now add your holder key." : ""} ${mismatch ? `<span class="fail">This claim file belongs to a different cap table than the selected payout.</span>` : ""} ${esc(status)}</p>
-      <button class="btn primary sm" id="zk-claim-btn" ${busy || !keyOk || !e || !e.approved || mismatch ? "disabled" : ""}>Prove and claim privately</button>`;
+      <p class="muted" style="margin:10px 0">${claim ? `Claim file: ${esc(claim.holderId)} · ${esc(claim.shareClass)}${mine !== null ? ` · you would receive ${esc(usd(mine))}` : ""}.` : "No claim file yet."} ${keyOk ? "Holder key loaded." : claim ? "Now add your holder key." : ""} ${mismatch ? `<span class="fail">This claim file belongs to a different cap table than the selected payout.</span>` : ""} ${reading && claim ? `<span class="muted">Reading the chain …</span>` : ""} ${esc(status)}</p>
+      <button class="btn primary sm" id="zk-claim-btn" ${busy || reading || !keyOk || !e || !e.approved || mismatch ? "disabled" : ""}>Prove and claim privately</button>`;
     (host.querySelector("#zk-mkkey") as HTMLButtonElement).onclick = async () => { await nodeGlobals(); const zk = await import("../../src/engine/zk"); madeKey = await zk.generateHolderKey(); download("rounds-holder-key.json", madeKey); draw(); };
     bindDrop(host, "zk-file", async (f) => { try { const j = await readJson(f); claim = Array.isArray(j) ? j[0] : j; claimName = f.name; if (claim?.holderSecret) holderKey = null; status = Array.isArray(j) && j.length > 1 ? "That file holds several claim files; the first is used." : ""; } catch { claim = null; claimName = null; status = "That file is not a claim file."; } await load(); });
     bindDrop(host, "zk-keyfile", async (f) => { try { const j = await readJson(f); holderKey = Array.isArray(j) ? j[0] : j; keyName = f.name; status = ""; } catch { holderKey = null; keyName = null; status = "That file is not a holder key."; } draw(); });

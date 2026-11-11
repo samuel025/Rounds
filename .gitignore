@@ -15,3 +15,8 @@ ref/*.docx
 circuits/node_modules/
 circuits/build/
 circuits/ptau/
+
+# intro film working files (rebuilt by scripts/intro-film)
+scripts/intro-film/assets/
+scripts/intro-film/frames/
+scripts/intro-film/stills/

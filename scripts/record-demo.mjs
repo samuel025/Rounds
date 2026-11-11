@@ -1,7 +1,7 @@
 // Records a captioned walkthrough of the web app: node scripts/record-demo.mjs [url] [out.mp4]
 // Drives headless Chrome over the DevTools protocol, shows a fake cursor + captions, encodes with ffmpeg.
 import { spawn, execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, openSync } from "node:fs";
 import { N, VOICE as VOICE_, ttsFile } from "./demo-script.mjs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -23,10 +23,12 @@ const rpcQ = async (params) => (await (await fetch(RPC, { method: "POST", header
 const viewC = async (acct, method, args) => { const j = await rpcQ({ request_type: "call_function", finality: "final", account_id: acct, method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64") }); const r = j.result?.result; return r ? JSON.parse(Buffer.from(r).toString()) : null; };
 const PART = process.env.PART ?? "all";
 const ONLY = process.env.ONLY; // ONLY=share records just the shared-payout scene: no sandbox is used up and no key is needed
-let SANDBOX = process.env.SANDBOX;
+const ZKMODE = PART === "zk";
+const ZKCFG = ZKMODE ? JSON.parse(readFileSync("web/public/zk-sandbox.json", "utf8")) : null;
+let SANDBOX = ZKMODE ? ZKCFG.rounds : process.env.SANDBOX;
 if (!SANDBOX) for (const c of JSON.parse(readFileSync("web/public/sandboxes.json", "utf8"))) { if (ONLY || (await viewC(c.rounds, "round", { round_id: 4 })) === null) { SANDBOX = c.rounds; break; } }
 if (!SANDBOX) throw new Error("no unused sandbox in the pool");
-const JUDGE = SANDBOX.replace("rsbx-rounds-", "rsbx-bayo-");
+const JUDGE = ZKMODE ? (process.env.ZK_JUDGE ?? "rsbx-bayo-913009.testnet") : SANDBOX.replace("rsbx-rounds-", "rsbx-bayo-");
 if (!ONLY && !existsSync(`${process.env.HOME}/.near-credentials/testnet/${JUDGE}.json`)) throw new Error(`no key for ${JUDGE}`);
 console.log(`sandbox ${SANDBOX}, signed in as ${JUDGE}`);
 async function signAndSend(signer, receiver, act) {
@@ -36,11 +38,22 @@ async function signAndSend(signer, receiver, act) {
   const raw = await new Promise((resolve) => { const p = spawn("near", args, { env: { ...process.env, NO_COLOR: "1" } }); let o = ""; p.stdout.on("data", (d) => (o += d)); p.stderr.on("data", (d) => (o += d)); p.on("close", () => resolve(o)); });
   const out = raw.replace(/\x1b\[[0-9;]*m/g, "");
   const b64 = out.match(/serialized as base64\):\s*\n(\S+)/)?.[1]; if (!b64) throw new Error("signing failed: " + out.slice(-200));
-  const j = await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "send_tx", params: { signed_tx_base64: b64, wait_until: "FINAL" } }) })).json();
+  // the same signed transaction can be sent again safely: if the node answers "pending"/"timeout" while the chain is still finalizing, ask again
+  let j; for (let i = 0; i < 8; i++) { j = await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "send_tx", params: { signed_tx_base64: b64, wait_until: "FINAL" } }) })).json(); if (!j.error || !/PENDING|TIMEOUT|timed out/i.test(JSON.stringify(j.error))) break; await new Promise((r) => setTimeout(r, 3000)); }
   if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 200)); return j.result;
 }
 const execActs = async (signer, receiver, acts) => { let last; for (const a of acts) { last = await signAndSend(signer, receiver, a); if (last.status?.Failure) return last; } return last; };
 const bindings = [];
+// confidential recording: a local relayer submits the claim, and a brand-new account (never registered with the token) receives it
+let relayerProc = null, BURNER = "";
+if (ZKMODE) {
+  const RELAYER = process.env.ZK_RELAYER ?? "rsbx-ada-973123.testnet";
+  BURNER = `rsbx-holder-${Date.now().toString().slice(-7)}.testnet`;
+  const mk = execFileSync("near", ["account", "create-account", "fund-myself", BURNER, "0.1 NEAR", "autogenerate-new-keypair", "save-to-legacy-keychain", "sign-as", RELAYER, "network-config", "testnet", "sign-with-legacy-keychain", "send"], { env: { ...process.env, NO_COLOR: "1" }, stdio: "pipe" });
+  void mk;
+  relayerProc = spawn("node", ["scripts/relayer.mjs"], { env: { ...process.env, RELAYER_ACCOUNT: RELAYER, RELAYER_CONTRACT: ZKCFG.rounds, RELAYER_CREDENTIALS: `${process.env.HOME}/.near-credentials/testnet/${RELAYER}.json`, PORT: "8791" }, stdio: ["ignore", process.env.REL_LOG ? openSync(process.env.REL_LOG, "w") : "ignore", process.env.REL_LOG ? openSync(process.env.REL_LOG, "a") : "ignore"] });
+  await new Promise((r) => setTimeout(r, 6000));
+}
 
 const chrome = spawn("google-chrome", ["--headless=new", `--remote-debugging-port=${PORT}`, `--window-size=${W},${H}`, "--hide-scrollbars", "--force-dark-mode",
   "--no-first-run", `--user-data-dir=${join(work, "profile")}`, "about:blank"], { stdio: "ignore" });
@@ -67,8 +80,8 @@ await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceSc
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
 await send("Runtime.addBinding", { name: "nodeSend" });
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `window.__testWallet = { account: ${JSON.stringify(JUDGE)}, send: (receiver, acts) => new Promise((res) => { const id = Math.random().toString(36).slice(2); (window.__p ||= {})[id] = res; window.nodeSend(JSON.stringify({ id, receiver, acts })); }) };` });
-(async () => { for (;;) { while (bindings.length) { const b = bindings.shift(); const { id: cid, receiver, acts } = JSON.parse(b.payload); let out; try { out = await execActs(JUDGE, receiver, acts); } catch (e) { out = { status: { Failure: String(e.message) }, transaction: { hash: null } }; } await ev(`window.__p[${JSON.stringify(cid)}](${JSON.stringify(out)})`); } await sleep(150); } })();
-await send("Page.navigate", { url: `${URL_}?sandbox=${SANDBOX}` }); await sleep(2500);
+(async () => { for (;;) { while (bindings.length) { const b = bindings.shift(); const { id: cid, receiver, acts } = JSON.parse(b.payload); let out; try { console.log(`signer: ${acts.map((x) => x.method).join("+")} -> ${receiver.slice(0, 26)}`); out = await execActs(JUDGE, receiver, acts); if (out?.status?.Failure) console.log("signer failure:", JSON.stringify(out.status.Failure).slice(0, 300)); } catch (e) { console.log("signer error:", String(e.message).slice(0, 300)); out = { status: { Failure: String(e.message) }, transaction: { hash: null } }; } await ev(`window.__p[${JSON.stringify(cid)}](${JSON.stringify(out)})`); } await sleep(150); } })();
+await send("Page.navigate", { url: ZKMODE ? `${URL_}?relayer=${encodeURIComponent("http://127.0.0.1:8791/relay-claim")}` : `${URL_}?sandbox=${SANDBOX}` }); await sleep(2500);
 
 // overlay: cursor, ripple, caption
 await ev(`(() => {
@@ -84,7 +97,7 @@ await ev(`(() => {
   const c = document.createElement("div"); c.id = "rc"; c.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M3 2l7.5 19 2.6-7.9L21 10.5z" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>'; document.body.appendChild(c);
   const r = document.createElement("div"); r.id = "rr"; document.body.appendChild(r);
   const k = document.createElement("div"); k.id = "rcap"; document.body.appendChild(k);
-  const t = document.createElement("div"); t.id = "title"; t.innerHTML = '<h1>Rounds</h1><p>Ownership and payouts a DAO approves, and anyone can check</p><p style="font-size:18px">A NEAR testnet prototype · built at NEAR HACKATHON</p>'; document.body.appendChild(t);
+  const t = document.createElement("div"); t.id = "title"; t.style.display = "none"; t.innerHTML = '<h1>Rounds</h1><p>Ownership and payouts a DAO approves, and anyone can check</p><p style="font-size:18px">A NEAR testnet prototype · built at NEAR HACKATHON</p>'; document.body.appendChild(t);
 })()`);
 
 if (PART === "share") { // start capturing already at the Share a pot section, so the clip can replace that part of another recording
@@ -94,12 +107,15 @@ if (PART === "share") { // start capturing already at the Share a pot section, s
 await send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: W, maxHeight: H, everyNthFrame: 1 });
 
 const voice = []; let t0 = null;
+const relT = () => (performance.now() - (frames[0]?.t ?? performance.now())) / 1000;
+const waits = []; // spans where the script only waits for the chain or a proof: cut from the video (never while the narrator speaks)
+const markWait = async (fn) => { const a = relT(); try { return await fn(); } finally { waits.push([a, relT()]); } };
 const EDGE = process.env.EDGE_TTS ?? "edge-tts", VOICE = VOICE_;
 const narrate = async (text, actions = async () => {}) => { // one continuous clip per scene; the cursor acts WHILE it plays
   const mp3 = ttsFile(text);
   if (!existsSync(mp3)) { mkdirSync(join(mp3, ".."), { recursive: true }); execFileSync(EDGE, ["--voice", VOICE, "--rate=-2%", "--text", text, "--write-media", mp3], { stdio: "ignore" }); }
   const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp3]).toString()) * 1000;
-  voice.push({ wav: mp3, at: (performance.now() - (frames[0]?.t ?? performance.now())) / 1000 });
+  voice.push({ wav: mp3, at: (performance.now() - (frames[0]?.t ?? performance.now())) / 1000, dur: dur / 1000 });
   const t0 = performance.now();
   await actions();
   await sleep(Math.max(300, dur - (performance.now() - t0)) + 350);
@@ -141,7 +157,7 @@ const doStep = async (act, n) => {
   if (/done/.test(await rowCls(n))) return;
   await ev(`document.querySelector(${JSON.stringify(flowBtn(act))}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
   for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(flowBtn(act))});return !!b&&!b.disabled})()`)); i++) await sleep(500);
-  await click(flowBtn(act)); await waitRow(n, /done/);
+  await click(flowBtn(act)); await markWait(() => waitRow(n, /done/));
 };
 
 // the same for the "Share a pot" run card
@@ -155,23 +171,80 @@ const doShare = async (act, n) => {
   const rel = () => ((performance.now() - (frames[0]?.t ?? performance.now())) / 1000).toFixed(1);
   console.log(`[${rel()}s] pressing ${act} (frames so far ${frames.length})`);
   await click(sBtn(act));
-  while (performance.now() - t0 < 180000) { if (/done/.test(await sRow(n))) { console.log(`[${rel()}s] step ${n} (${act}) done (frames so far ${frames.length})`); return; } await sleep(500); }
+  const w0 = relT(); while (performance.now() - t0 < 180000) { if (/done/.test(await sRow(n))) { waits.push([w0, relT()]); console.log(`[${rel()}s] step ${n} (${act}) done (frames so far ${frames.length})`); return; } await sleep(500); }
   void first; throw new Error(`share step ${n} never finished`);
 };
 const waitFor = async (js, ms = 90000) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (await ev(js)) return true; await sleep(500); } throw new Error(`timed out waiting for ${js}`); };
 
 // PART=head records the guided flow and the shared payout (it uses up a sandbox); PART=tail records the voting and token scenes and the close
 // (read-only: it needs no unused sandbox, set ONLY=1 SANDBOX=<any sandbox>). The two are joined afterwards with ffmpeg.
-if (PART === "all" || PART === "head") {
-await narrate(N.hook, async () => {
-  await sleep(1500); await point("h1", 0.4, 0.5); await sleep(7500);
-  await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
-  await point("#hero-bars", 0.3, 0.3); await sleep(4500); await point("#hero-bars", 0.7, 0.8);
-});
+// PART=zk records the confidential mode on the confidential sandbox, with a local relayer and a brand-new recipient account
+if (PART === "zk") {
+  const zRow = (n) => ev(`document.querySelectorAll("#zk-run .flow-row")[${n - 1}]?.className ?? ""`);
+  const setFileJs = (id, expr, name) => ev(`(()=>{const v=${expr};const inp=document.getElementById(${JSON.stringify(id)});const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(v)],${JSON.stringify(name)},{type:"application/json"}));inp.files=dt.files;inp.dispatchEvent(new Event("change"))})()`);
+  const doZk = async (act, n) => {
+    if (/done/.test(await zRow(n))) return;
+    const sel = `#zk-run [data-zk="${act}"]`;
+    if (["pexit", "pfund", "papprove"].includes(act)) { if (await ev(`document.getElementById("zk-p-payout").hidden`)) { await click('.ztab[data-ztab="payout"]'); await sleep(600); } }
+    await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+    for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(sel)});return !!b&&!b.disabled})()`)); i++) await sleep(500);
+    await click(sel);
+    const t0 = performance.now(), w0 = relT(); let lastTry = performance.now();
+    while (performance.now() - t0 < 240000) {
+      if (/done/.test(await zRow(n))) { waits.push([w0, relT()]); return; }
+      // a click can be lost when the card redraws at that moment: press again only if nothing is in flight (the card says "working" while a step runs)
+      if (performance.now() - lastTry > 15000 && await ev(`(()=>{const b=document.querySelector(${JSON.stringify(sel)});return !!b&&!b.disabled&&!/working/.test(document.getElementById("zk-run").innerText)})()`)) { await ev(`document.querySelector(${JSON.stringify(sel)}).click()`); lastTry = performance.now(); }
+      await sleep(500);
+    }
+    throw new Error(`confidential step ${n} (${act}) never finished`);
+  };
+  const next0 = await viewC(ZKCFG.rounds, "next_round_id", {}); // the round this recording will create
+  await scrollTo("#zk");
+  await narrate(N.zkIntro, async () => { await point("#zk h2", 0.3, 0.5); await sleep(5000); await click("#zk details.zd summary"); await sleep(9000); await click("#zk details.zd summary"); await point("#zk-run", 0.5, 0.15); });
+  await narrate(N.zkSetup, async () => { await doZk("faucet", 2); await doZk("officer", 3); });
+  await narrate(N.zkPropose, async () => { await typeInto("#zk-pass", "a board passphrase 2026"); await doZk("propose", 4); });
+  await narrate(N.zkFiles, async () => { await ev(`document.getElementById("zk-files").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500); await point("#zk-files", 0.3, 0.4); await sleep(5000); await point("#zk-files", 0.75, 0.5); });
+  // silent preparation (cut from the video): open the card, wait for the new round to be readable, pick it
+  await click("details:has(#zk-board-body) > summary"); await sleep(900);
+  await ev(`document.getElementById("zk-btable-drop").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+  await markWait(async () => { for (let i = 0; i < 40 && !(await ev(`!![...document.querySelectorAll("#zk-bround option")].find((o) => o.value === "${next0}")`)); i++) { await ev(`document.getElementById("zk-breload").click()`); await sleep(3000); } });
+  await ev(`document.getElementById("zk-bround").value="${next0}";document.getElementById("zk-bround").dispatchEvent(new Event("change"))`); await sleep(600);
+  await narrate(N.zkBoard, async () => {
+    await point("#zk-btable-drop", 0.5, 0.5); await setFileJs("zk-btable", "window.__zkBuilt.escrow", "rounds-board-copy.escrow.json"); await sleep(700);
+    await typeInto("#zk-bpass", "a board passphrase 2026"); await click("#zk-bcheck");
+    await waitFor(`/re-seals/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000); await sleep(800);
+    await ev(`document.getElementById("zk-bout").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500); await point("#zk-bout", 0.3, 0.2); await sleep(1500);
+  });
+  await narrate(N.zkBoard2, async () => {
+    await ev(`document.getElementById("zk-btable-drop").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(900);
+    await point("#zk-btable-drop", 0.5, 0.5);
+    await setFileJs("zk-btable", "(()=>{const t=JSON.parse(JSON.stringify(window.__zkBuilt.tableFile));t.entries[0].shares=String(BigInt(t.entries[0].shares)+1n);return t})()", "rounds-table-file.json"); await sleep(600);
+    await click("#zk-bcheck"); await waitFor(`/DIFFERENT root/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000); await sleep(600);
+    await ev(`document.getElementById("zk-bout").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1200); await point("#zk-bout", 0.3, 0.2); await sleep(1800);
+  });
+  await narrate(N.zkFund, async () => { await doZk("fund", 5); await doZk("approve", 6); await doZk("close", 7); });
+  await narrate(N.zkPayout, async () => { await doZk("pexit", 8); await doZk("pfund", 9); await doZk("papprove", 10); });
+  await narrate(N.zkClaim, async () => {
+    await ev(`document.getElementById("zk-claim-body").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
+    await point("#zk-file-drop", 0.5, 0.5); await setFileJs("zk-file", `window.__zkBuilt.claimFiles.find((c) => c.holderId === ${JSON.stringify(JUDGE)})`, "rounds-claim-file.json"); await sleep(1000);
+    await point("#zk-keyfile-drop", 0.5, 0.5); await setFileJs("zk-keyfile", `window.__zkBuilt.keys[window.__zkBuilt.claimFiles.findIndex((c) => c.holderId === ${JSON.stringify(JUDGE)})]`, "rounds-holder-key.json"); await sleep(1000);
+    await waitFor(`!!document.getElementById("zk-claim-btn") && /Holder key loaded/.test(document.getElementById("zk-claim-body").innerText) && !/Reading the chain/.test(document.getElementById("zk-claim-body").innerText)`, 60000);
+    await typeInto("#zk-recipient", BURNER); await sleep(800);
+    await click("#zk-claim-btn");
+    await markWait(() => waitFor(`/claimed to|FAIL/.test(document.getElementById("toast")?.innerText ?? "")`, 300000));
+  });
+  const tt = await ev(`document.getElementById("toast")?.innerText ?? ""`); console.log("claim toast:", tt.replace(/\s+/g, " ").slice(0, 160));
+  if (!/DONE/.test(tt)) throw new Error("the private claim did not complete");
+  await narrate(N.zkDone, async () => { await point("#toast", 0.5, 0.5); await sleep(1500); });
+  for (let i = 0; i < 20; i++) { try { const bal = await viewC(ZKCFG.token, "ft_balance_of", { account_id: BURNER }); if (bal && bal !== "0") { console.log("recipient balance", BURNER, bal); break; } } catch { /* an RPC hiccup after the claim must never lose the recording */ } await sleep(1500); }
+  await sleep(600);
+}
 
-await narrate(N.basics, async () => {
-  await ev(`document.getElementById("intro").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1300);
-  await point(".gloss summary", 0.3, 0.5); await click(".gloss summary"); await sleep(3500); await click(".gloss summary"); await sleep(500);
+if (PART === "all" || PART === "head") {
+await narrate(N.publicIntro, async () => {
+  await sleep(1500); await point("h1", 0.4, 0.5); await sleep(3500);
+  await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
+  await point("#hero-bars", 0.3, 0.3); await sleep(3500); await point("#hero-bars", 0.7, 0.8); await sleep(1000);
   await scrollTo("#cap"); await point("#cap-table", 0.5, 0.3);
 });
 
@@ -181,13 +254,8 @@ await narrate(N.modeler, async () => {
 });
 
 await scrollTo("#try");
-await narrate(N.flow, async () => { await point("#flow", 0.5, 0.08); await sleep(5000); await point("#flow .flow-row:nth-child(1) .flow-n", 0.5, 0.5); });
-await narrate(N.usdc, async () => { await doStep("faucet", 2); });
-await narrate(N.officer, async () => { await doStep("officer", 3); });
-await narrate(N.propose, async () => { await doStep("propose", 5); });
-await narrate(N.fund, async () => { await doStep("deposit", 6); });
-await narrate(N.approve, async () => { await doStep("approve", 7); });
-await narrate(N.close, async () => { await doStep("close", 8); });
+await narrate(N.flow, async () => { await point("#flow", 0.5, 0.08); await sleep(2500); await doStep("faucet", 2); await doStep("officer", 3); await doStep("propose", 5); });
+await narrate(N.approve, async () => { await doStep("deposit", 6); await doStep("approve", 7); await doStep("close", 8); });
 await narrate(N.result, async () => {
   await ev(`document.querySelector("#flow .flow-result").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
   for (let i = 0; i < 120 && !/Series A Preferred/.test(await ev(`document.querySelector("#flow .flow-result").innerText`)); i++) await sleep(500);
@@ -195,19 +263,16 @@ await narrate(N.result, async () => {
 });
 
 }
-if (PART !== "tail") { // PART=share records only this block, on any sandbox, so the payout scenes can be redone without using one up
+if (PART !== "tail" && PART !== "zk") { // PART=share records only this block, on any sandbox, so the payout scenes can be redone without using one up
 // shared payout: first the calculator, then a real run on this sandbox (it now has a Series A investor among its holders)
 await scrollTo("#share");
-await narrate(N.share, async () => { await sleep(4500); await drag("#pot", 0.1, 0.45, 20); await sleep(3000); await drag("#pot", 0.45, 0.1, 20); });
+await narrate(N.share, async () => { await sleep(1500); await drag("#pot", 0.1, 0.45, 14); await sleep(1200); await drag("#pot", 0.45, 0.1, 14); });
 await narrate(N.shareRun, async () => {
   await ev(`document.getElementById("share-run").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
   await waitFor(`document.querySelectorAll("#share-run-body .flow-result tr").length >= 3`);
   await point("#share-run-body .flow-result table", 0.5, 0.4); await sleep(2500);
-  await doShare("officer", 3); await doShare("propose", 4);
+  await doShare("officer", 3); await doShare("propose", 4); await doShare("fund", 5); await doShare("approve", 6); await doShare("pay", 7);
 });
-await narrate(N.shareFund, async () => { await doShare("fund", 5); });
-await narrate(N.shareApprove, async () => { await doShare("approve", 6); });
-await narrate(N.sharePay, async () => { await doShare("pay", 7); });
 // the narration only claims "paid" once the table really says so
 await waitFor(`/every holder was paid once/.test(document.querySelector("#share-run-body .flow-result").innerText)`, 120000);
 await narrate(N.sharePaid, async () => { await ev(`document.querySelector("#share-run-body .flow-result").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1200); await point("#share-run-body .flow-result table", 0.5, 0.4); });
@@ -221,7 +286,7 @@ await narrate(N.verify, async () => {
   await point("#pre-sandbox", 0.5, 0.5); await click("#pre-sandbox");
   for (let i = 0; i < 90 && !(await ev(`!!document.querySelector("#chain-out .chain-tbl")`)); i++) await sleep(500);
   await ev(`document.querySelectorAll("#chain-out .chain-tbl")[1].scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1400);
-  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.6, 0.5); await sleep(6000);
+  await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.6, 0.5); await sleep(2500);
   await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.95, 0.5);
 });
 const chainTxt = await ev(`document.getElementById("chain-out").innerText`);
@@ -235,10 +300,10 @@ await narrate(N.review, async () => {
   await point("#pre-demo", 0.5, 0.5); await click("#pre-demo");
   await waitFor(`!!document.querySelector("#proposal-4")`);
   await ev(`document.getElementById("proposal-4").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
-  await point("#proposal-4 .rv-h", 0.5, 0.5); await sleep(5000);
-  await point("#proposal-4 table", 0.5, 0.4); await sleep(4500);
+  await point("#proposal-4 .rv-h", 0.5, 0.5); await sleep(2200);
+  await point("#proposal-4 table", 0.5, 0.4); await sleep(2200);
   await ev(`document.getElementById("proposal-9").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
-  await point("#proposal-9 .rv-h", 0.5, 0.5); await sleep(3500); await point("#proposal-9 table", 0.5, 0.4);
+  await point("#proposal-9 .rv-h", 0.5, 0.5); await sleep(1500); await point("#proposal-9 table", 0.5, 0.4);
 });
 const reviewTxt = await ev(`document.getElementById("review-body").innerText`);
 if (/DOES NOT MATCH/.test(reviewTxt) || !/VERIFIED/.test(reviewTxt)) throw new Error("the review card did not verify the demo's proposals");
@@ -249,7 +314,7 @@ await narrate(N.tokens, async () => {
   await sleep(500); await click("#chain-btn");
   await waitFor(`!!document.querySelector("#proposal-14")`);
   await ev(`document.getElementById("proposal-14").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1600);
-  await point("#proposal-14 .rv-h", 0.5, 0.5); await sleep(4000); await point("#proposal-14 table", 0.5, 0.4); await sleep(5000);
+  await point("#proposal-14 .rv-h", 0.5, 0.5); await sleep(1800); await point("#proposal-14 table", 0.5, 0.4); await sleep(2500);
   await point("#proposal-14 .rv-f", 0.5, 0.5);
 });
 
@@ -259,10 +324,17 @@ await sleep(800);
 }
 
 // ---- encode ----
-await send("Page.stopScreencast"); await sleep(300); ws.close(); chrome.kill();
+await send("Page.stopScreencast"); await sleep(300); ws.close(); chrome.kill(); relayerProc?.kill();
 const end = performance.now(); const list = [];
-frames.forEach((fr, i) => { const d = ((frames[i + 1]?.t ?? end) - fr.t) / 1000; list.push(`file '${fr.f}'\nduration ${Math.max(d, 0.01).toFixed(3)}`); });
+const vint = voice.map((v) => [v.at - 0.2, v.at + v.dur + 0.4]);
+let cuts = []; for (const [wa, wb] of waits) { let segs = [[wa + 1.4, wb - 0.7]]; for (const [x, y] of vint) segs = segs.flatMap(([s0, e0]) => (y <= s0 || x >= e0 ? [[s0, e0]] : [[s0, Math.min(e0, x)], [Math.max(s0, y), e0]])); cuts.push(...segs.filter(([s0, e0]) => e0 - s0 > 2.0)); }
+cuts.sort((p, q) => p[0] - q[0]);
+const overlap = (a0, b0) => cuts.reduce((acc, [s0, e0]) => acc + Math.max(0, Math.min(b0, e0) - Math.max(a0, s0)), 0);
+const cutBefore = (t) => overlap(0, t);
+console.log(`cutting ${cuts.length} waits (${cuts.reduce((a0, [s0, e0]) => a0 + e0 - s0, 0).toFixed(0)} s):`, cuts.map(([s0, e0]) => `${s0.toFixed(0)}-${e0.toFixed(0)}`).join(" "));
+frames.forEach((fr, i) => { const tt = (fr.t - frames[0].t) / 1000, nt = ((frames[i + 1]?.t ?? end) - frames[0].t) / 1000; if (cuts.some(([s0, e0]) => tt > s0 && tt < e0)) return; const d = nt - tt - overlap(tt, nt); list.push(`file '${fr.f}'\nduration ${Math.max(d, 0.01).toFixed(3)}`); });
 list.push(`file '${frames.at(-1).f}'`);
+for (const v of voice) v.at -= cutBefore(v.at);
 writeFileSync(join(work, "list.txt"), list.join("\n"));
 const silent = join(work, "silent.mp4");
 execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", join(work, "list.txt"), "-vf", `fps=25,scale=${W}:${H},format=yuv420p`, "-c:v", "libx264", "-crf", "23", silent]);
