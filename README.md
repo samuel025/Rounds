@@ -2,7 +2,7 @@
 
 > **Not legal or financial advice.** Rounds is a model and a **NEAR testnet demo**, not a securities offering, and claims no legal validity for any instrument. All money is a test token with no value. Built at NEAR HACKATHON (Nov 2026).
 
-**Live app: https://roundcap.vercel.app** (NEAR testnet, play money; it reads the chain directly, nothing runs on a server) · **Code:** https://github.com/samuel025/Rounds · **Demo video:** [`demo/rounds-demo.mp4`](demo/rounds-demo.mp4) (about 3.5 minutes)
+**Live app: https://roundcap.vercel.app** (NEAR testnet, play money; it reads the chain directly, nothing runs on a server) · **Code:** https://github.com/samuel025/Rounds
 
 **In 30 seconds.** A real cap table is private, but a group that decides things with a Sputnik DAO still needs its vote to mean something exact. Rounds does both. Every change (who puts in how much, who gets how many shares, who is paid what) is an exact plan with a SHA-256 fingerprint; the money waits in escrow; the DAO votes on the fingerprint; and the contract only runs a plan that hashes to what was approved.
 
@@ -31,7 +31,6 @@
 
 **The idea in one line:** the DAO approves a SHA-256 fingerprint of an exact plan, and the contract refuses anything that does not hash to it. **Confidential mode** applies that to a cap table that stays private (a zero-knowledge proof stands in for the numbers); **transparent mode** keeps holdings on chain. The sections below explain each.
 
-**Demo video:** [`demo/rounds-demo.mp4`](demo/rounds-demo.mp4) (about 3.5 minutes, recorded 2026-11-11, narrated in plain language). It opens with a 15 second fly-over of the live page (made by `scripts/intro-film`), then shows the **confidential mode** on its testnet sandbox: the private cap table built and proved in the browser, the board's check (the right copy passes, a table with one number changed is refused), a private payout, and a claim paid to a brand-new account through a relayer. Then the transparent mode: the round modeler, the guided round, a shared payout, the in-browser hash re-check, and the board proposals card, held still on screen while each is explained. Waiting for the chain is cut out of the video. It was recorded in three parts on different testnet sandboxes by `scripts/record-demo.mjs` (confidential, transparent, and the closing read-only part), joined with ffmpeg, so account names differ between parts; the confidential claim in the video goes through a relayer that was run locally (the live site has none, so there the holder's wallet signs the claim). The token-sale (SAFT) scene of the earlier cut is not in this one; it is covered by `make verify-tokens`.
 
 **What a community does with it** (the Social Money track asks for what groups do with a DAO, not another multisig):
 
