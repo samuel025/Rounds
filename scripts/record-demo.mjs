@@ -353,12 +353,16 @@ cuts.sort((p, q) => p[0] - q[0]);
 const overlap = (a0, b0) => cuts.reduce((acc, [s0, e0]) => acc + Math.max(0, Math.min(b0, e0) - Math.max(a0, s0)), 0);
 const cutBefore = (t) => overlap(0, t);
 console.log(`cutting ${cuts.length} waits (${cuts.reduce((a0, [s0, e0]) => a0 + e0 - s0, 0).toFixed(0)} s):`, cuts.map(([s0, e0]) => `${s0.toFixed(0)}-${e0.toFixed(0)}`).join(" "));
-frames.forEach((fr, i) => { const tt = (fr.t - frames[0].t) / 1000, nt = ((frames[i + 1]?.t ?? end) - frames[0].t) / 1000; if (cuts.some(([s0, e0]) => tt > s0 && tt < e0)) return; const d = nt - tt - overlap(tt, nt); list.push(`file '${fr.f}'\nduration ${Math.max(d, 0.01).toFixed(3)}`); });
+let videoLen = 0;
+frames.forEach((fr, i) => { const tt = (fr.t - frames[0].t) / 1000, nt = ((frames[i + 1]?.t ?? end) - frames[0].t) / 1000; if (cuts.some(([s0, e0]) => tt > s0 && tt < e0)) return; const d = Math.max(nt - tt - overlap(tt, nt), 0.01); videoLen += d; list.push(`file '${fr.f}'\nduration ${d.toFixed(3)}`); });
 list.push(`file '${frames.at(-1).f}'`);
 for (const v of voice) v.at -= cutBefore(v.at);
 writeFileSync(join(work, "list.txt"), list.join("\n"));
+// the picture must never end before the last sentence does (`-shortest` below would cut the voice mid-word): hold the last frame as long as needed
+const voiceEnd = Math.max(0, ...voice.map((v) => v.at + v.dur)) + 0.8, pad = Math.max(0, voiceEnd - videoLen);
+console.log(`picture ${videoLen.toFixed(1)} s, last voice ends ${voiceEnd.toFixed(1)} s: holding the last frame ${pad.toFixed(1)} s`);
 const silent = join(work, "silent.mp4");
-execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-threads", "2", "-f", "concat", "-safe", "0", "-i", join(work, "list.txt"), "-vf", `fps=25,scale=${W}:${H},format=yuv420p`, "-c:v", "libx264", "-crf", "23", silent]);
+execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-threads", "2", "-f", "concat", "-safe", "0", "-i", join(work, "list.txt"), "-vf", `fps=25,scale=${W}:${H},format=yuv420p${pad > 0 ? `,tpad=stop_mode=clone:stop_duration=${pad.toFixed(2)}` : ""}`, "-c:v", "libx264", "-crf", "23", silent]);
 const ins = voice.flatMap((v) => ["-i", v.wav]);
 const filt = voice.map((v, i) => `[${i + 1}:a]adelay=${Math.round(v.at * 1000)}:all=1[a${i}]`).join(";") + ";" + voice.map((_, i) => `[a${i}]`).join("") + `amix=inputs=${voice.length}:normalize=0[aud]`;
 execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-threads", "2", "-i", silent, ...ins, "-filter_complex", filt, "-map", "0:v", "-map", "[aud]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", OUT]);
