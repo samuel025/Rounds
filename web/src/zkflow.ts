@@ -8,13 +8,18 @@ import { call, esc, loadChain, type ChainView } from "./chain";
 import { toast, txLink, boardAct } from "./actions";
 import { usdExact as usd } from "./format";
 import type { CapEntry, ClaimFile, HolderKey, TableFile, EscrowFile } from "../../src/engine/zk";
+import type { FreshAccount } from "../../src/engine/stealth";
+import type { Envelope } from "../../src/engine/envelope";
+import { walletHolderSecret, walletEncryptionKey } from "./walletkeys";
+import { fromHex } from "../../src/engine/walletkey";
+const NEAR_ID = /^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$/;
 
 export interface ZkDeps {
   rpc: string; explorer: string; contract: string; board: string; token: string;
   /** the modeled round as a flat cap table (pool excluded) and the new money, for the connected account as the investor */
   model: (acct: string) => { entries: CapEntry[]; classes: string[]; raiseMicro: bigint } | null;
 }
-const M = 1_000_000n, POTS = [1_000, 10_000, 100_000], FILES = { commit: { wasm: "zk/cap_table_commit.wasm", zkey: "zk/cap_table_commit_final.zkey" }, claim: { wasm: "zk/private_claim.wasm", zkey: "zk/private_claim_final.zkey" } };
+const M = 1_000_000n, POTS = [1_000, 10_000, 100_000], FEES = [0, 1, 5, 25], FILES = { commit: { wasm: "zk/cap_table_commit.wasm", zkey: "zk/cap_table_commit_final.zkey" }, claim: { wasm: "zk/private_claim.wasm", zkey: "zk/private_claim_final.zkey" } };
 type St = "done" | "current" | "wait";
 interface Row { n: number; title: string; help: string; st: St; label?: string; act?: string; off?: boolean }
 const store = { get(k: string): any { try { const s = sessionStorage.getItem(k); return s ? JSON.parse(s) : null; } catch { return null; } }, set(k: string, v: unknown) { try { if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } } };
@@ -44,7 +49,7 @@ async function relayerUrl(): Promise<string | null> {
   return null;
 }
 
-interface Built { claimFiles: ClaimFile[]; keys: HolderKey[]; tableFile: TableFile; escrow: EscrowFile | null; total: bigint }
+interface Built { claimFiles: ClaimFile[]; keys: HolderKey[]; tableFile: TableFile; escrow: EscrowFile | null; envelope?: Envelope | null; total: bigint }
 
 /** The whole confidential workspace in one card with two tabs: 1 · the round (build, check, approve, close) and 2 · the payout (open, fund, approve, claim). */
 export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
@@ -54,7 +59,7 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     <div class="zpanel" id="zk-p-payout" hidden><ol class="flow compact" id="zk-rows-payout"></ol>
       <details class="zd" id="zk-cdetails" open><summary>Claim a payout with a holder key</summary><div id="zk-claim-body"></div></details></div>`;
   const $z = (id: string) => host.querySelector<HTMLElement>(`#${id}`)!;
-  let v: ChainView | null = null, bal = 0n, acct: string | null = null, busy = false, status = "", readError = "", pot = 10_000, pass = "", optsKey = "";
+  let v: ChainView | null = null, bal = 0n, acct: string | null = null, busy = false, status = "", readError = "", pot = 10_000, fee = 0, chainFee = 0n, pass = "", optsKey = "", members = "", wkey = true, encKeys: Record<string, string | null> = {};
   let built: Built | null = null, pexits: any[] = [], tab: "round" | "payout" = "round", lastWant: "round" | "payout" = "round";
   const key = (w: string) => `zk:${d.contract}:${acct ?? "-"}:${w}`;
   const myRound = () => { const id = store.get(key("round")); return v && id ? v.rounds.find((r) => r.id === id) ?? null : null; };
@@ -72,6 +77,7 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     if (!built && acct) { built = restoreBuilt(); if (built) (window as any).__zkBuilt = built; }
     if (acct && v) { try { bal = BigInt(await call(d.rpc, d.token, "ft_balance_of", { account_id: acct })); } catch { /* keep */ } }
     const list: any[] = []; for (let i = 1; i <= 30; i++) { try { const e = await call(d.rpc, d.contract, "private_exit", { exit_id: i }); if (!e) break; list.push(e); } catch { break; } } pexits = list;
+    await readMemberKeys(); try { chainFee = BigInt(await call(d.rpc, d.contract, "claim_fee", {})); } catch { chainFee = 0n; }
     if (v && acct) { // a proposal sent before a wallet redirect: find its round by the root it carries
       const pend = store.get(key("pending"));
       if (pend) { const r = v.rounds.find((x) => String(x.kind) === "Confidential" && x.plan.includes(`"merkle_root":"${pend.root}"`) && x.id >= pend.next); if (r) { store.set(key("round"), r.id); store.set(key("pending"), null); store.set(key("officer"), true); } }
@@ -80,6 +86,16 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     }
     draw();
   }
+
+  const memberIds = () => [...new Set(members.split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  /** Which of the named board members have published an encryption key on this contract (the contract's own registry). */
+  async function readMemberKeys() {
+    const ids = [...memberIds(), ...(acct ? [acct] : [])]; const out: Record<string, string | null> = {};
+    for (const id of ids) { if (!NEAR_ID.test(id)) { out[id] = null; continue; } try { out[id] = (await call(d.rpc, d.contract, "enc_key_of", { account: id })) ?? null; } catch { out[id] = null; } }
+    encKeys = out;
+  }
+  const memberStatus = () => { const ids = memberIds(); if (!ids.length) return `<span class="muted">No one named: the table is not sealed for the board by wallet (a passphrase copy is still possible).</span>`;
+    return ids.map((id) => !NEAR_ID.test(id) ? `<span class="fail">${esc(id)} is not an account name</span>` : encKeys[id] ? `<span class="pass">${esc(id)} ready</span>` : `<span class="fail">${esc(id)} has no key registered</span>`).join(" · "); };
 
   function rows(): Row[] {
     const m = acct ? d.model(acct) : null, want = m?.raiseMicro ?? 0n, r = myRound(), ex = myExit();
@@ -109,16 +125,25 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     // follow the progress: once the round is closed, the work is on the payout tab (the person can still click either tab)
     const want = rs[6].st === "done" ? "payout" : "round"; if (want !== lastWant) { lastWant = want; showTab(want); }
     $z("zk-banner").innerHTML = readError ? `<div class="flow-banner fail">Could not read the contract: ${esc(readError)}</div>` : `<div class="flow-banner muted">Confidential sandbox <span class="mono">${esc(d.contract)}</span>${v ? ` · ${v.rounds.length} round(s)` : ""}${busy ? " · working…" : ""}</div>`;
-    const ok = `${pot}|${!!r}`; // re-draw the options only when they change, so typing a passphrase is never interrupted
+    const ok = `${pot}|${!!r}|${fee}`; // re-draw the options only when they change, so typing a passphrase is never interrupted
     if (ok !== optsKey) {
       optsKey = ok;
       $z("zk-opts").innerHTML = `<label for="zk-pot">Payout pot</label><select id="zk-pot" style="width:auto;min-width:120px">${POTS.map((p) => `<option value="${p}" ${p === pot ? "selected" : ""}>$${p.toLocaleString("en-US")}</option>`).join("")}</select>
-        <label for="zk-pass">Board passphrase</label><input type="text" id="zk-pass" value="${esc(pass)}" placeholder="optional, 12+ characters: encrypts a board copy" autocomplete="off" style="width:auto;min-width:280px" ${r ? "disabled" : ""}/>`;
+        <label for="zk-fee">Relayer fee</label><select id="zk-fee" style="width:auto;min-width:110px" title="Taken out of each claim that someone else submits, so a holder can claim to a fresh account with no gas and no setup. The board sets it when it approves the payout.">${FEES.map((f) => `<option value="${f}" ${f === fee ? "selected" : ""}>${f ? `$${f} per claim` : "none"}</option>`).join("")}</select>
+        <label for="zk-pass">Board passphrase</label><input type="text" id="zk-pass" value="${esc(pass)}" placeholder="optional, 12+ characters: encrypts a board copy" autocomplete="off" style="width:auto;min-width:280px" ${r ? "disabled" : ""}/>
+        <label style="display:flex;gap:6px;align-items:center;margin:8px 0 0;flex-basis:100%"><input type="checkbox" id="zk-wkey" style="width:auto" ${wkey ? "checked" : ""} ${r ? "disabled" : ""}/> Derive my own holder key from my wallet, and seal my claim on chain (recoverable: connect the same wallet in any browser)</label>
+        <div style="flex-basis:100%;margin-top:6px"><label for="zk-members">Board members who can open the private table with their wallet (accounts, comma-separated)</label><input type="text" id="zk-members" value="${esc(members)}" placeholder="e.g. alice.testnet, bob.testnet (each must register a key)" autocomplete="off" spellcheck="false" ${r ? "disabled" : ""}/>
+        <div style="font-size:12.5px;margin-top:4px"><span id="zk-memstat"></span> <button class="btn sm" id="zk-regkey" style="margin-left:6px">Register my encryption key</button></div></div>`;
       const sel = $z("zk-pot") as HTMLSelectElement; sel.onchange = () => { pot = +sel.value; optsKey = ""; draw(); };
+      const fs = $z("zk-fee") as HTMLSelectElement; fs.onchange = () => { fee = +fs.value; optsKey = ""; draw(); };
       const pw = $z("zk-pass") as HTMLInputElement; pw.oninput = () => { pass = pw.value; };
+      ($z("zk-wkey") as HTMLInputElement).onchange = (ev) => { wkey = (ev.target as HTMLInputElement).checked; };
+      const mi = $z("zk-members") as HTMLInputElement; mi.oninput = () => { members = mi.value; }; mi.onchange = () => { members = mi.value; void readMemberKeys().then(draw); };
+      ($z("zk-regkey") as HTMLButtonElement).onclick = () => void act("regkey");
     }
+    const ms = host.querySelector("#zk-memstat"); if (ms) ms.innerHTML = memberStatus();
     $z("zk-rows-round").innerHTML = rs.slice(0, 7).map(rowHtml).join(""); $z("zk-rows-payout").innerHTML = rs.slice(7).map(rowHtml).join("");
-    const dl = built ? [["claims", "Claim files"], ["keys", "Holder keys (demo)"], ["table", "Table file for the board"], ...(built.escrow ? [["escrow", "Encrypted board copy"]] : [])] : [];
+    const dl = built ? [["claims", "Claim files"], ["keys", "Holder keys (demo)"], ["table", "Table file for the board"], ...(built.escrow ? [["escrow", "Encrypted board copy"]] : []), ...(built.envelope ? [["envelope", "Sealed board copy (wallet)"]] : [])] : [];
     $z("zk-files").innerHTML = built ? `<b>Your files exist only in this browser tab</b> (they survive a wallet redirect, not closing the tab). <b>Download them now:</b> ${dl.map(([k, t]) => `<button class="btn sm" data-zk="dl-${k}" style="margin:4px 6px 0 0">${t}</button>`).join("")}<br/><span class="muted">Claim files hold no secret and can be re-issued; each holder key is that holder's only secret (real holders make their own); the table file is private and is for the board.</span>`
       : `<span class="muted">After step 4 your files appear here.</span>`;
     host.querySelectorAll<HTMLButtonElement>("button[data-zk]").forEach((b) => (b.onclick = () => void act(b.dataset.zk!)));
@@ -134,22 +159,43 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
   async function act(a: string) {
     const me = account();
     if (a === "connect") { document.getElementById("wallet-btn")?.click(); return; }
-    if (a.startsWith("dl-") && built) { const k = a.slice(3); download(k === "claims" ? "rounds-claim-files.json" : k === "keys" ? "rounds-holder-keys-demo.json" : k === "table" ? "rounds-table-file.json" : "rounds-board-copy.escrow.json", k === "claims" ? built.claimFiles : k === "keys" ? built.keys.map((x, i) => ({ holderId: built!.claimFiles[i].holderId, ...x })) : k === "table" ? built.tableFile : built.escrow); return; }
+    if (a.startsWith("dl-") && built) { const k = a.slice(3); download(k === "claims" ? "rounds-claim-files.json" : k === "keys" ? "rounds-holder-keys-demo.json" : k === "table" ? "rounds-table-file.json" : k === "envelope" ? "rounds-board-copy.sealed.json" : "rounds-board-copy.escrow.json", k === "claims" ? built.claimFiles : k === "keys" ? built.keys.map((x, i) => ({ holderId: built!.claimFiles[i].holderId, ...x })) : k === "table" ? built.tableFile : k === "envelope" ? built.envelope : built.escrow); return; }
     if (!me || !v) return;
+    if (a === "regkey") {
+      try { await nodeGlobals(); toast("Your wallet will ask you to sign a fixed message once; it is how your encryption key is derived (nothing is sent)."); const k = await walletEncryptionKey(true);
+        await run("publish my encryption key", d.contract, [{ method: "register_enc_key", args: { public_key: k.publicKeyHex }, gasTgas: 30, depositYocto: (4n * 10n ** 21n).toString() }]); }
+      catch (e) { toast(`<span class="fail">FAIL</span> ${esc((e as Error).message)}`, "fail"); }
+      return;
+    }
     const r = myRound(), ex = myExit();
     if (a === "faucet") await run("register and get $10,000,000 test USDC", d.token, [{ method: "storage_deposit", args: { account_id: me } }, { method: "faucet", args: { account_id: me, amount: (10_000_000n * M).toString() } }]);
     else if (a === "officer") { busy = true; draw(); await boardAct(d.explorer, d.board, "set_officer", { account: me, enabled: true }, `make ${me} an officer`, () => store.set(key("officer"), true)); await new Promise((res) => setTimeout(res, 2500)); busy = false; await refresh(); }
     else if (a === "propose") {
       const m = d.model(me); if (!m) { toast(`<span class="fail">FAIL</span> the modeled round has no valid solution`, "fail"); return; }
       if (pass && pass.length < 12) { toast(`<span class="fail">FAIL</span> use a board passphrase of at least 12 characters, or leave it empty`, "fail"); return; }
+      const ids = memberIds();
+      if (ids.length && pass) { toast(`<span class="fail">FAIL</span> choose one way to give the board its copy: a passphrase, or sealing it for named members (not both)`, "fail"); return; }
       busy = true; draw();
       try {
-        await nodeGlobals(); const zk = await import("../../src/engine/zk");
+        await nodeGlobals(); const zk = await import("../../src/engine/zk"); const sl = await import("../../src/engine/sealed");
+        // keys the connected wallet derives: its own holder key (so it can be recovered) and an encryption key (so its claim can be sealed to it)
+        let enc: Awaited<ReturnType<typeof walletEncryptionKey>> | null = null;
+        if (wkey) { status = "Your wallet will ask you to sign a fixed message (twice the first time, to prove the key can be derived again) …"; draw(); enc = await walletEncryptionKey(true); }
+        let members_: { id: string; publicKey: Uint8Array }[] = [];
+        if (ids.length) {
+          await readMemberKeys();
+          const missing = ids.filter((id) => !encKeys[id]); if (missing.length) throw new Error(`${missing.join(", ")} must register an encryption key first (each member presses "Register my encryption key" with their own wallet)`);
+          members_ = ids.map((id) => ({ id, publicKey: fromHex(encKeys[id]!) }));
+        }
         status = "Building the sealed table …"; draw();
-        const b = await zk.generateShareholderReceipts(m.entries, { classes: m.classes });
-        let escrow: EscrowFile | null = null, escrowHash: string | null = null;
-        if (pass) { status = "Encrypting the board copy …"; draw(); escrow = await zk.encryptEscrow(b.tableFile, pass); escrowHash = await zk.escrowHash(escrow); }
-        built = { claimFiles: b.claimFiles, keys: b.keys, tableFile: b.tableFile, escrow, total: b.totalShares };
+        const mine: number[] = [];
+        const b = await zk.generateShareholderReceipts(m.entries, { classes: m.classes, keyFor: async (e, i) => {
+          if (!wkey || e.holderId !== me) return null; mine.push(i);
+          const secret = await walletHolderSecret(e.shareClass, true); return zk.generateHolderKey(() => BigInt(secret)); } });
+        let escrow: EscrowFile | null = null, escrowHash: string | null = null, sealedBoard: Awaited<ReturnType<typeof sl.sealTableForBoard>> | null = null;
+        if (members_.length) { status = "Sealing the private table for the board …"; draw(); sealedBoard = await sl.sealTableForBoard(b.tableFile, members_); escrowHash = sealedBoard.hash; }
+        else if (pass) { status = "Encrypting the board copy …"; draw(); escrow = await zk.encryptEscrow(b.tableFile, pass); escrowHash = await zk.escrowHash(escrow); }
+        built = { claimFiles: b.claimFiles, keys: b.keys, tableFile: b.tableFile, escrow, envelope: sealedBoard?.envelope ?? null, total: b.totalShares };
         persistBuilt(built); // survive a wallet redirect
         (window as any).__zkBuilt = built; // dev/test hook: lets scripts/e2e-zk.mjs hand the files to the claim panel
         const next: number = await call(d.rpc, d.contract, "next_round_id", {});
@@ -159,9 +205,17 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
         status = `Proved in ${((performance.now() - t0) / 1000).toFixed(1)} s. Sending the root and the proof …`; draw();
         store.set(key("pending"), { root: b.root.toString(), next });
         const args: Record<string, unknown> = { merkle_root: b.root.toString(), total_shares: b.totalShares.toString(), raise: [[me, m.raiseMicro.toString()]], deadline_ns: (Math.floor(Date.now() / 1000) + 7 * 86_400) * 1e9, proof: p.contractProof, escrow_hash: escrowHash }; // whole seconds in ns: exact as a JSON number (a u64 argument)
-        toast("Waiting for your wallet to approve: propose the confidential round …");
-        const x = await send(d.contract, [{ method: "propose_confidential_round", args, gasTgas: 300 }]);
-        if (x.hash) { toast(`<span class="pass">DONE</span> confidential round proposed: ${txLink(d.explorer, x.hash)}. Download your files now.`, "ok"); store.set(key("officer"), true); await new Promise((res) => setTimeout(res, 2500)); }
+        // one transaction: propose, then (same call, so the round exists) post my sealed claim and the sealed board copy. The contract returns any unused storage deposit.
+        const acts: Act[] = [{ method: "propose_confidential_round", args, gasTgas: 150 }];
+        if (enc && mine.length) {
+          const blobs = await sl.buildClaimBlobs(b.claimFiles, mine.map((i) => ({ holderCode: b.keys[i].holderCode, encPublicKey: enc!.publicKeyHex })));
+          const bytes = blobs.reduce((a, x) => a + x.tag.length + x.blob.length + 200, 0);
+          acts.push({ method: "publish_claim_blobs", args: { round_id: next, blobs: blobs.map((x) => [x.tag, x.blob]) }, gasTgas: 40, depositYocto: (BigInt(bytes) * 10n ** 19n * 13n / 10n).toString() });
+        }
+        if (sealedBoard) acts.push({ method: "publish_board_envelope", args: { round_id: next, envelope: sealedBoard.text }, gasTgas: 40, depositYocto: (BigInt(sealedBoard.text.length + 300) * 10n ** 19n * 13n / 10n).toString() });
+        toast(`Waiting for your wallet to approve: propose the confidential round${acts.length > 1 ? " and post the sealed data" : ""} …`);
+        const x = await send(d.contract, acts);
+        if (x.hash) { toast(`<span class="pass">DONE</span> confidential round proposed: ${txLink(d.explorer, x.hash)}.${enc && mine.length ? " Your own claim is sealed on chain: connect this wallet any time to recover it." : ""} Download the other files now.`, "ok"); store.set(key("officer"), true); await new Promise((res) => setTimeout(res, 2500)); }
       } catch (e) { toast(`<span class="fail">FAIL</span> ${esc((e as Error).message)}`, "fail"); status = ""; }
       busy = false; await refresh();
     } else if (a === "fund" && r) { const amt = BigInt(r.raise[0][1]) - BigInt(r.deposits[0]?.[1] ?? "0"); await run(`deposit ${usd(amt)} into round ${r.id}`, d.token, [{ method: "ft_transfer_call", args: { receiver_id: d.contract, amount: amt.toString(), msg: JSON.stringify({ action: "round", id: r.id }) }, gasTgas: 200, depositYocto: "1" }]); }
@@ -169,7 +223,9 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     else if (a === "close" && r) await run(`close round ${r.id}`, d.contract, [{ method: "close_round", args: { round_id: r.id }, gasTgas: 150 }]);
     else if (a === "pexit" && r) { store.set(key("pexpend"), { next: Math.max(0, ...pexits.map((e) => e.id)) + 1, round: r.id }); await run("open a private payout", d.contract, [{ method: "propose_private_exit", args: { round_id: r.id, pot: (BigInt(pot) * M).toString() }, gasTgas: 100 }]); }
     else if (a === "pfund" && ex) await run(`pay ${usd(BigInt(ex.pot))} into private payout ${ex.id}`, d.token, [{ method: "ft_transfer_call", args: { receiver_id: d.contract, amount: (BigInt(ex.pot) - BigInt(ex.funded)).toString(), msg: JSON.stringify({ action: "pexit", id: ex.id }) }, gasTgas: 200, depositYocto: "1" }]);
-    else if (a === "papprove" && ex) { busy = true; draw(); await boardAct(d.explorer, d.board, "approve_private_exit", { exit_id: ex.id }, `approve private payout ${ex.id}`, () => {}); await new Promise((res) => setTimeout(res, 2500)); busy = false; await refresh(); }
+    else if (a === "papprove" && ex) { busy = true; draw();
+      if (BigInt(fee) * M !== chainFee) { await boardAct(d.explorer, d.board, "set_claim_fee", { fee: (BigInt(fee) * M).toString() }, fee ? `set the relayer fee to $${fee} per relayed claim` : "turn the relayer fee off", () => {}); await new Promise((res) => setTimeout(res, 2500)); }
+      await boardAct(d.explorer, d.board, "approve_private_exit", { exit_id: ex.id }, `approve private payout ${ex.id}`, () => {}); await new Promise((res) => setTimeout(res, 2500)); busy = false; await refresh(); }
   }
 
   draw(); onAccount(() => void refresh()); void refresh();
@@ -178,9 +234,10 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
 
 /** The Board check: the board is given the private table (or its encrypted copy), re-seals it here, and sees whether it matches the round on chain. */
 function mountBoardCheck(host: HTMLElement, d: ZkDeps) {
-  let rounds: { id: number; root: string; total: string; escrow: string | null; status: string }[] = [], roundId = 0, out = "", busy = false, file: File | null = null, bpass = "";
+  let rounds: { id: number; root: string; total: string; escrow: string | null; status: string; sealed?: boolean }[] = [], roundId = 0, out = "", busy = false, file: File | null = null, bpass = "";
   async function load() {
-    try { const v = await loadChain(d.rpc, d.contract); rounds = v.rounds.filter((r) => String(r.kind) === "Confidential").map((r) => { const p = JSON.parse(r.plan); return { id: r.id, root: p.merkle_root, total: p.total_shares, escrow: p.escrow_hash ?? null, status: r.status }; }); } catch { rounds = []; }
+    try { const v = await loadChain(d.rpc, d.contract); rounds = v.rounds.filter((r) => String(r.kind) === "Confidential").map((r) => { const p = JSON.parse(r.plan); return { id: r.id, root: p.merkle_root, total: p.total_shares, escrow: p.escrow_hash ?? null, status: r.status }; });
+      for (const r of rounds) { try { r.sealed = !!(await call(d.rpc, d.contract, "board_envelope", { round_id: r.id })); } catch { r.sealed = false; } } } catch { rounds = []; }
     if (!rounds.some((r) => r.id === roundId)) roundId = rounds[rounds.length - 1]?.id ?? 0;
     draw();
   }
@@ -193,12 +250,40 @@ function mountBoardCheck(host: HTMLElement, d: ZkDeps) {
       <span class="fl">The table file, or the encrypted board copy</span>${dropHtml("zk-btable", file?.name ?? null, "Choose the file the proposer gave you, or drop it here")}
       <span class="fl">Passphrase (only for the encrypted board copy)</span><input type="text" id="zk-bpass" value="${esc(bpass)}" placeholder="from the proposer" autocomplete="off"/>
       <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary sm" id="zk-bcheck" ${busy || !r ? "disabled" : ""}>Check it against the chain</button><button class="btn sm" id="zk-breload">Reload rounds</button></div>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn primary sm" id="zk-bwallet" ${busy || !r?.sealed ? "disabled" : ""}>Decrypt &amp; verify with my wallet</button><span class="muted" style="font-size:12.5px">${r?.sealed ? "The proposer sealed this round's table for named board members on chain: no file, no passphrase. Your wallet signs a fixed message to open it." : "No wallet-sealed board copy is on chain for this round."}</span></div>
       <div id="zk-bout" style="margin-top:12px;font-size:14px">${out}</div>`;
     (host.querySelector("#zk-bround") as HTMLSelectElement).onchange = (e) => { roundId = +(e.target as HTMLSelectElement).value; out = ""; draw(); };
     bindDrop(host, "zk-btable", (f) => { file = f; draw(); });
     (host.querySelector("#zk-bpass") as HTMLInputElement).oninput = (e) => { bpass = (e.target as HTMLInputElement).value; };
     (host.querySelector("#zk-bcheck") as HTMLButtonElement).onclick = () => void check();
+    (host.querySelector("#zk-bwallet") as HTMLButtonElement).onclick = () => void checkWithWallet();
     (host.querySelector("#zk-breload") as HTMLButtonElement).onclick = () => void load();
+  }
+  /** Re-seal a table and compare it with the round on chain: the same report whatever the table came from. */
+  async function report(zk: typeof import("../../src/engine/zk"), table: TableFile, r: { root: string; total: string }, lines: string[]) {
+    const res = await zk.checkTableFile(table, { merkleRoot: r.root, totalShares: r.total });
+    lines.push(res.ok ? `<span class="pass">PASS</span> <b>Table matches the on-chain root</b>: it re-seals to exactly that root and adds up to ${esc(BigInt(r.total).toLocaleString("en-US"))} shares` : res.problems.map((p) => `<span class="fail">FAIL</span> ${esc(p)}`).join("<br/>"));
+    lines.push(`<span class="muted">By class:</span> ${Object.entries(res.byClass).map(([c, s]) => `${esc(c)} ${esc((s as bigint).toLocaleString("en-US"))}`).join(" · ")}`);
+    lines.push(`<table><tr><th>Holder (private label)</th><th>Class</th><th class="n">Shares</th><th class="n">Share of total</th></tr>${res.rows.map((x) => `<tr><td>${esc(x.holderId)}</td><td>${esc(x.shareClass)}</td><td class="n">${esc(BigInt(x.shares).toLocaleString("en-US"))}</td><td class="n">${esc((Number((BigInt(x.shares) * 10000n) / BigInt(r.total)) / 100).toFixed(2))}%</td></tr>`).join("")}</table>`);
+    lines.push(`<span class="muted">The check proves the file is the table the root came from. It cannot tell you whether every row is a real person: that is the board's own judgement, ideally confirmed by each holder.</span>`);
+    store.set(`zk:verified:${d.contract}:${roundId}`, res.ok);
+    return res.ok;
+  }
+  async function checkWithWallet() {
+    const r = rounds.find((x) => x.id === roundId), me = account();
+    if (!r || !r.sealed) return;
+    if (!me) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
+    busy = true; out = "Asking your wallet to unlock your key …"; draw();
+    try {
+      await nodeGlobals(); const zk = await import("../../src/engine/zk"); const sl = await import("../../src/engine/sealed");
+      const enc = await walletEncryptionKey(); const text: string = await call(d.rpc, d.contract, "board_envelope", { round_id: r.id });
+      const lines: string[] = [];
+      if (r.escrow) lines.push(`<span class="pass">PASS</span> the board copy on chain is exactly the one the round committed to`);
+      else lines.push(`<span class="muted">note</span> this round committed no hash for its board copy, so nothing ties the stored copy to the approved plan`);
+      const table = await sl.openBoardTable(text, me, enc.secretKey, r.escrow);
+      await report(zk, table, r, lines); out = lines.join("<br/>");
+    } catch (e) { out = `<span class="fail">FAIL</span> ${esc((e as Error).message)}`; }
+    busy = false; draw();
   }
   async function check() {
     const r = rounds.find((x) => x.id === roundId), passEl = host.querySelector("#zk-bpass") as HTMLInputElement; bpass = passEl.value;
@@ -214,11 +299,7 @@ function mountBoardCheck(host: HTMLElement, d: ZkDeps) {
         else lines.push(`<span class="muted">note</span> this round committed no encrypted copy, so nothing ties this file to the proposal`);
         table = await zk.decryptEscrow(esc2, bpass);
       } else table = j as TableFile;
-      const res = await zk.checkTableFile(table, { merkleRoot: r.root, totalShares: r.total });
-      lines.push(res.ok ? `<span class="pass">PASS</span> the table re-seals to exactly the root on chain and adds up to ${esc(BigInt(r.total).toLocaleString("en-US"))} shares` : res.problems.map((p) => `<span class="fail">FAIL</span> ${esc(p)}`).join("<br/>"));
-      lines.push(`<span class="muted">By class:</span> ${Object.entries(res.byClass).map(([c, s]) => `${esc(c)} ${esc((s as bigint).toLocaleString("en-US"))}`).join(" · ")}`);
-      lines.push(`<table><tr><th>Holder (private label)</th><th>Class</th><th class="n">Shares</th><th class="n">Share of total</th></tr>${res.rows.map((x) => `<tr><td>${esc(x.holderId)}</td><td>${esc(x.shareClass)}</td><td class="n">${esc(BigInt(x.shares).toLocaleString("en-US"))}</td><td class="n">${esc((Number((BigInt(x.shares) * 10000n) / BigInt(r.total)) / 100).toFixed(2))}%</td></tr>`).join("")}</table>`);
-      lines.push(`<span class="muted">The check proves the file is the table the root came from. It cannot tell you whether every row is a real person: that is the board's own judgement, ideally confirmed by each holder.</span>`);
+      await report(zk, table, r, lines);
       out = lines.join("<br/>");
     } catch (e) { out = `<span class="fail">FAIL</span> ${esc((e as Error).message)}`; }
     busy = false; draw();
@@ -228,7 +309,9 @@ function mountBoardCheck(host: HTMLElement, d: ZkDeps) {
 
 /** The Private Claim panel: a holder's own key, their claim file, any fresh recipient account, a proof made locally, and (if a relayer is configured) a submission that does not involve the holder's wallet. */
 function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
-  let claim: (ClaimFile & { holderSecret?: string }) | null = null, holderKey: HolderKey | null = null, claimName: string | null = null, keyName: string | null = null, exits: any[] = [], busy = false, reading = false, status = "", exitId = 0, relayer: string | null = null, useRelayer = true, madeKey: HolderKey | null = null, recipientVal = "";
+  let claim: (ClaimFile & { holderSecret?: string }) | null = null, holderKey: HolderKey | null = null, claimName: string | null = null, keyName: string | null = null, exits: any[] = [], busy = false, reading = false, status = "", exitId = 0, relayer: string | null = null, useRelayer = true, madeKey: HolderKey | null = null, recipientVal = "", walletCard: { holderCode: string; encPublicKey: string } | null = null, claimFee = 0n;
+  // a fresh payout account made in this tab: held in memory only, never in storage, so leaving the page without saving the phrase loses it
+  let fresh: FreshAccount | null = null, freshSaved = false, showPhrase = false;
   const roots = new Map<number, string>(); // round id -> the committed root, to match a claim file to the payouts of its own cap table
   async function load() {
     reading = true; // while the chain is re-read, never claim that the file does not match
@@ -236,6 +319,7 @@ function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
     // build the new list aside and swap it in, so a click while the chain is being read still sees the previous list instead of an empty one
     const list: any[] = []; for (let i = 1; i <= 30; i++) { try { const e = await call(d.rpc, d.contract, "private_exit", { exit_id: i }); if (!e) break; list.push(e); } catch { break; } }
     exits = list;
+    try { claimFee = BigInt(await call(d.rpc, d.contract, "claim_fee", {})); } catch { claimFee = 0n; } // an older contract has no relayer fee
     for (const e of exits) if (!roots.has(e.round_id)) { try { const c = await call(d.rpc, d.contract, "confidential_root", { round_id: e.round_id }); if (c) roots.set(e.round_id, c[0]); } catch { /* not committed yet */ } }
     const own = claim ? [...exits].reverse().find((x) => roots.get(x.round_id) === claim!.merkleRoot) : undefined;
     exitId = own?.id ?? (exits.some((x) => x.id === exitId) ? exitId : exits[exits.length - 1]?.id ?? 0);
@@ -252,14 +336,33 @@ function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
     const mine = claim && e && !mismatch ? (BigInt(claim.shareAmount) * BigInt(e.pot)) / BigInt(e.total_shares) : null;
     const keyOk = !!(claim && (holderKey || claim.holderSecret));
     host.innerHTML = `<p class="note">A holder proves, without saying which row is theirs, that they are in the committed cap table and are owed exactly their pro-rata share; the contract pays any account named in the proof and registers it with the token itself. <b>The amount paid is public.</b> If the claim is sent from your own wallet it is linked to you${relayer ? "; a relayer is available, so you can avoid that" : "; use an unrelated account or a relayer"}.</p>
-      <div class="zbar"><button class="btn sm" id="zk-mkkey">Create my holder key</button><span class="muted">${madeKey ? `Key created and downloaded. Give the proposer ONLY this code: <span class="mono">${esc(madeKey.holderCode)}</span>` : "Real holders make their own secret; only its public code goes into the table."}</span></div>
+      <div class="zbar"><button class="btn primary sm" id="zk-recover" ${busy ? "disabled" : ""}>Recover my claim with my wallet</button><span class="muted">Finds the claim sealed to your wallet on chain and derives your holder key from the same wallet: no file needed. Works if the proposer sealed your claim (the key was made from this wallet).</span></div>
+      <div class="zbar"><button class="btn sm" id="zk-mkwkey">Create my holder key from my wallet</button><select id="zk-wclass" style="width:auto"><option>Common</option><option>Series A Preferred</option><option>SAFE 1 shadow preferred</option><option>SAFE 2 shadow preferred</option></select><span class="muted">${walletCard ? `Give the proposer these two public values (nothing to save: the same wallet gives the same key again): code <span class="mono">${esc(walletCard.holderCode)}</span> · encryption key <span class="mono">${esc(walletCard.encPublicKey)}</span>` : "One key per share class. The wallet signs a fixed message; the key is derived from the signature."}</span></div>
+      <div class="zbar"><button class="btn sm" id="zk-mkkey">Create my holder key as a file</button><span class="muted">${madeKey ? `Key created and downloaded. Give the proposer ONLY this code: <span class="mono">${esc(madeKey.holderCode)}</span>` : "Real holders make their own secret; only its public code goes into the table."}</span></div>
       <span class="fl">1 · Your claim file</span>${dropHtml("zk-file", claimName, "Choose your claim file, or drop it here")}
       <span class="fl">2 · Your holder key</span>${dropHtml("zk-keyfile", keyName, "Choose your holder key, or drop it here")}
       <span class="fl">3 · Which payout</span><select id="zk-exit" style="width:auto;min-width:260px;max-width:100%">${exits.map((x) => `<option value="${x.id}" ${x.id === exitId ? "selected" : ""}>Payout ${x.id}: pot ${esc(usd(BigInt(x.pot)))}${x.approved ? "" : " (not approved yet)"}</option>`).join("") || `<option value="">no private payouts yet</option>`}</select>
       <span class="fl">4 · Receiving account (any fresh testnet account; the contract registers it with the token)</span><input type="text" id="zk-recipient" value="${esc(recipientVal)}" placeholder="fresh-account.testnet" autocomplete="off" spellcheck="false"/>
-      ${relayer ? `<label style="display:flex;gap:8px;align-items:center;margin:10px 0 0"><input type="checkbox" id="zk-relay" style="width:auto" ${useRelayer ? "checked" : ""}/> Submit through the relayer (my wallet does not sign or appear on chain)</label>` : ""}
-      <p class="muted" style="margin:10px 0">${claim ? `Claim file: ${esc(claim.holderId)} · ${esc(claim.shareClass)}${mine !== null ? ` · you would receive ${esc(usd(mine))}` : ""}.` : "No claim file yet."} ${keyOk ? "Holder key loaded." : claim ? "Now add your holder key." : ""} ${mismatch ? `<span class="fail">This claim file belongs to a different cap table than the selected payout.</span>` : ""} ${reading && claim ? `<span class="muted">Reading the chain …</span>` : ""} ${esc(status)}</p>
+      <div class="zbar" style="margin-top:8px"><button class="btn sm" id="zk-fresh">Generate a fresh payout account</button><span class="muted">A brand-new account made in this browser. Nothing to fund: the contract registers it with the token, and ${relayer ? "the relayer pays the gas" : "a relayer can pay the gas"}.</span></div>
+      ${fresh ? `<div class="card" style="margin:10px 0;padding:12px 14px"><div class="mono muted" style="font-size:11px">YOUR NEW PAYOUT ACCOUNT</div><div class="mono" style="word-break:break-all;margin:6px 0">${esc(fresh.accountId)}</div>
+        <p class="note" style="margin:6px 0"><b>Save the recovery phrase now.</b> It is shown here only; the page does not store it. Whoever has it controls the money paid to this account, and if you lose it the money is gone. Import it into any NEAR wallet (MyNearWallet, Meteor) to spend. <b>Paying it onward to an account linked to you (an exchange, your main wallet) links the two again.</b></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" id="zk-fresh-show">${showPhrase ? "Hide" : "Show"} recovery phrase</button><button class="btn sm" id="zk-fresh-dl">Download recovery file</button></div>
+        ${showPhrase ? `<pre class="out mono" style="white-space:pre-wrap;margin:8px 0 0">${esc(fresh.phrase)}</pre>` : ""}
+        <label style="display:flex;gap:8px;align-items:center;margin:10px 0 6px"><input type="checkbox" id="zk-fresh-ok" style="width:auto" ${freshSaved ? "checked" : ""}/> I saved the recovery phrase</label>
+        <button class="btn primary sm" id="zk-fresh-use" ${freshSaved ? "" : "disabled"}>Use this account as the receiving account</button></div>` : ""}
+      ${relayer ? `<label style="display:flex;gap:8px;align-items:center;margin:10px 0 0"><input type="checkbox" id="zk-relay" style="width:auto" ${useRelayer ? "checked" : ""}/> Submit through the relayer (my wallet does not sign or appear on chain)${claimFee > 0n ? `, relayer fee ${esc(usd(claimFee))} taken from the payout` : ""}</label>` : ""}
+      <p class="muted" style="margin:10px 0">${claim ? `Claim file: ${esc(claim.holderId)} · ${esc(claim.shareClass)}${mine !== null ? ` · you would receive ${esc(usd(mine))}${claimFee > 0n && mine > claimFee ? ` (${esc(usd(mine - claimFee))} if a relayer submits it, after its ${esc(usd(claimFee))} fee)` : ""}` : ""}.` : "No claim file yet."} ${keyOk ? "Holder key loaded." : claim ? "Now add your holder key." : ""} ${mismatch ? `<span class="fail">This claim file belongs to a different cap table than the selected payout.</span>` : ""} ${reading && claim ? `<span class="muted">Reading the chain …</span>` : ""} ${esc(status)}</p>
       <button class="btn primary sm" id="zk-claim-btn" ${busy || reading || !keyOk || !e || !e.approved || mismatch ? "disabled" : ""}>Prove and claim privately</button>`;
+    (host.querySelector("#zk-recover") as HTMLButtonElement).onclick = () => void recoverWithWallet();
+    (host.querySelector("#zk-mkwkey") as HTMLButtonElement).onclick = () => void walletKeyCard((host.querySelector("#zk-wclass") as HTMLSelectElement).value);
+    (host.querySelector("#zk-fresh") as HTMLButtonElement).onclick = async () => { const st = await import("../../src/engine/stealth"); fresh = st.generateFreshAccount(); freshSaved = false; showPhrase = false; draw(); };
+    const fb = (id: string) => host.querySelector<HTMLElement>(`#${id}`);
+    if (fresh) {
+      fb("zk-fresh-show")!.onclick = () => { showPhrase = !showPhrase; draw(); };
+      fb("zk-fresh-dl")!.onclick = () => { download("rounds-fresh-payout-account.json", { note: "Import the recovery phrase into a NEAR wallet to control this account. Keep this file private.", accountId: fresh!.accountId, publicKey: fresh!.publicKey, recoveryPhrase: fresh!.phrase }); freshSaved = true; draw(); };
+      (fb("zk-fresh-ok") as HTMLInputElement).onchange = (ev) => { freshSaved = (ev.target as HTMLInputElement).checked; draw(); };
+      fb("zk-fresh-use")!.onclick = () => { recipientVal = fresh!.accountId; draw(); };
+    }
     (host.querySelector("#zk-mkkey") as HTMLButtonElement).onclick = async () => { await nodeGlobals(); const zk = await import("../../src/engine/zk"); madeKey = await zk.generateHolderKey(); download("rounds-holder-key.json", madeKey); draw(); };
     bindDrop(host, "zk-file", async (f) => { try { const j = await readJson(f); claim = Array.isArray(j) ? j[0] : j; claimName = f.name; if (claim?.holderSecret) holderKey = null; status = Array.isArray(j) && j.length > 1 ? "That file holds several claim files; the first is used." : ""; } catch { claim = null; claimName = null; status = "That file is not a claim file."; } await load(); });
     bindDrop(host, "zk-keyfile", async (f) => { try { const j = await readJson(f); holderKey = Array.isArray(j) ? j[0] : j; keyName = f.name; status = ""; } catch { holderKey = null; keyName = null; status = "That file is not a holder key."; } draw(); });
@@ -267,6 +370,31 @@ function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
     (host.querySelector("#zk-recipient") as HTMLInputElement).oninput = (ev) => { recipientVal = (ev.target as HTMLInputElement).value; };
     const rl = host.querySelector("#zk-relay") as HTMLInputElement | null; if (rl) rl.onchange = () => { useRelayer = rl.checked; };
     (host.querySelector("#zk-claim-btn") as HTMLButtonElement).onclick = () => void doClaim((host.querySelector("#zk-recipient") as HTMLInputElement).value.trim().toLowerCase());
+  }
+  /** Wallet -> encryption key -> the anonymous tag -> the sealed claim files on chain -> the holder key for that class, checked against the claim's own public code. */
+  async function recoverWithWallet() {
+    if (!account()) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
+    busy = true; status = "Asking your wallet to unlock your keys …"; draw();
+    try {
+      await nodeGlobals(); const zk = await import("../../src/engine/zk"); const sl = await import("../../src/engine/sealed");
+      const enc = await walletEncryptionKey(); const tag = await sl.blobTag(enc.publicKeyHex);
+      const v = await loadChain(d.rpc, d.contract); const found: ClaimFile[] = [];
+      for (const r of v.rounds.filter((x) => String(x.kind) === "Confidential")) { const blob: string | null = await call(d.rpc, d.contract, "claim_blob", { round_id: r.id, tag }); if (blob) found.push(...(await sl.openClaimBlob(enc.secretKey, blob))); }
+      if (!found.length) throw new Error("nothing is sealed to this wallet on this contract. The proposer must have derived your key from this wallet when building the round; otherwise use the claim file and holder key you were given");
+      const e = exits.find((x) => x.id === exitId), root = e ? roots.get(e.round_id) : undefined;
+      const pick = found.find((c) => c.merkleRoot === root) ?? found[found.length - 1];
+      const secret = await walletHolderSecret(pick.shareClass);
+      await zk.initPoseidon(); if (zk.H([BigInt(secret)]).toString() !== pick.holderCode) throw new Error("the key this wallet derives does not match the claim sealed for it (a different wallet account than the one the proposer used?)");
+      claim = pick; claimName = "from the chain, sealed to your wallet"; holderKey = { version: 1, holderSecret: secret, holderCode: pick.holderCode }; keyName = "derived from your wallet";
+      status = `Recovered ${found.length} claim file(s) and your holder key from your wallet. Nothing was uploaded or downloaded.`;
+    } catch (err) { toast(`<span class="fail">FAIL</span> ${esc((err as Error).message)}`, "fail"); status = ""; }
+    busy = false; await load();
+  }
+  async function walletKeyCard(shareClass: string) {
+    if (!account()) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
+    try { await nodeGlobals(); const zk = await import("../../src/engine/zk"); const secret = await walletHolderSecret(shareClass, true); const k = await zk.generateHolderKey(() => BigInt(secret)); const enc = await walletEncryptionKey();
+      walletCard = { holderCode: k.holderCode, encPublicKey: enc.publicKeyHex }; draw(); }
+    catch (err) { toast(`<span class="fail">FAIL</span> ${esc((err as Error).message)}`, "fail"); }
   }
   async function doClaim(recipient: string) {
     const e = exits.find((x) => x.id === exitId);
@@ -297,3 +425,18 @@ function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
   }
   draw(); void load(); onAccount(() => void load());
 }
+
+/** The Board check as one call, for the voting card: a council member's wallet opens the sealed table on chain, and it is re-sealed and compared with the round's root.
+ *  The result is remembered for this tab (the same key the Board check card writes), so the badge next to Approve survives a redraw. */
+export async function verifyBoardCopyWithWallet(d: { rpc: string; contract: string }, roundId: number): Promise<{ ok: boolean; message: string }> {
+  const me = account(); if (!me) throw new Error("connect a wallet first");
+  await nodeGlobals(); const zk = await import("../../src/engine/zk"); const sl = await import("../../src/engine/sealed");
+  const round: any = await call(d.rpc, d.contract, "round", { round_id: roundId }); if (!round) throw new Error(`round ${roundId} does not exist`);
+  const plan = JSON.parse(round.plan); if (typeof plan.merkle_root !== "string") throw new Error("this is not a confidential round");
+  const text: string | null = await call(d.rpc, d.contract, "board_envelope", { round_id: roundId }); if (!text) throw new Error("no wallet-sealed board copy is on chain for this round; use the file in the Board check");
+  const enc = await walletEncryptionKey(); const table = await sl.openBoardTable(text, me, enc.secretKey, plan.escrow_hash ?? null);
+  const res = await zk.checkTableFile(table, { merkleRoot: plan.merkle_root, totalShares: plan.total_shares });
+  store.set(`zk:verified:${d.contract}:${roundId}`, res.ok);
+  return { ok: res.ok, message: res.ok ? "the private table re-seals to exactly the on-chain root and adds up to the proposed total" : res.problems.join("; ") };
+}
+export const boardCopyState = (contract: string, roundId: number): "ok" | "bad" | "unknown" => { const x = store.get(`zk:verified:${contract}:${roundId}`); return x === true ? "ok" : x === false ? "bad" : "unknown"; };

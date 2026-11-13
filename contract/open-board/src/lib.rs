@@ -3,7 +3,7 @@
 //! sandbox uses this instead; the demo run keeps its real 2-of-3 Sputnik DAO. Testnet, no value, never use for real money.
 use near_sdk::{near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise};
 
-const ALLOWED: [&str; 14] = ["set_officer", "approve_round", "approve_exit", "cancel_round", "cancel_exit", "add_class", "terminate", "withdraw_strikes", "set_project_token", "convert_safts", "grant_tokens", "terminate_token_grant", "approve_private_exit", "set_registration_deposit"];
+const ALLOWED: [&str; 15] = ["set_officer", "approve_round", "approve_exit", "cancel_round", "cancel_exit", "add_class", "terminate", "withdraw_strikes", "set_project_token", "convert_safts", "grant_tokens", "terminate_token_grant", "approve_private_exit", "set_registration_deposit", "set_claim_fee"];
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]

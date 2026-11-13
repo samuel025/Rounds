@@ -6,7 +6,8 @@
 
 **In 30 seconds.** A real cap table is private, but a group that decides things with a Sputnik DAO still needs its vote to mean something exact. Rounds does both. Every change (who puts in how much, who gets how many shares, who is paid what) is an exact plan with a SHA-256 fingerprint; the money waits in escrow; the DAO votes on the fingerprint; and the contract only runs a plan that hashes to what was approved.
 
-- **Confidential mode (zero-knowledge, optional):** the chain stores only a sealed fingerprint of the cap table plus a Groth16 proof that it adds up. No holding appears on chain, the board checks the private table before approving, and a holder claims a payout with a proof that does not say which row is theirs, paid to a brand-new account through a relayer.
+- **Confidential mode (zero-knowledge, optional):** the chain stores only a sealed fingerprint of the cap table plus a Groth16 proof that it adds up. No holding appears on chain, the board checks the private table before approving, and a holder claims a payout with a proof that does not say which row is theirs, paid to a brand-new account through a relayer. Holder keys can come from a wallet signature, so a lost file is no longer a lost claim, and the board's private table can be sealed for its members' wallets ([docs/WALLET-KEYS.md](docs/WALLET-KEYS.md)).
+- **Working together:** role views (Founder, Board voter, Investor), draft links to negotiate a round without touching the chain, investor sign-offs on each holder's own row, and before/after ownership bars on every board vote.
 - **Transparent mode (default):** the full feature set with holdings on chain: priced rounds, converting SAFEs, vesting, exits, SAFT token conversion, and a shared pot paid pro rata. Anyone can recompute any plan in their own browser (**Verify**), and failed attacks are on chain for anyone to re-check.
 
 ## Start here (judges and agents: this file is enough)
@@ -25,7 +26,7 @@
 
 **In the app, with no wallet:** press **Verify** (re-hashes every round in your browser and compares it with the chain); change the round modeler's numbers and watch every price and ownership update; under Events & verify press **Load the demo contract**, then read "Board proposals" to see each DAO vote decoded and checked. **With a free testnet wallet** (MyNearWallet or Meteor): the guided cards run a whole round, a shared payout and the confidential cap table on testnet sandboxes; the page itself offers the free test dollars and the officer role.
 
-**What you cannot run without keys that are deliberately not in the repository:** `make demo`, `make distribute`, `make tokens`, `make sandbox`, `make e2e-wallet`, `make e2e-share` and `make e2e-zk` sign testnet transactions with throwaway accounts' keys; their recorded outputs are committed (`results/demo.log`, `results/verify-onchain.txt`, `results/e2e-zk.txt`). `make test-contract` needs Rust, the wasm32 target and cargo-near (20 sandbox tests). Skip them: steps 1 to 6 already check the engine, the committed run and the contract's behaviour on the live chain.
+**What you cannot run without keys that are deliberately not in the repository:** `make demo`, `make distribute`, `make tokens`, `make sandbox`, `make e2e-wallet`, `make e2e-share`, `make e2e-zk` and `make e2e-keys` sign testnet transactions with throwaway accounts' keys; their recorded outputs are committed (`results/demo.log`, `results/verify-onchain.txt`, `results/e2e-zk.txt`, `results/e2e-keys.txt`). `make test-contract` needs Rust, the wasm32 target and cargo-near (24 sandbox tests). Skip them: steps 1 to 6 already check the engine, the committed run and the contract's behaviour on the live chain.
 
 **Where things are:** `RULES.md` (the equity rules, written first), `src/engine/` (exact-integer TypeScript engine), `contract/` (Rust Rounds contract; `contract/src/zk.rs` is the Groth16 verifier), `circuits/` (Circom), `web/` (the static app), `relayer/` (claim relayer), `scripts/` (demo, verifier, recorder), `results/` (committed outputs of real runs), `AGENTS.md` (the same command list, for agents). Live account names are in the tables below and in `web/public/*.json`.
 
@@ -62,7 +63,7 @@ Crypto-native startups, and the groups that fund them, often raise money with SA
 
 **How it works in one paragraph.** The proposer builds the private table in the browser and proves in zero knowledge (Groth16 over BN254, verified by the contract with NEAR's `alt_bn128` functions) that its holdings add up to the stated total; the chain stores only the Poseidon Merkle root, the total and the raise. The board is handed the private table (or an encrypted copy committed in the round), re-seals it in the **Board check** and compares it with the chain before approving, and a changed number is refused. A payout is a pot the DAO funds and approves; each holder proves in their own browser, with their own key and claim file, that they are in the table and are owed exactly `floor(shares × pot ÷ total shares)`, and names any fresh account to receive it.
 
-**Honest limits** (full list in [docs/CONFIDENTIAL.md](docs/CONFIDENTIAL.md)): the trusted setup has one contributor (a development setup for testnet play money; a real deployment needs a multi-party ceremony); the board approves a root it checks against a private table file, so it cannot prove every row is a real person; at most 64 table slots; a lost holder key is a lost claim; the relayer is a service the operator must run (the live site has none, so there a holder's own wallet signs the claim). How it was tested, the circuits and the contract methods are in [docs/CONFIDENTIAL.md](docs/CONFIDENTIAL.md).
+**Honest limits** (full list in [docs/CONFIDENTIAL.md](docs/CONFIDENTIAL.md)): the trusted setup has one contributor (a development setup for testnet play money; a real deployment needs a multi-party ceremony); the board approves a root it checks against a private table file, so it cannot prove every row is a real person; at most 64 table slots; a holder key kept only as a file is lost with the file (a key derived from the wallet is not: see [docs/WALLET-KEYS.md](docs/WALLET-KEYS.md)); someone must still run a relayer (the board can now set a fee that pays it out of the payout; the live site has none, so there a holder's own wallet signs the claim). How it was tested, the circuits and the contract methods are in [docs/CONFIDENTIAL.md](docs/CONFIDENTIAL.md).
 
 ## Transparent mode: what a group does with a DAO
 
@@ -83,21 +84,23 @@ The board is an unmodified Sputnik DAO v2 from the testnet factory, so in princi
 
 Every number is checked against `results/summary.json` by `make check-readme`; the full list is in [docs/EVIDENCE.md](docs/EVIDENCE.md).
 
-- The engine matches the golden vectors and <!--n:tests.engine-->92<!--/n--> Vitest tests (<!--n:tests.properties-->11<!--/n--> are property tests); a second implementation in Python agrees with it on <!--n:conformance.scenarios-->1000<!--/n--> seeded random scenarios (<!--n:conformance.mismatches-->0<!--/n--> mismatches). *Caveat:* both were written by the same author, so this shows the code matches [RULES.md](RULES.md), not that the rules are right; the independent anchors are hand-derived vectors and the YC SAFE clauses cited there.
-- The Rust contract passes <!--n:tests.sandbox-->20<!--/n--> near-workspaces sandbox tests, including the confidential-mode attack cases.
+- The engine matches the golden vectors and <!--n:tests.engine-->152<!--/n--> Vitest tests (<!--n:tests.properties-->11<!--/n--> are property tests); a second implementation in Python agrees with it on <!--n:conformance.scenarios-->1000<!--/n--> seeded random scenarios (<!--n:conformance.mismatches-->0<!--/n--> mismatches). *Caveat:* both were written by the same author, so this shows the code matches [RULES.md](RULES.md), not that the rules are right; the independent anchors are hand-derived vectors and the YC SAFE clauses cited there.
+- The Rust contract passes <!--n:tests.sandbox-->24<!--/n--> near-workspaces sandbox tests, including the confidential-mode attack cases.
 - On **testnet**, a Series A with two converting SAFEs closed through a 2-of-3 Sputnik DAO vote and an exit paid every holder: <!--n:demo.transactions-->70<!--/n--> transactions, <!--n:demo.events-->33<!--/n--> contract events, <!--n:demo.rounds_closed-->4<!--/n--> rounds closed ([docs/TESTNET-RUN.md](docs/TESTNET-RUN.md)). `make verify-onchain` recomputes it from the engine and compares with the chain (<!--n:verify_onchain.checks-->31<!--/n--> checks, <!--n:verify_onchain.failed-->0<!--/n--> failed); `make replay` does it offline (<!--n:replay.checks-->11<!--/n--> checks, <!--n:replay.failed-->0<!--/n--> failed).
 - Confidential mode, end to end on testnet through the app's buttons: private table, in-browser proof, Board check, private payout, claim to a brand-new account through a relayer (`make e2e-zk`, output in `results/e2e-zk.txt`).
+- The wallet-derived path of the same mode, on a newer confidential sandbox: the holder's key derived from the wallet, the claim and the board's table sealed on chain, the board member's wallet opening the table, recovery of the claim with no file after the browser's storage is wiped, and a claim through a relayer that pays the share minus a board-set fee (`make e2e-keys`, output in `results/e2e-keys.txt`). The signer is the app's DEV test signer, not a real wallet (see [docs/WALLET-KEYS.md](docs/WALLET-KEYS.md)).
 
 ## All commands
 
 | Do this | See this |
 |---|---|
 | `npm install && make test` | Engine tests and properties pass, then the Python conformance prints `"mismatches": 0` |
+| `make e2e-keys` | Needs `make web-dev` running, the near CLI, Chrome and the confidential sandbox's keys: the wallet-derived keys, sealed claim and board copy, recovery without files, and the relayer fee, through the app's buttons on testnet; last line `PASS summary: … 0 failed` |
 | `make e2e-zk` | Needs `make web-dev` running, the near CLI, Chrome and the confidential sandbox's keys: drives the Confidential mode card on testnet (private table, in-browser proof, Board check, private payout, claim to a brand-new account); last line `PASS summary: … 0 failed` |
 | `make replay` | Offline: the step list with transaction links, the rebuilt cap table, the exit payouts, and a last line `PASS summary: … 0 failed` |
 | `make verify-onchain` | Read-only, needs network: every line starts with `PASS`; the last line ends with `0 failed` |
 | `make distribute` | Demo step 10, run after `make demo` (needs the `near` CLI, network and the demo accounts' keys; once per deployment): the DAO treasury shares a $100,000 pot with every shareholder pro rata, checks every payout against the engine, and appends to `results/` |
-| `make test-contract` | Builds the contract and mock token, then the 20 sandbox tests pass (a few minutes; downloads the sandbox binary the first time) |
+| `make test-contract` | Builds the contract and mock token, then the 24 sandbox tests pass (a few minutes; downloads the sandbox binary the first time) |
 | `make tokens` / `make verify-tokens` | Demo step 11 on testnet (needs the `near` CLI, the demo accounts' keys and about 8 testnet NEAR from old demo accounts via `TOKENS_FUND_FROM`; once per deployment), then its read-only re-check |
 | `make web-dev` | The app on a local port: dilution chart, cap table, round modeler, investor and employee views, exit simulator, events and Verify. `make web` builds a static site into `dist/`. The repo includes a `vercel.json`, so connecting it to Vercel builds and hosts the app. |
 | `make demo` | Scripted testnet run (needs `near` CLI, network and the faucet; see docs/TESTNET-RUN.md) |
@@ -122,6 +125,7 @@ Wallet details, the guided sandbox cards and deploying the app: [docs/APP-GUIDE.
 | Read | For |
 |---|---|
 | [docs/CONFIDENTIAL.md](docs/CONFIDENTIAL.md) | circuits, contract methods, evidence and limits of confidential mode |
+| [docs/WALLET-KEYS.md](docs/WALLET-KEYS.md) | wallet-derived holder keys, sealed claims and board copies, investor sign-offs, draft links, role views, the relayer fee, and their limits |
 | [docs/EVIDENCE.md](docs/EVIDENCE.md) | every result, the engine's rules in brief, how NEAR is used |
 | [docs/TESTNET-RUN.md](docs/TESTNET-RUN.md) | the committed testnet run: accounts, transactions, caveats |
 | [docs/TOKENS.md](docs/TOKENS.md) | SAFTs and project tokens |

@@ -18,6 +18,10 @@ What Rounds does not model, and what would make it more private.
 - Tested limits: legal validity, tax treatment, real-world SAFE edge cases and behaviour at scale are **not** tested.
 
 
+## Wallet keys, sign-offs and drafts
+
+See [WALLET-KEYS.md](WALLET-KEYS.md) for the limits of wallet-derived keys (phishing, wallets that cannot sign messages, the signature being the master secret), of the relayer fee (someone still has to run a relayer), and of sign-off (public rounds only; an allocation confirmed, not legal consent).
+
 ## Board and Trezu
 
 The board is an unmodified Sputnik DAO v2 created from the testnet factory: every approval is an ordinary `FunctionCall` proposal on an account the contract treats as its board, so in principle any Sputnik DAO can be the board without changes. **Trezu was looked up, not used.** From its repository and third-party write-ups, Trezu (NEAR DevHub) is a treasury manager whose treasuries are Sputnik DAOs created by the mainnet factory; it covers payments, bulk payments, vesting and cross-chain transfers. I could not confirm that it supports testnet, opening a DAO it did not create, or custom contract calls such as `approve_round`, and its treasuries are reported to run a newer Sputnik contract than the v2.0.0 used here. So Rounds has not been run through Trezu's UI, and the demo does not claim to: the proposals and votes are sent with the `near` CLI, and the app's Board proposals card reads any Sputnik DAO directly.

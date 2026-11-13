@@ -1,18 +1,18 @@
 {
-  "suffix": "556554",
+  "suffix": "097917",
   "accounts": {
-    "ada": "rsbx-zkada-556554.testnet",
+    "ada": "rsbx-zkada-097917.testnet",
     "usdc": "rsbx-usdc-967540.testnet",
-    "rounds": "rsbx-zkrounds-556554.testnet",
-    "board": "rsbx-zkboard-556554.testnet"
+    "rounds": "rsbx-zkrounds-097917.testnet",
+    "board": "rsbx-zkboard-097917.testnet"
   },
   "deployment": {
     "network": "testnet",
     "rpc": "https://test.rpc.fastnear.com",
     "explorer": "https://testnet.nearblocks.io",
-    "rounds": "rsbx-zkrounds-556554.testnet",
-    "board": "rsbx-zkboard-556554.testnet",
-    "treasury": "rsbx-zkada-556554.testnet",
+    "rounds": "rsbx-zkrounds-097917.testnet",
+    "board": "rsbx-zkboard-097917.testnet",
+    "treasury": "rsbx-zkada-097917.testnet",
     "token": "rsbx-usdc-967540.testnet",
     "openBoard": true,
     "confidential": true,
@@ -21,21 +21,21 @@
   "txs": [
     {
       "step": "1",
-      "tx": "48Fhif2Z1GjV3wrLLJJeJRAMKim2W25JLaNSmcg9K2GW",
-      "what": "register rsbx-zkada-556554.testnet for test USDC",
-      "signer": "rsbx-zkada-556554.testnet"
+      "tx": "pUVA63dVmS97nymem4aLpWhdWYKLS23ZNhoCG1d5PTq",
+      "what": "register rsbx-zkada-097917.testnet for test USDC",
+      "signer": "rsbx-zkada-097917.testnet"
     },
     {
       "step": "1",
-      "tx": "4oV1pLJ7TyzRXmghayVj1xTavPuWJbNacvCPWs98NVAH",
-      "what": "register rsbx-zkrounds-556554.testnet for test USDC",
-      "signer": "rsbx-zkada-556554.testnet"
+      "tx": "HALnQMmtPwpfmfx4KaHM4zsJBvcjFYaVm2r3dzSdsB7h",
+      "what": "register rsbx-zkrounds-097917.testnet for test USDC",
+      "signer": "rsbx-zkada-097917.testnet"
     },
     {
       "step": "1",
-      "tx": "BoqiQYiaieHdGdQpncvNyKJpX1B7UbSpfRhKUNkWrsWe",
-      "what": "register rsbx-zkboard-556554.testnet for test USDC",
-      "signer": "rsbx-zkada-556554.testnet"
+      "tx": "AnWELfbvrLj2PRHzPYrboJiBfrMzC55UJ7Jw1vSzz2JJ",
+      "what": "register rsbx-zkboard-097917.testnet for test USDC",
+      "signer": "rsbx-zkada-097917.testnet"
     }
   ]
 }
