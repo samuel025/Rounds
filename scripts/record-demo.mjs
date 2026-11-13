@@ -67,7 +67,7 @@ if (ZKMODE) {
   await new Promise((r) => setTimeout(r, 6000));
 }
 
-const chrome = spawn("google-chrome", ["--headless=new", `--remote-debugging-port=${PORT}`, `--window-size=${W},${H}`, "--hide-scrollbars", "--force-dark-mode",
+const chrome = spawn("google-chrome", ["--headless=new", `--remote-debugging-port=${PORT}`, `--window-size=${W},${H}`, "--hide-scrollbars", "--force-dark-mode", "--disable-gpu", "--renderer-process-limit=1",
   "--no-first-run", `--user-data-dir=${join(work, "profile")}`, "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let targets; for (let i = 0; i < 50; i++) { try { targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json(); if (targets.find((t) => t.type === "page")) break; } catch {} await sleep(200); }
@@ -149,6 +149,11 @@ const click = async (sel, fx, fy) => {
 const clickJs = async (sel) => { await point(sel); const [x, y] = cur;
   await ev(`(()=>{const r=document.getElementById("rr");r.style.left="${x}px";r.style.top="${y}px";r.classList.remove("go");void r.offsetWidth;r.classList.add("go")})()`);
   await ev(`document.querySelector(${JSON.stringify(sel)}).click()`); await sleep(500); };
+// press until the page reacts (`probe` becomes true): on a slow machine a press can land while the card is redrawing and be lost
+const clickJsUntil = async (sel, probe) => {
+  for (let i = 0; i < 5; i++) { await clickJs(sel); for (let j = 0; j < 16; j++) { if (await ev(probe)) return; await sleep(500); } }
+  console.log("DIAG no reaction to", sel, await ev(`JSON.stringify({disabled:document.querySelector(${JSON.stringify(sel)})?.disabled, bout:(document.getElementById("zk-bout")?.textContent??"").slice(0,120), claim:(document.getElementById("zk-claim-body")?.textContent??"").slice(-160)})`));
+};
 const typeInto = async (sel, value) => { await click(sel); await ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});e.focus();e.select()})()`); await send("Input.insertText", { text: String(value) }); await sleep(900); };
 const drag = async (sel, from, to, steps = 24) => { // slider drag between fractions of its width
   const [x0, y] = await rect(sel, from, 0.5); const [x1] = await rect(sel, to, 0.5);
@@ -233,7 +238,7 @@ if (PART === "zk") {
   await markWait(async () => { for (let i = 0; i < 40 && !(await ev(`!![...document.querySelectorAll("#zk-bround option")].find((o) => o.value === "${next0}")`)); i++) { await ev(`document.getElementById("zk-breload").click()`); await sleep(3000); } });
   await ev(`document.getElementById("zk-bround").value="${next0}";document.getElementById("zk-bround").dispatchEvent(new Event("change"))`); await sleep(600);
   await narrate(N.zkBoard, async () => {
-    await clickJs("#zk-bwallet");
+    await clickJsUntil("#zk-bwallet", `(document.getElementById("zk-bout")?.textContent ?? "").length > 0`);
     await markWait(() => waitFor(`/Table matches the on-chain root/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000)); await sleep(800);
     await ev(`document.getElementById("zk-bout").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500); await point("#zk-bout", 0.3, 0.2); await sleep(1500);
   });
@@ -250,7 +255,7 @@ if (PART === "zk") {
     // a holder with no files at all: the browser's stored state is wiped, then the wallet alone brings the claim and the key back
     await ev(`sessionStorage.clear()`);
     await ev(`document.getElementById("zk-claim-body").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
-    await clickJs("#zk-recover");
+    await clickJsUntil("#zk-recover", `/Asking your wallet|Recovered|FAIL/.test(document.getElementById("zk-claim-body")?.textContent ?? "")`);
     await markWait(() => waitFor(`/Recovered \\d+ claim file/.test(document.getElementById("zk-claim-body")?.innerText ?? "") && !/Reading the chain/.test(document.getElementById("zk-claim-body")?.innerText ?? "")`, 120000));
     await point("#zk-claim-body", 0.5, 0.45); await sleep(1200);
     await typeInto("#zk-recipient", BURNER); await sleep(1200);
@@ -347,9 +352,9 @@ list.push(`file '${frames.at(-1).f}'`);
 for (const v of voice) v.at -= cutBefore(v.at);
 writeFileSync(join(work, "list.txt"), list.join("\n"));
 const silent = join(work, "silent.mp4");
-execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", join(work, "list.txt"), "-vf", `fps=25,scale=${W}:${H},format=yuv420p`, "-c:v", "libx264", "-crf", "23", silent]);
+execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-threads", "2", "-f", "concat", "-safe", "0", "-i", join(work, "list.txt"), "-vf", `fps=25,scale=${W}:${H},format=yuv420p`, "-c:v", "libx264", "-crf", "23", silent]);
 const ins = voice.flatMap((v) => ["-i", v.wav]);
 const filt = voice.map((v, i) => `[${i + 1}:a]adelay=${Math.round(v.at * 1000)}:all=1[a${i}]`).join(";") + ";" + voice.map((_, i) => `[a${i}]`).join("") + `amix=inputs=${voice.length}:normalize=0[aud]`;
-execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", silent, ...ins, "-filter_complex", filt, "-map", "0:v", "-map", "[aud]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", OUT]);
+execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-threads", "2", "-i", silent, ...ins, "-filter_complex", filt, "-map", "0:v", "-map", "[aud]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", OUT]);
 console.log(`wrote ${OUT} from ${frames.length} frames`);
 process.exit(0);
