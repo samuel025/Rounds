@@ -103,12 +103,14 @@ await ev(`(() => {
   #rr.go{animation:rip .5s ease-out}@keyframes rip{from{opacity:.9;transform:scale(.4)}to{opacity:0;transform:scale(3.2)}}
   #rcap{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);max-width:1000px;z-index:99997;pointer-events:none;background:rgba(0,0,0,.82);border:1px solid #333;color:#f2f2f2;font:500 22px/1.4 system-ui,sans-serif;padding:14px 22px;border-radius:12px;text-align:center;transition:opacity .25s;opacity:0}
   #rcap.on{opacity:1}
+  #rskip{position:fixed;left:50%;top:116px;transform:translateX(-50%);z-index:99997;pointer-events:none;background:rgba(0,0,0,.85);border:1px solid #555;color:#ddd;font:500 16px/1.3 system-ui,sans-serif;padding:8px 16px;border-radius:99px;opacity:0;transition:opacity .2s}#rskip.on{opacity:1}
   #title{position:fixed;inset:0;z-index:99996;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:system-ui,sans-serif;transition:opacity .6s}
   #title h1{font-size:64px;margin:0 0 14px;letter-spacing:-1.5px}#title p{font-size:24px;color:#a1a1a1;margin:4px 0}\`;
   document.head.appendChild(s);
   const c = document.createElement("div"); c.id = "rc"; c.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M3 2l7.5 19 2.6-7.9L21 10.5z" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>'; document.body.appendChild(c);
   const r = document.createElement("div"); r.id = "rr"; document.body.appendChild(r);
   const k = document.createElement("div"); k.id = "rcap"; document.body.appendChild(k);
+  const sk = document.createElement("div"); sk.id = "rskip"; sk.textContent = "Waiting for the network… the rest of this wait is skipped"; document.body.appendChild(sk);
   const t = document.createElement("div"); t.id = "title"; t.style.display = "none"; t.innerHTML = '<h1>Rounds</h1><p>Ownership and payouts a DAO approves, and anyone can check</p><p style="font-size:18px">A NEAR testnet prototype · built at NEAR HACKATHON</p>'; document.body.appendChild(t);
 })()`);
 
@@ -121,7 +123,9 @@ await send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: W, m
 const voice = []; let t0 = null;
 const relT = () => (performance.now() - (frames[0]?.t ?? performance.now())) / 1000;
 const waits = []; // spans where the script only waits for the chain or a proof: cut from the video (never while the narrator speaks)
-const markWait = async (fn) => { const a = relT(); try { return await fn(); } finally { waits.push([a, relT()]); } };
+const beginWait = async () => { await ev(`document.getElementById("rskip")?.classList.add("on")`); return relT(); };
+const endWait = async (w0) => { await ev(`document.getElementById("rskip")?.classList.remove("on")`); waits.push([w0, relT()]); };
+const markWait = async (fn) => { const a = await beginWait(); try { return await fn(); } finally { await endWait(a); } };
 const EDGE = process.env.EDGE_TTS ?? "edge-tts", VOICE = VOICE_;
 const narrate = async (text, actions = async () => {}) => { // one continuous clip per scene; the cursor acts WHILE it plays
   const mp3 = ttsFile(text);
@@ -133,20 +137,26 @@ const narrate = async (text, actions = async () => {}) => { // one continuous cl
   await sleep(Math.max(300, dur - (performance.now() - t0)) + 350);
 };
 const quiet = async () => {};
-// Calm pacing: `move` runs first, silently (scroll, click, type, wait for the chain); the picture settles; THEN the voice reads while the view holds still and
-// `show` only moves the cursor over what is being described. Nothing scrolls away while a sentence is being spoken.
-const say = async (text, move = quiet, show = quiet, tail = 500) => {
-  await move(); await sleep(800);
+// Pacing: `prep` runs first and silently (scroll the right place into view: short, natural speed); then the voice starts and `act` runs WHILE it speaks
+// (clicks, the real progress on screen, the cursor over what is described). Nothing scrolls away mid-sentence. A wait longer than the sentence is cut
+// afterwards, behind a visible "skipping ahead" label.
+const say = async (text, prep = quiet, act = quiet, tail = 500) => {
+  await prep(); await sleep(500);
   const mp3 = ttsFile(text);
   if (!existsSync(mp3)) { mkdirSync(join(mp3, ".."), { recursive: true }); execFileSync(EDGE, ["--voice", VOICE, "--rate=-2%", "--text", text, "--write-media", mp3], { stdio: "ignore" }); }
   const dur = parseFloat(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp3]).toString()) * 1000;
   voice.push({ wav: mp3, at: (performance.now() - (frames[0]?.t ?? performance.now())) / 1000, dur: dur / 1000 });
   const t0 = performance.now();
-  await show();
+  await act();
   await sleep(Math.max(300, dur - (performance.now() - t0)) + tail);
 };
 const rect = async (sel, fx = 0.5, fy = 0.5) => { for (let i = 0; i < 20 && !(await ev(`!!document.querySelector(${JSON.stringify(sel)})`)); i++) await sleep(250); return rect0(sel, fx, fy); };
 const rect0 = (sel, fx = 0.5, fy = 0.5) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)throw new Error("no "+${JSON.stringify(sel)});const b=e.getBoundingClientRect();return [b.left+b.width*${fx},b.top+b.height*${fy}]})()`);
+// scroll only if the element (and `room` px below it) is not already comfortably on screen, so nothing moves while a sentence is being read
+const ensureVisible = async (sel, room = 0) => {
+  const [top, bottom] = await ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return [0,0];const b=e.getBoundingClientRect();return [b.top,b.bottom]})()`);
+  if (top < 150 || bottom + room > H - 60) { await ev(`window.scrollBy({top:${Math.round(top - 210)},behavior:"smooth"})`); await sleep(1500); }
+};
 const scrollTo = async (sel, block = "start") => { await quiet(); await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"smooth",block:${JSON.stringify(block)}})`); await sleep(1200); };
 let cur = [640, 400];
 const moveXY = async (x, y, ms = 900) => { cur = [x, y]; await ev(`document.getElementById("rc").style.transform="translate(${x}px,${y}px)"`); await sleep(ms + 100); };
@@ -189,7 +199,7 @@ const waitRow = async (n, re, ms = 150000) => { const t0 = performance.now(); wh
 // press a guided step's button (waits until it is enabled), then wait until the page itself marks the step done; skipped if already done, so a retry is safe
 const doStep = async (act, n) => {
   if (/done/.test(await rowCls(n))) return;
-  await ev(`document.querySelector(${JSON.stringify(flowBtn(act))}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+  await ensureVisible(flowBtn(act));
   for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(flowBtn(act))});return !!b&&!b.disabled})()`)); i++) await sleep(500);
   await click(flowBtn(act)); await markWait(() => waitRow(n, /done/));
 };
@@ -200,12 +210,12 @@ const sRow = (n) => ev(`document.querySelectorAll("#share-run-body .flow-row")[$
 const doShare = async (act, n) => {
   const t0 = performance.now(); let first = true;
   if (/done/.test(await sRow(n))) return;
-  await ev(`document.querySelector(${JSON.stringify(sBtn(act))}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+  await ensureVisible(sBtn(act));
   for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(sBtn(act))});return !!b&&!b.disabled})()`)); i++) await sleep(500);
   const rel = () => ((performance.now() - (frames[0]?.t ?? performance.now())) / 1000).toFixed(1);
   console.log(`[${rel()}s] pressing ${act} (frames so far ${frames.length})`);
   await click(sBtn(act));
-  const w0 = relT(); while (performance.now() - t0 < 180000) { if (/done/.test(await sRow(n))) { waits.push([w0, relT()]); console.log(`[${rel()}s] step ${n} (${act}) done (frames so far ${frames.length})`); return; } await sleep(500); }
+  const w0 = await beginWait(); while (performance.now() - t0 < 180000) { if (/done/.test(await sRow(n))) { await endWait(w0); console.log(`[${rel()}s] step ${n} (${act}) done (frames so far ${frames.length})`); return; } await sleep(500); }
   void first; throw new Error(`share step ${n} never finished`);
 };
 const waitFor = async (js, ms = 90000) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (await ev(js)) return true; await sleep(500); } throw new Error(`timed out waiting for ${js}`); };
@@ -220,12 +230,12 @@ if (PART === "zk") {
     if (/done/.test(await zRow(n))) return;
     const sel = `#zk-run [data-zk="${act}"]`;
     if (["pexit", "pfund", "papprove"].includes(act)) { if (await ev(`document.getElementById("zk-p-payout").hidden`)) { await click('.ztab[data-ztab="payout"]'); await sleep(600); } }
-    await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+    await ensureVisible(sel);
     for (let i = 0; i < 240 && !(await ev(`(()=>{const b=document.querySelector(${JSON.stringify(sel)});return !!b&&!b.disabled})()`)); i++) await sleep(500);
     await click(sel);
-    const t0 = performance.now(), w0 = relT(); let lastTry = performance.now();
+    const t0 = performance.now(), w0 = await beginWait(); let lastTry = performance.now();
     while (performance.now() - t0 < 240000) {
-      if (/done/.test(await zRow(n))) { waits.push([w0, relT()]); return; }
+      if (/done/.test(await zRow(n))) { await endWait(w0); return; }
       // a click can be lost when the card redraws at that moment: press again only if nothing is in flight (the card says "working" while a step runs)
       if (performance.now() - lastTry > 15000 && await ev(`(()=>{const b=document.querySelector(${JSON.stringify(sel)});return !!b&&!b.disabled&&!/working/.test(document.getElementById("zk-run").innerText)})()`)) { await ev(`document.querySelector(${JSON.stringify(sel)}).click()`); lastTry = performance.now(); }
       await sleep(500);
@@ -234,45 +244,43 @@ if (PART === "zk") {
   };
   const next0 = await viewC(ZKCFG.rounds, "next_round_id", {}); // the round this recording will create
   await scrollTo("#zk");
+  const btn = (a) => `#zk-run [data-zk="${a}"]`;
   await say(N.zkIntro, quiet, async () => { await point("#zk h2", 0.3, 0.5); await sleep(3500); await click("#zk details.zd summary"); await sleep(8000); await click("#zk details.zd summary"); await point("#zk-run", 0.5, 0.15); });
-  await say(N.zkSetup, async () => { await doZk("faucet", 2); await doZk("officer", 3); }, async () => { await point("#zk-rows-round", 0.5, 0.25); await sleep(2500); await point("#zk-rows-round", 0.2, 0.5); });
+  await say(N.zkSetup, async () => { await ensureVisible(btn("faucet")); }, async () => { await doZk("faucet", 2); await doZk("officer", 3); await point("#zk-rows-round", 0.2, 0.4); });
   // the board member (the judge plays one here) publishes an encryption key derived from their wallet, so the table can be sealed for them
-  await say(N.zkKeys, async () => {
-    await typeInto("#zk-members", JUDGE); await sleep(600);
+  await say(N.zkKeys, async () => { await ensureVisible("#zk-members"); }, async () => {
+    await typeInto("#zk-members", JUDGE); await sleep(400);
     await clickJs("#zk-regkey");
     await markWait(() => waitFor(`/publish my encryption key/.test(document.getElementById("toast")?.innerText ?? "") && /DONE|FAIL/.test(document.getElementById("toast")?.innerText ?? "")`, 120000));
     await markWait(() => waitFor(`/ready/.test(document.getElementById("zk-memstat")?.textContent ?? "")`, 60000));
-  }, async () => { await point("#zk-memstat", 0.2, 0.5); await sleep(2500); await point("#zk-members", 0.3, 0.5); });
-  await say(N.zkPropose, async () => { await doZk("propose", 4); }, async () => { await point("#zk-rows-round .flow-row:nth-child(4)", 0.5, 0.5); await sleep(3000); await point("#toast", 0.5, 0.5); });
+    await point("#zk-memstat", 0.2, 0.5);
+  });
+  await say(N.zkPropose, async () => { await ensureVisible(btn("propose")); }, async () => { await doZk("propose", 4); await point("#zk-rows-round .flow-row:nth-child(4)", 0.5, 0.5); });
   // silent preparation (cut from the video): open the card, wait for the new round to be readable, pick it
   await click("details:has(#zk-board-body) > summary"); await sleep(900);
-  await ev(`document.getElementById("zk-btable-drop").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
   await markWait(async () => { for (let i = 0; i < 40 && !(await ev(`!![...document.querySelectorAll("#zk-bround option")].find((o) => o.value === "${next0}")`)); i++) { await ev(`document.getElementById("zk-breload").click()`); await sleep(3000); } });
   await ev(`document.getElementById("zk-bround").value="${next0}";document.getElementById("zk-bround").dispatchEvent(new Event("change"))`); await sleep(600);
-  await say(N.zkBoard, async () => {
+  await say(N.zkBoard, async () => { await ensureVisible("#zk-bwallet", 330); }, async () => {
     await clickJsUntil("#zk-bwallet", `(document.getElementById("zk-bout")?.textContent ?? "").length > 0`);
     await markWait(() => waitFor(`/Table matches the on-chain root/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000)); await sleep(600);
-    await ev(`document.getElementById("zk-bout").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
-  }, async () => { await point("#zk-bout", 0.3, 0.1); await sleep(3000); await point("#zk-bout", 0.3, 0.3); });
-  await say(N.zkBoard2, async () => {
-    await ev(`document.getElementById("zk-btable-drop").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1200);
+    await point("#zk-bout", 0.3, 0.15);
+  });
+  await say(N.zkBoard2, async () => { await ensureVisible("#zk-bcheck", 330); }, async () => {
     await setFileJs("zk-btable", "(()=>{const t=JSON.parse(JSON.stringify(window.__zkBuilt.tableFile));t.entries[0].shares=String(BigInt(t.entries[0].shares)+1n);return t})()", "rounds-table-file.json"); await sleep(600);
-    await click("#zk-bcheck"); await waitFor(`/DIFFERENT root/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000); await sleep(600);
-    await ev(`document.getElementById("zk-bout").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500);
-  }, async () => { await point("#zk-bout", 0.3, 0.12); });
-  await say(N.zkFund, async () => { await doZk("fund", 5); await doZk("approve", 6); await doZk("close", 7); await ev(`document.getElementById("zk-run").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500); }, async () => { await point("#zk-run .ztabs", 0.3, 0.5); await sleep(2500); await point("#zk-rows-round", 0.3, 0.5); });
-  await say(N.zkPayout, async () => { await doZk("pexit", 8); await doZk("pfund", 9); await ev(`(()=>{const e=document.getElementById("zk-fee");e.value="5";e.dispatchEvent(new Event("change"))})()`); await sleep(600); await doZk("papprove", 10); }, async () => { await point("#zk-rows-payout", 0.4, 0.4); await sleep(3000); await point("#toast", 0.5, 0.5); });
-  await say(N.zkClaim, async () => {
-    // a holder with no files at all: the browser's stored state is wiped, then the wallet alone brings the claim and the key back
-    await ev(`sessionStorage.clear()`);
-    await ev(`document.getElementById("zk-claim-body").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
+    await click("#zk-bcheck"); await markWait(() => waitFor(`/DIFFERENT root/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000)); await sleep(400);
+    await point("#zk-bout", 0.3, 0.12);
+  });
+  await say(N.zkFund, async () => { await ensureVisible(btn("fund")); }, async () => { await doZk("fund", 5); await doZk("approve", 6); await doZk("close", 7); await point("#zk-run .ztabs", 0.3, 0.5); });
+  await say(N.zkPayout, async () => { if (await ev(`document.getElementById("zk-p-payout").hidden`)) { await click('.ztab[data-ztab="payout"]'); await sleep(600); } await ensureVisible(btn("pexit")); }, async () => { await doZk("pexit", 8); await doZk("pfund", 9); await ev(`(()=>{const e=document.getElementById("zk-fee");e.value="5";e.dispatchEvent(new Event("change"))})()`); await sleep(400); await doZk("papprove", 10); await point("#zk-rows-payout", 0.4, 0.4); });
+  await say(N.zkClaim, async () => { await ev(`sessionStorage.clear()`); await ensureVisible("#zk-recover", 420); }, async () => {
+    // a holder with no files at all: the browser's stored state was wiped, then the wallet alone brings the claim and the key back
     await clickJsUntil("#zk-recover", `/Asking your wallet|Recovered|FAIL/.test(document.getElementById("zk-claim-body")?.textContent ?? "")`);
     await markWait(() => waitFor(`/Recovered \\d+ claim file/.test(document.getElementById("zk-claim-body")?.innerText ?? "") && !/Reading the chain/.test(document.getElementById("zk-claim-body")?.innerText ?? "")`, 120000));
-    await typeInto("#zk-recipient", BURNER); await sleep(1000);
+    await typeInto("#zk-recipient", BURNER); await sleep(800);
     await click("#zk-claim-btn");
     await markWait(() => waitFor(`/claimed to|FAIL/.test(document.getElementById("toast")?.innerText ?? "")`, 300000));
-    await ev(`document.getElementById("zk-claim-body").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
-  }, async () => { await point("#zk-claim-body", 0.5, 0.3); await sleep(4000); await point("#toast", 0.5, 0.5); });
+    await point("#toast", 0.5, 0.5);
+  });
   const tt = await ev(`document.getElementById("toast")?.innerText ?? ""`); console.log("claim toast:", tt.replace(/\s+/g, " ").slice(0, 160));
   if (!/DONE/.test(tt)) throw new Error("the private claim did not complete");
   await say(N.zkDone, quiet, async () => { await point("#toast", 0.5, 0.5); await sleep(1500); });
@@ -281,43 +289,41 @@ if (PART === "zk") {
 }
 
 if (PART === "all" || PART === "head") {
-await say(N.publicIntro, async () => { await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1800); },
+await say(N.publicIntro, async () => { await ev(`document.getElementById("hero-bars").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500); },
   async () => { await point("#hero-bars", 0.3, 0.3); await sleep(3500); await point("#hero-bars", 0.7, 0.8); });
 
-await say(N.modeler, async () => { await scrollTo("#model"); await sleep(600); },
+await say(N.modeler, async () => { await scrollTo("#model"); },
   async () => { await point("#form", 0.5, 0.08); await sleep(3500); await point("#ada", 0.5, 0.5); await sleep(3500); await point("#model-out", 0.5, 0.25); });
 
-await say(N.flow, async () => { await scrollTo("#try"); await doStep("faucet", 2); await doStep("officer", 3); await doStep("propose", 5); },
-  async () => { await point("#flow", 0.5, 0.3); await sleep(3000); await point("#flow", 0.5, 0.6); });
-await say(N.approve, async () => { await doStep("deposit", 6); await doStep("approve", 7); await doStep("close", 8); },
-  async () => { await point("#flow", 0.5, 0.3); await sleep(2500); await point("#flow", 0.5, 0.6); });
-await say(N.result, async () => {
-  await ev(`document.querySelector("#flow .flow-result").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
+await say(N.flow, async () => { await scrollTo("#try"); },
+  async () => { await point("#flow", 0.5, 0.2); await doStep("faucet", 2); await doStep("officer", 3); await doStep("propose", 5); await point("#flow", 0.5, 0.6); });
+await say(N.approve, quiet, async () => { await doStep("deposit", 6); await doStep("approve", 7); await doStep("close", 8); await point("#flow", 0.5, 0.5); });
+await say(N.result, async () => { await ensureVisible("#flow .flow-result", 200); }, async () => {
   for (let i = 0; i < 120 && !/Series A Preferred/.test(await ev(`document.querySelector("#flow .flow-result").innerText`)); i++) await sleep(500);
-}, async () => { await point("#flow .flow-result", 0.3, 0.5); await sleep(2500); await point("#flow .flow-result", 0.6, 0.7); });
+  await point("#flow .flow-result", 0.3, 0.5); await sleep(2500); await point("#flow .flow-result", 0.6, 0.7);
+});
 
 }
 if (PART !== "tail" && PART !== "zk") { // PART=share records only this block, on any sandbox, so the payout scenes can be redone without using one up
 // shared payout: first the calculator, then a real run on this sandbox (it now has a Series A investor among its holders)
-await say(N.share, async () => { await scrollTo("#share"); }, async () => { await sleep(1000); await drag("#pot", 0.1, 0.45, 14); await sleep(1000); await drag("#pot", 0.45, 0.1, 14); });
-await say(N.shareRun, async () => {
-  await ev(`document.getElementById("share-run").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
-  await waitFor(`document.querySelectorAll("#share-run-body .flow-result tr").length >= 3`);
+await say(N.share, async () => { await scrollTo("#share"); }, async () => { await sleep(800); await drag("#pot", 0.1, 0.45, 14); await sleep(1000); await drag("#pot", 0.45, 0.1, 14); });
+await say(N.shareRun, async () => { await ev(`document.getElementById("share-run").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500); await waitFor(`document.querySelectorAll("#share-run-body .flow-result tr").length >= 3`); }, async () => {
+  await point("#share-run-body .flow-result table", 0.5, 0.4);
   await doShare("officer", 3); await doShare("propose", 4); await doShare("fund", 5); await doShare("approve", 6); await doShare("pay", 7);
-}, async () => { await point("#share-run-body .flow-result table", 0.5, 0.4); await sleep(2500); await point("#share-run-body .flow-result table", 0.5, 0.7); });
+});
 // the narration only claims "paid" once the table really says so
 await waitFor(`/every holder was paid once/.test(document.querySelector("#share-run-body .flow-result").innerText)`, 120000);
-await say(N.sharePaid, async () => { await ev(`document.querySelector("#share-run-body .flow-result").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500); }, async () => { await point("#share-run-body .flow-result table", 0.5, 0.4); });
+await say(N.sharePaid, async () => { await ensureVisible("#share-run-body .flow-result", 250); }, async () => { await point("#share-run-body .flow-result table", 0.5, 0.4); });
 if (!/Paid/.test(await ev(`document.querySelector("#share-run-body .flow-result").innerText`))) throw new Error("the payout table does not say Paid");
 
 }
 if (PART === "all" || PART === "head") {
 // verify: the sandbox, re-hashed in the browser
-await say(N.verify, async () => {
-  await scrollTo("#verify"); await click("#pre-sandbox");
+await say(N.verify, async () => { await scrollTo("#verify"); }, async () => {
+  await click("#pre-sandbox");
   for (let i = 0; i < 90 && !(await ev(`!!document.querySelector("#chain-out .chain-tbl")`)); i++) await sleep(500);
-  await ev(`document.querySelectorAll("#chain-out .chain-tbl")[1].scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1600);
-}, async () => { await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.6, 0.5); await sleep(2500); await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.95, 0.5); });
+  await sleep(600); await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.6, 0.5); await sleep(2500); await point("#chain-out .chain-tbl:nth-of-type(2) tr:nth-child(5)", 0.95, 0.5);
+});
 const chainTxt = await ev(`document.getElementById("chain-out").innerText`);
 console.log(chainTxt.split("\n").filter((l) => /PASS|FAIL|Round/.test(l)).join("\n"));
 if (/FAIL/.test(chainTxt) || !/PASS/.test(chainTxt)) throw new Error("the on-chain check did not pass; not encoding");
