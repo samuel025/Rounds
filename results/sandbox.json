@@ -1,145 +1,145 @@
 {
-  "suffix": "718709",
+  "suffix": "044899",
   "accounts": {
-    "ada": "rsbx-ada-718709.testnet",
-    "bayo": "rsbx-bayo-718709.testnet",
-    "chidi": "rsbx-chidi-718709.testnet",
-    "dayo": "rsbx-dayo-718709.testnet",
-    "usdc": "rsbx-usdc-718709.testnet",
-    "rounds": "rsbx-rounds-718709.testnet",
-    "board": "rsbx-board-718709.testnet"
+    "ada": "rsbx-ada-044899.testnet",
+    "bayo": "rsbx-bayo-044899.testnet",
+    "chidi": "rsbx-chidi-044899.testnet",
+    "dayo": "rsbx-dayo-044899.testnet",
+    "usdc": "rsbx-usdc-967540.testnet",
+    "rounds": "rsbx-rounds-044899.testnet",
+    "board": "rsbx-board-044899.testnet"
   },
   "deployment": {
     "network": "testnet",
     "rpc": "https://test.rpc.fastnear.com",
     "explorer": "https://testnet.nearblocks.io",
-    "rounds": "rsbx-rounds-718709.testnet",
-    "board": "rsbx-board-718709.testnet",
-    "treasury": "rsbx-ada-718709.testnet",
-    "token": "rsbx-usdc-718709.testnet",
+    "rounds": "rsbx-rounds-044899.testnet",
+    "board": "rsbx-board-044899.testnet",
+    "treasury": "rsbx-ada-044899.testnet",
+    "token": "rsbx-usdc-967540.testnet",
     "openBoard": true,
     "note": "OPEN SANDBOX: anyone may become an officer and act as the board. Escrow goes to a real treasury account, not the open board. Founders and two SAFEs are closed; the Series A is yours to run. Testnet, no value."
   },
   "txs": [
     {
       "step": "1",
-      "tx": "2doCsMhM2MBjoEBpAeLqAEDKfYEf1FyYsE4cWaDF4y7S",
-      "what": "register rsbx-ada-718709.testnet for test USDC",
-      "signer": "rsbx-ada-718709.testnet"
+      "tx": "98aJ8SKSN66PX9whzq2RPKMDLq32GGu2G58f5cCyMqcS",
+      "what": "register rsbx-ada-044899.testnet for test USDC",
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "1",
-      "tx": "7eH7SNFsjD5bmFQ43nNV3fuQyvz5U3DYDcZGm7hCxn4p",
-      "what": "register rsbx-bayo-718709.testnet for test USDC",
-      "signer": "rsbx-ada-718709.testnet"
+      "tx": "9UGSwojw3EuADNxHKMrYrYou9fLePUDbH8mvGW1cEiHR",
+      "what": "register rsbx-bayo-044899.testnet for test USDC",
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "1",
-      "tx": "3iLssqQCfFraRPsJuajmoqtJZWALeiKqA5H8CXLfajpM",
-      "what": "register rsbx-chidi-718709.testnet for test USDC",
-      "signer": "rsbx-ada-718709.testnet"
+      "tx": "B9A7M7fn6QvqCBT7s39ujyANHCt1dcJcHTw98yevJ6DG",
+      "what": "register rsbx-chidi-044899.testnet for test USDC",
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "1",
-      "tx": "GNdX56rf8xsbJaHLtrrkfxNCTyKarniT5x7NFg51NKhy",
-      "what": "register rsbx-dayo-718709.testnet for test USDC",
-      "signer": "rsbx-ada-718709.testnet"
+      "tx": "BfekYGAjmoJh3pBQ4p3LVwo6wMrQFYPK3pYo5E2z5vZ5",
+      "what": "register rsbx-dayo-044899.testnet for test USDC",
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "1",
-      "tx": "DeTdZr4GunzZMnpkhcpF4ZrJaeUUqTGABBEgQ9cTL3DC",
-      "what": "register rsbx-rounds-718709.testnet for test USDC",
-      "signer": "rsbx-ada-718709.testnet"
+      "tx": "8fdB2Gk6X4vngHkwcoWAuR7tY8F4dW2MQoZj7oKpXhXT",
+      "what": "register rsbx-rounds-044899.testnet for test USDC",
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "1",
-      "tx": "39ooffQDoRdW5iW72JbeDoAypFqKRrPEjMJb6LGUywWg",
-      "what": "register rsbx-board-718709.testnet for test USDC",
-      "signer": "rsbx-ada-718709.testnet"
+      "tx": "5Uxt1ZZqwZjudwdGeT1WC9FsT5GnhH4WxwiS6GWptgiX",
+      "what": "register rsbx-board-044899.testnet for test USDC",
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "1",
-      "tx": "2FiMwk6oNQBR4x7LZ2HhAYH5RtDNWJEGcQicqQxuwhX4",
+      "tx": "DUNmneRMLcXvNrWd1HcLM1KsWqVSzf6TeQqXTrVeai9w",
       "what": "faucet: chidi $500,000",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "1",
-      "tx": "HJVNpYDWD138CvUGFt5NZDq4FUzUzihxCfNBXoYiFNHS",
+      "tx": "GvLz8qKKFRrAFNRKpwCTDEntF1yMHVj9YuAWPQBwXeZY",
       "what": "faucet: dayo $250,000",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "board",
-      "tx": "35GrL5cTu3jF8aQNeR9DVFv4WJkNxzW8AjvA1jbQWf8b",
+      "tx": "3WsTqYFHV6m7vd8hN4VF9WGZBeBRNaDz7CP8bjmroQSm",
       "what": "open board: makes ada an officer",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "2",
-      "tx": "DVV8iHYLUZjPsu1XqXALhozULqVjJApMDfbNfLWFy4is",
+      "tx": "4DvvcHGUJGtRQ5bRx6mp8x5FeYsZYcsNdnfHXGKZtnFs",
       "what": "ada proposes Founder round",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "board",
-      "tx": "9vdXcTKfwwHLBKTx6c1MXduxcooR9AxjDGuqYmPDRDCC",
+      "tx": "9ZNo8RyzH7AfMR14jeBJtA8R2zrzJzDr7yRYtnL1kya4",
       "what": "open board: approves founder issuance by plan hash",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "2",
-      "tx": "Cs4TPG1VCrbCZpq16wdbEbpfhyWJYrTk5GXnATUn8gcT",
+      "tx": "CHXNoXchEcZSK8QQDTTeHTH3xW7wk1RBQUuy6cvG2jth",
       "what": "anyone closes founder issuance",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "2",
-      "tx": "5KZBUWryhLs8WKQEXz6JoTNUh6XFt1NqdUnHrQtRuGGK",
+      "tx": "GwXnL2XJnGsejAN7uaDGWviquTT23jpZGbX5KLYUv1xg",
       "what": "ada proposes Safe round",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "3",
-      "tx": "8KjB63gub1CQawiyevaKwt9feh2P4tYU1Z82muCgGHj8",
+      "tx": "34JEtGo8oZk2p3XFpf62KkpXiowouoVo3zYgJbzErqsq",
       "what": "safe1 holder pays $500000 into escrow",
-      "signer": "rsbx-chidi-718709.testnet"
+      "signer": "rsbx-chidi-044899.testnet"
     },
     {
       "step": "board",
-      "tx": "5apuLCexC6oohv3415NXZbfBu4oe9C2bofYDDinnYW9b",
+      "tx": "C7ysZJvt5dJtHeq9jixWzmyXLdtpboJfN4sCsMgZkJSq",
       "what": "open board: approves safe1 by plan hash",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "2",
-      "tx": "6EFzHS17MnFAx3Zb7j81TkVyrM4g75JsAvseBqSUBdxQ",
+      "tx": "6W8hHPg6HLNfERsRU8vX4R639KCmnzg7SSWHvy8LgEZt",
       "what": "anyone closes safe1",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "2",
-      "tx": "F5EUduzpfu9g7UejchCihHn48EKgvDoVEhtxvhFg5mTQ",
+      "tx": "3ZV9A9u3CNBktHryYG7ugtzXa2w7xzLr8ND97AEeTCdy",
       "what": "ada proposes Safe round",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "3",
-      "tx": "CsrjwWPLgD4dkQaqDn4wb7N6QfTKx491qnJNB6WcqWew",
+      "tx": "FKA5gYqd45EkAUD6u2YMwqmBJfN24vHzNSB74pSvMc74",
       "what": "safe2 holder pays $250000 into escrow",
-      "signer": "rsbx-dayo-718709.testnet"
+      "signer": "rsbx-dayo-044899.testnet"
     },
     {
       "step": "board",
-      "tx": "F2TFuHyuddmrwAkPHiwRswjJyN5tj6RNkHvRv5yaYgyu",
+      "tx": "7uSyXFuEv63ookGqBkbjZFKSjRqq77GywAyWGpgsj9Jq",
       "what": "open board: approves safe2 by plan hash",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     },
     {
       "step": "2",
-      "tx": "9bYNzmoJGN5wPZ2sZuFJqkjd9mvvTddgfoQQwrknjXWC",
+      "tx": "AiEexDaeV1uETmFwSjpFtq5N1DBERiMe21BVz7jTCLJn",
       "what": "anyone closes safe2",
-      "signer": "rsbx-ada-718709.testnet"
+      "signer": "rsbx-ada-044899.testnet"
     }
   ]
 }
