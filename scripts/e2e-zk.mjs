@@ -57,6 +57,7 @@ try {
   check(await press("officer", 3), "step 3: the open board makes the judge an officer");
   const PASS = "a board passphrase 2026";
   await ev(`(()=>{const e=document.getElementById("zk-pass");e.value=${JSON.stringify(PASS)};e.dispatchEvent(new Event("input"))})()`);
+  await ev(`(()=>{const c=document.getElementById("zk-wkey");c.checked=false;c.dispatchEvent(new Event("change"))})()`); // this run tests the file-and-passphrase path; scripts/e2e-keys.mjs tests the wallet-derived one
   check(await press("propose", 4), "step 4: the cap table is built, PROVED in the browser, an encrypted board copy is made, and the root is proposed");
   const round = await view(ROUNDS, "round", { round_id: next0 });
   const plan = JSON.parse(round.plan);

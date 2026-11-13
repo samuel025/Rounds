@@ -5,7 +5,7 @@ import { nep413Hash, toB64, formatPublicKey } from "../src/engine/walletkey";
 
 const plan = JSON.stringify({ issuances: [
   { class: "Series A Preferred", holder: "fund.testnet", shares: "4500000" }, { class: "Series A Preferred", holder: "lead.testnet", shares: "1000" },
-  { class: "SAFE 1 shadow preferred", holder: "chidi.testnet", shares: "250000" }, { class: "Common", holder: "unissued_pool", shares: "300000" }, { class: "Common", holder: "Some Employee", shares: "5" }],
+  { class: "SAFE 1 shadow preferred", holder: "chidi.testnet", shares: "250000" }, { class: "Common", holder: "unissued_pool", shares: "300000" }, { class: "Common", holder: "Some Employee", shares: "5" }, { class: "Common", holder: "chidi", shares: "7" }],
   raise: [["fund.testnet", "9000000000000"], ["lead.testnet", "2000000"]], kind: "Priced", deadline_ns: "1" });
 const HASH = "ab".repeat(32), C = "rounds-core.testnet";
 const wallets: Record<string, Uint8Array> = {}; const wallet = (a: string) => (wallets[a] ??= ed25519.utils.randomSecretKey());
@@ -17,7 +17,7 @@ describe("rows of a plan", () => {
     const { rows, unsigned } = rowsOfPlan(plan);
     expect(rows.map((r) => r.account)).toEqual(["chidi.testnet", "fund.testnet", "lead.testnet"]);
     expect(rows.find((r) => r.account === "fund.testnet")).toEqual({ account: "fund.testnet", lines: [{ class: "Series A Preferred", shares: "4500000" }], pays: "9000000000000" });
-    expect(unsigned).toEqual(["Some Employee"]);
+    expect(unsigned).toEqual(["Some Employee", "chidi"]); // a bare name is nobody's account
   });
 });
 

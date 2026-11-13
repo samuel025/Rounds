@@ -92,7 +92,7 @@ export interface SignedMsg { accountId: string; publicKey: string; signature: st
 export async function signMessage(message: string, recipient: string, nonce: Uint8Array): Promise<SignedMsg> {
   if (!current) throw new Error("connect a wallet first");
   const tw = testWallet(); let out: any;
-  if (tw?.signMessage) out = await tw.signMessage(message, recipient, nonce);
+  if (tw) { if (!tw.signMessage) throw new Error("the test signer cannot sign messages"); out = await tw.signMessage(message, recipient, nonce); }
   else {
     const w: any = await selector!.wallet();
     if (typeof w.signMessage !== "function") throw new Error("this wallet cannot sign messages; use a holder key file instead");

@@ -2,7 +2,7 @@
 // or if the README states an untagged count of tests, scenarios, events, transactions, checks or payouts.
 import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
-const FILES = ["README.md", ...["CONFIDENTIAL", "EVIDENCE", "TESTNET-RUN", "TOKENS", "BOARD-REVIEW", "APP-GUIDE", "LIMITS"].map((n) => `docs/${n}.md`)].filter(existsSync);
+const FILES = ["README.md", ...["CONFIDENTIAL", "WALLET-KEYS", "EVIDENCE", "TESTNET-RUN", "TOKENS", "BOARD-REVIEW", "APP-GUIDE", "LIMITS"].map((n) => `docs/${n}.md`)].filter(existsSync);
 const readme = FILES.map((f) => readFileSync(f, "utf8")).join("\n"), summary = JSON.parse(readFileSync("results/summary.json", "utf8"));
 const get = (p) => p.split(".").reduce((o, k) => (o == null ? o : o[k]), summary);
 let bad = 0, n = 0;

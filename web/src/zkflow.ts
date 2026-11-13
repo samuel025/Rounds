@@ -19,7 +19,7 @@ export interface ZkDeps {
   /** the modeled round as a flat cap table (pool excluded) and the new money, for the connected account as the investor */
   model: (acct: string) => { entries: CapEntry[]; classes: string[]; raiseMicro: bigint } | null;
 }
-const M = 1_000_000n, POTS = [1_000, 10_000, 100_000], FILES = { commit: { wasm: "zk/cap_table_commit.wasm", zkey: "zk/cap_table_commit_final.zkey" }, claim: { wasm: "zk/private_claim.wasm", zkey: "zk/private_claim_final.zkey" } };
+const M = 1_000_000n, POTS = [1_000, 10_000, 100_000], FEES = [0, 1, 5, 25], FILES = { commit: { wasm: "zk/cap_table_commit.wasm", zkey: "zk/cap_table_commit_final.zkey" }, claim: { wasm: "zk/private_claim.wasm", zkey: "zk/private_claim_final.zkey" } };
 type St = "done" | "current" | "wait";
 interface Row { n: number; title: string; help: string; st: St; label?: string; act?: string; off?: boolean }
 const store = { get(k: string): any { try { const s = sessionStorage.getItem(k); return s ? JSON.parse(s) : null; } catch { return null; } }, set(k: string, v: unknown) { try { if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } } };
@@ -59,7 +59,7 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     <div class="zpanel" id="zk-p-payout" hidden><ol class="flow compact" id="zk-rows-payout"></ol>
       <details class="zd" id="zk-cdetails" open><summary>Claim a payout with a holder key</summary><div id="zk-claim-body"></div></details></div>`;
   const $z = (id: string) => host.querySelector<HTMLElement>(`#${id}`)!;
-  let v: ChainView | null = null, bal = 0n, acct: string | null = null, busy = false, status = "", readError = "", pot = 10_000, pass = "", optsKey = "", members = "", wkey = true, encKeys: Record<string, string | null> = {};
+  let v: ChainView | null = null, bal = 0n, acct: string | null = null, busy = false, status = "", readError = "", pot = 10_000, fee = 0, chainFee = 0n, pass = "", optsKey = "", members = "", wkey = true, encKeys: Record<string, string | null> = {};
   let built: Built | null = null, pexits: any[] = [], tab: "round" | "payout" = "round", lastWant: "round" | "payout" = "round";
   const key = (w: string) => `zk:${d.contract}:${acct ?? "-"}:${w}`;
   const myRound = () => { const id = store.get(key("round")); return v && id ? v.rounds.find((r) => r.id === id) ?? null : null; };
@@ -77,7 +77,7 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     if (!built && acct) { built = restoreBuilt(); if (built) (window as any).__zkBuilt = built; }
     if (acct && v) { try { bal = BigInt(await call(d.rpc, d.token, "ft_balance_of", { account_id: acct })); } catch { /* keep */ } }
     const list: any[] = []; for (let i = 1; i <= 30; i++) { try { const e = await call(d.rpc, d.contract, "private_exit", { exit_id: i }); if (!e) break; list.push(e); } catch { break; } } pexits = list;
-    await readMemberKeys();
+    await readMemberKeys(); try { chainFee = BigInt(await call(d.rpc, d.contract, "claim_fee", {})); } catch { chainFee = 0n; }
     if (v && acct) { // a proposal sent before a wallet redirect: find its round by the root it carries
       const pend = store.get(key("pending"));
       if (pend) { const r = v.rounds.find((x) => String(x.kind) === "Confidential" && x.plan.includes(`"merkle_root":"${pend.root}"`) && x.id >= pend.next); if (r) { store.set(key("round"), r.id); store.set(key("pending"), null); store.set(key("officer"), true); } }
@@ -125,15 +125,17 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     // follow the progress: once the round is closed, the work is on the payout tab (the person can still click either tab)
     const want = rs[6].st === "done" ? "payout" : "round"; if (want !== lastWant) { lastWant = want; showTab(want); }
     $z("zk-banner").innerHTML = readError ? `<div class="flow-banner fail">Could not read the contract: ${esc(readError)}</div>` : `<div class="flow-banner muted">Confidential sandbox <span class="mono">${esc(d.contract)}</span>${v ? ` · ${v.rounds.length} round(s)` : ""}${busy ? " · working…" : ""}</div>`;
-    const ok = `${pot}|${!!r}`; // re-draw the options only when they change, so typing a passphrase is never interrupted
+    const ok = `${pot}|${!!r}|${fee}`; // re-draw the options only when they change, so typing a passphrase is never interrupted
     if (ok !== optsKey) {
       optsKey = ok;
       $z("zk-opts").innerHTML = `<label for="zk-pot">Payout pot</label><select id="zk-pot" style="width:auto;min-width:120px">${POTS.map((p) => `<option value="${p}" ${p === pot ? "selected" : ""}>$${p.toLocaleString("en-US")}</option>`).join("")}</select>
+        <label for="zk-fee">Relayer fee</label><select id="zk-fee" style="width:auto;min-width:110px" title="Taken out of each claim that someone else submits, so a holder can claim to a fresh account with no gas and no setup. The board sets it when it approves the payout.">${FEES.map((f) => `<option value="${f}" ${f === fee ? "selected" : ""}>${f ? `$${f} per claim` : "none"}</option>`).join("")}</select>
         <label for="zk-pass">Board passphrase</label><input type="text" id="zk-pass" value="${esc(pass)}" placeholder="optional, 12+ characters: encrypts a board copy" autocomplete="off" style="width:auto;min-width:280px" ${r ? "disabled" : ""}/>
         <label style="display:flex;gap:6px;align-items:center;margin:8px 0 0;flex-basis:100%"><input type="checkbox" id="zk-wkey" style="width:auto" ${wkey ? "checked" : ""} ${r ? "disabled" : ""}/> Derive my own holder key from my wallet, and seal my claim on chain (recoverable: connect the same wallet in any browser)</label>
         <div style="flex-basis:100%;margin-top:6px"><label for="zk-members">Board members who can open the private table with their wallet (accounts, comma-separated)</label><input type="text" id="zk-members" value="${esc(members)}" placeholder="e.g. alice.testnet, bob.testnet (each must register a key)" autocomplete="off" spellcheck="false" ${r ? "disabled" : ""}/>
         <div style="font-size:12.5px;margin-top:4px"><span id="zk-memstat"></span> <button class="btn sm" id="zk-regkey" style="margin-left:6px">Register my encryption key</button></div></div>`;
       const sel = $z("zk-pot") as HTMLSelectElement; sel.onchange = () => { pot = +sel.value; optsKey = ""; draw(); };
+      const fs = $z("zk-fee") as HTMLSelectElement; fs.onchange = () => { fee = +fs.value; optsKey = ""; draw(); };
       const pw = $z("zk-pass") as HTMLInputElement; pw.oninput = () => { pass = pw.value; };
       ($z("zk-wkey") as HTMLInputElement).onchange = (ev) => { wkey = (ev.target as HTMLInputElement).checked; };
       const mi = $z("zk-members") as HTMLInputElement; mi.oninput = () => { members = mi.value; }; mi.onchange = () => { members = mi.value; void readMemberKeys().then(draw); };
@@ -221,7 +223,9 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
     else if (a === "close" && r) await run(`close round ${r.id}`, d.contract, [{ method: "close_round", args: { round_id: r.id }, gasTgas: 150 }]);
     else if (a === "pexit" && r) { store.set(key("pexpend"), { next: Math.max(0, ...pexits.map((e) => e.id)) + 1, round: r.id }); await run("open a private payout", d.contract, [{ method: "propose_private_exit", args: { round_id: r.id, pot: (BigInt(pot) * M).toString() }, gasTgas: 100 }]); }
     else if (a === "pfund" && ex) await run(`pay ${usd(BigInt(ex.pot))} into private payout ${ex.id}`, d.token, [{ method: "ft_transfer_call", args: { receiver_id: d.contract, amount: (BigInt(ex.pot) - BigInt(ex.funded)).toString(), msg: JSON.stringify({ action: "pexit", id: ex.id }) }, gasTgas: 200, depositYocto: "1" }]);
-    else if (a === "papprove" && ex) { busy = true; draw(); await boardAct(d.explorer, d.board, "approve_private_exit", { exit_id: ex.id }, `approve private payout ${ex.id}`, () => {}); await new Promise((res) => setTimeout(res, 2500)); busy = false; await refresh(); }
+    else if (a === "papprove" && ex) { busy = true; draw();
+      if (BigInt(fee) * M !== chainFee) { await boardAct(d.explorer, d.board, "set_claim_fee", { fee: (BigInt(fee) * M).toString() }, fee ? `set the relayer fee to $${fee} per relayed claim` : "turn the relayer fee off", () => {}); await new Promise((res) => setTimeout(res, 2500)); }
+      await boardAct(d.explorer, d.board, "approve_private_exit", { exit_id: ex.id }, `approve private payout ${ex.id}`, () => {}); await new Promise((res) => setTimeout(res, 2500)); busy = false; await refresh(); }
   }
 
   draw(); onAccount(() => void refresh()); void refresh();

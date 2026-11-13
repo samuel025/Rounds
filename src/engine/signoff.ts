@@ -11,8 +11,9 @@ export interface Signoff { account: string; message: string; nonce: string; reci
 export interface SignoffBundle { version: 1; contract: string; planHash: string; signoffs: Signoff[] }
 
 const NEAR_ACCOUNT = /^(?=.{2,64}$)([a-z0-9]+[-_])*[a-z0-9]+(\.([a-z0-9]+[-_])*[a-z0-9]+)*$/;
-/** Names in a plan that are real NEAR accounts. The unissued pool and free-text labels have nobody to sign. */
-export const isSigner = (holder: string) => holder !== "unissued_pool" && NEAR_ACCOUNT.test(holder);
+/** Names in a plan that a person can really sign for: an account under .testnet or .near, or a 64-hex implicit account. The unissued pool, free-text labels and
+ *  bare names such as the example company's "chidi" (nobody holds that account) have nobody to sign, so they are listed as unsigned instead of waiting forever. */
+export const isSigner = (holder: string) => holder !== "unissued_pool" && NEAR_ACCOUNT.test(holder) && (/\.(testnet|near)$/.test(holder) || /^[0-9a-f]{64}$/.test(holder));
 
 /** The rows of a plan, one per holder account: what that holder is issued and what they pay. Works for the plan JSON of a priced/safe/founder round. */
 export function rowsOfPlan(planJson: string): { rows: SignoffRow[]; unsigned: string[] } {

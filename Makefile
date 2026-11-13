@@ -75,6 +75,11 @@ zk-fixtures:
 e2e-zk:
 	node scripts/e2e-zk.mjs
 
+# the wallet-derived keys, sealed data and relayer fee on the confidential sandbox (needs `make web-dev` running, the near CLI, Chrome, the judge and relayer keys)
+.PHONY: e2e-keys
+e2e-keys:
+	node scripts/e2e-keys.mjs | tee results/e2e-keys.txt
+
 # a local claim relayer so a holder's wallet never signs the claim (needs a funded testnet account: RELAYER_ACCOUNT=...)
 .PHONY: relayer
 relayer:
