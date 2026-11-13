@@ -2,10 +2,10 @@
   "network": "testnet",
   "rpc": "https://test.rpc.fastnear.com",
   "explorer": "https://testnet.nearblocks.io",
-  "rounds": "rsbx-rounds-143672.testnet",
-  "board": "rsbx-board-143672.testnet",
-  "treasury": "rsbx-ada-143672.testnet",
-  "token": "rsbx-usdc-967540.testnet",
+  "rounds": "rsbx-rounds-718709.testnet",
+  "board": "rsbx-board-718709.testnet",
+  "treasury": "rsbx-ada-718709.testnet",
+  "token": "rsbx-usdc-718709.testnet",
   "openBoard": true,
   "note": "OPEN SANDBOX: anyone may become an officer and act as the board. Escrow goes to a real treasury account, not the open board. Founders and two SAFEs are closed; the Series A is yours to run. Testnet, no value."
 }
