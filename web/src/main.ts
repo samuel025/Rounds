@@ -321,7 +321,7 @@ async function initChain() {
       if (sandboxContracts.has(v.contract)) $("chain-actions").innerHTML = `<div class="chain-h"><span class="mono muted">YOUR ACTIONS</span></div><p class="note">This is an open sandbox. Everything you can do on it is in the guided steps: <a href="#try" class="mono">Run a round on testnet</a>.</p>`;
       else void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, reloadChain);
       void renderReview($("review-body"), v, dep.rpc, dep.explorer, reloadChain).catch((e) => { $("review-body").innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read the board: ${esc((e as Error).message)}</p>`; });
-      reapplyRole();
+      reapplyRole(); window.dispatchEvent(new Event("rounds:model")); // the sign-off card names this contract: let it re-read the box
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };
@@ -357,6 +357,7 @@ async function initChain() {
     mountZkFlow($("zk-run"), { ...zd, model: zkModel });
   }
   $("chain-btn").onclick = () => void run();
+  input.addEventListener("change", () => window.dispatchEvent(new Event("rounds:model")));
   input.onkeydown = (e) => { if (e.key === "Enter") void run(); };
   if (qs.get("contract") || /^#verify\//.test(location.hash)) { await run(); }
 }

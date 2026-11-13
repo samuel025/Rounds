@@ -11,9 +11,19 @@ export interface ChainView {
 export const validAccount = (s: string) => /^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$/.test(s) && s.length >= 2;
 export const esc = (s: unknown) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
+/** One JSON-RPC POST. The public RPC rate-limits bursts (a 429 or a dropped connection shows up in the browser as "Failed to fetch"), so a network error,
+ *  a 429 or a 5xx is retried a few times with a growing pause; a contract's own error is an answer and is never retried. */
+async function post(rpc: string, init: RequestInit): Promise<any> {
+  for (let i = 0; ; i++) {
+    try {
+      const res = await fetch(rpc, init);
+      if ((res.status === 429 || res.status >= 500) && i < 3) { await new Promise((r) => setTimeout(r, 500 * (i + 1) ** 2)); continue; }
+      return await res.json();
+    } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 500 * (i + 1) ** 2)); }
+  }
+}
 export async function call(rpc: string, account: string, method: string, args: object) {
-  const res = await fetch(rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", finality: "final", account_id: account, method_name: method, args_base64: btoa(JSON.stringify(args)) } }) });
-  const j = await res.json();
+  const j = await post(rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function", finality: "final", account_id: account, method_name: method, args_base64: btoa(JSON.stringify(args)) } }) });
   if (j.error || j.result?.error) throw new Error(String(j.error?.data ?? j.result?.error ?? j.error?.message ?? "rpc error").slice(0, 160));
   return JSON.parse(new TextDecoder().decode(new Uint8Array(j.result.result)));
 }

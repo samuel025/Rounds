@@ -10,6 +10,34 @@
 - **Working together:** role views (Founder, Board voter, Investor), draft links to negotiate a round without touching the chain, investor sign-offs on each holder's own row, and before/after ownership bars on every board vote.
 - **Transparent mode (default):** the full feature set with holdings on chain: priced rounds, converting SAFEs, vesting, exits, SAFT token conversion, and a shared pot paid pro rata. Anyone can recompute any plan in their own browser (**Verify**), and failed attacks are on chain for anyone to re-check.
 
+## See it in 60 seconds
+
+Screenshots of the live app (NEAR testnet), taken by `scripts/screenshots.mjs`; nothing here is mocked. The [demo video](docs/EVIDENCE.md#demo-video) walks through the same flows.
+
+**A page for each role.** Founders, board voters and investors each see only what they need; the technical proof sits behind a toggle.
+
+![The top of the app: the role bar (Founder, Board voter, Investor, Everything) above the headline](docs/img/01-home.png)
+
+**Model a round, then see the exact plan the board votes on.** Change the valuation, new money or option pool and watch the price per share and everyone's ownership update; every number comes from the exact-integer engine.
+
+![The round modeler: inputs on the left, price, pool top-up and before/after ownership bars on the right, then the plan hash](docs/img/02-modeler.png)
+
+**A board member sees who is diluted before voting.** Each Sputnik DAO proposal is decoded and its hash re-checked in the browser, with a before/after ownership chart and the change in points per holder.
+
+![A board proposal for a $9,000,000 Series A: three PASS checks, before and after ownership bars, and per-holder changes such as Ada 57.1% to 33.3%](docs/img/05-board-vote.png)
+
+**Negotiate in a link, then collect sign-offs.** A draft link carries the round's terms (no server, no account); each investor can sign off on their own row of the exact plan before it goes to the board.
+
+![The draft card with two named investors, a funding deadline and a shareable link, above the sign-off table that lists each holder's own row of the plan and shows 0 of 4 confirmed](docs/img/03-draft-signoff.png)
+
+**Confidential mode.** The cap table stays off the chain behind a zero-knowledge proof; holder keys can come from a wallet signature, and the board's private table can be sealed for its members' wallets.
+
+![The Confidential mode card: what stays private and what does not, then the seven-step flow from connecting a wallet to closing the round](docs/img/04-confidential.png)
+
+**An investor's own view.**
+
+![The investor view: your stake, price paid, liquidation preference and a vesting schedule](docs/img/06-investor.png)
+
 ## Start here (judges and agents: this file is enough)
 
 **Needs:** Node 20 or newer and Python 3. Nothing else: no account, no key, no wallet and no money for steps 1 to 7. All commands run from the repository root. Testnet only, play money.
