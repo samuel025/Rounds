@@ -4,6 +4,7 @@ import { account, onAccount, send, connect, disconnect, initWallet, readReturn, 
 import { call, esc, type ChainView } from "./chain";
 import { usdExact as usd } from "./format";
 import { DISTRIBUTE_GAS, MAX_DISTRIBUTE } from "./limits";
+import { reapplyRole } from "./roles";
 
 const M = 1_000_000n;
 
@@ -43,25 +44,25 @@ export async function renderActions(host: HTMLElement, v: ChainView, rpc: string
     }
     const parts: string[] = [];
     let bal = 0n; try { bal = BigInt(await call(rpc, v.token, "ft_balance_of", { account_id: acct })); } catch { /* token view failed */ }
-    parts.push(`<div class="act"><div><b>Test USDC</b><span class="muted"> · ${esc(v.token)}</span><br/><span class="muted">Your balance: ${esc(usd(bal))}. This token is a no-value testnet token with a public faucet.</span></div><button class="btn sm" data-a="faucet">Register and get test USDC</button></div>`);
+    parts.push(`<div class="act" data-roles="founder investor"><div><b>Test USDC</b><span class="muted"> · ${esc(v.token)}</span><br/><span class="muted">Your balance: ${esc(usd(bal))}. This token is a no-value testnet token with a public faucet.</span></div><button class="btn sm" data-a="faucet">Register and get test USDC</button></div>`);
     for (const r of v.rounds) {
       const i = r.raise.findIndex(([who]) => who === acct); if (i < 0) continue;
       const want = BigInt(r.raise[i][1]), got = BigInt(r.deposits[i]?.[1] ?? "0");
-      if (r.status === "Funding" && got < want) parts.push(`<div class="act"><div><b>Round ${r.id}</b> expects ${esc(usd(want))} from you<br/><span class="muted">Paid so far ${esc(usd(got))}. The money sits in escrow until the board approves, and is refunded if the round is cancelled.${bal < want - got ? ` <span class="fail">Your balance is too low; get test USDC first.</span>` : ""}</span></div><button class="btn sm" data-a="deposit" data-r="${r.id}">Deposit ${esc(usd(want - got))}</button></div>`);
+      if (r.status === "Funding" && got < want) parts.push(`<div class="act" data-roles="investor founder"><div><b>Round ${r.id}</b> expects ${esc(usd(want))} from you<br/><span class="muted">Paid so far ${esc(usd(got))}. The money sits in escrow until the board approves, and is refunded if the round is cancelled.${bal < want - got ? ` <span class="fail">Your balance is too low; get test USDC first.</span>` : ""}</span></div><button class="btn sm" data-a="deposit" data-r="${r.id}">Deposit ${esc(usd(want - got))}</button></div>`);
     }
     for (const r of v.rounds) {
       const funded = r.raise.every(([, a], k) => BigInt(r.deposits[k]?.[1] ?? "0") === BigInt(a));
-      if (r.status === "Approved" && funded) parts.push(`<div class="act"><div><b>Round ${r.id}</b> is approved and funded<br/><span class="muted">Anyone may close it; the contract then credits the shares.</span></div><button class="btn sm" data-a="close" data-r="${r.id}">Close round ${r.id}</button></div>`);
+      if (r.status === "Approved" && funded) parts.push(`<div class="act" data-roles="founder investor"><div><b>Round ${r.id}</b> is approved and funded<br/><span class="muted">Anyone may close it; the contract then credits the shares.</span></div><button class="btn sm" data-a="close" data-r="${r.id}">Close round ${r.id}</button></div>`);
     }
     for (const e of v.exits) {
       const idx = e.payouts.findIndex((p: any) => p.state !== "Paid");
-      if (e.approved && !e.cancelled && BigInt(e.funded) === BigInt(e.total) && idx >= 0) parts.push(`<div class="act"><div><b>Exit ${e.id}</b> is approved and funded<br/><span class="muted">Anyone may run distribute; ${e.payouts.length - idx} payout(s) remain, up to ${MAX_DISTRIBUTE} per transaction.</span></div><button class="btn sm" data-a="dist" data-e="${e.id}" data-from="${idx}" data-n="${Math.min(MAX_DISTRIBUTE, e.payouts.length - idx)}">Pay out exit ${e.id}</button></div>`);
+      if (e.approved && !e.cancelled && BigInt(e.funded) === BigInt(e.total) && idx >= 0) parts.push(`<div class="act" data-roles="founder investor"><div><b>Exit ${e.id}</b> is approved and funded<br/><span class="muted">Anyone may run distribute; ${e.payouts.length - idx} payout(s) remain, up to ${MAX_DISTRIBUTE} per transaction.</span></div><button class="btn sm" data-a="dist" data-e="${e.id}" data-from="${idx}" data-n="${Math.min(MAX_DISTRIBUTE, e.payouts.length - idx)}">Pay out exit ${e.id}</button></div>`);
     }
     // the open sandbox board (a tiny contract: anyone may ask it to act as the board for this one Rounds contract)
     let openBoard = false; try { openBoard = (await call(rpc, v.board, "open_board", {})) === true; } catch { /* a real DAO has no such method */ }
     if (openBoard) {
-      parts.push(`<div class="act"><div><b>Open sandbox board</b> <span class="muted">· ${esc(v.board)}</span><br/><span class="muted">Anyone may ask this board to act for the contract, so there is no vote. It only forwards a short list of board methods. Testnet, no value. To propose rounds you must be an officer, which the board can grant you.</span></div><button class="btn sm" data-a="officer">Make me an officer</button></div>`);
-      for (const r of v.rounds) if (r.status === "Funding") parts.push(`<div class="act sub"><div><b>Round ${r.id}</b> is waiting for board approval<br/><span class="muted">plan hash ${esc(r.plan_hash.slice(0, 16))}… The board approves this exact hash.</span></div><button class="btn sm" data-a="approve" data-r="${r.id}">Approve round ${r.id} as the board</button></div>`);
+      parts.push(`<div class="act" data-roles="founder board"><div><b>Open sandbox board</b> <span class="muted">· ${esc(v.board)}</span><br/><span class="muted">Anyone may ask this board to act for the contract, so there is no vote. It only forwards a short list of board methods. Testnet, no value. To propose rounds you must be an officer, which the board can grant you.</span></div><button class="btn sm" data-a="officer">Make me an officer</button></div>`);
+      for (const r of v.rounds) if (r.status === "Funding") parts.push(`<div class="act sub" data-roles="board"><div><b>Round ${r.id}</b> is waiting for board approval<br/><span class="muted">plan hash ${esc(r.plan_hash.slice(0, 16))}… The board approves this exact hash.</span></div><button class="btn sm" data-a="approve" data-r="${r.id}">Approve round ${r.id} as the board</button></div>`);
     } else
     // board proposals
     try {
@@ -69,13 +70,14 @@ export async function renderActions(host: HTMLElement, v: ChainView, rpc: string
       const council = (policy.roles ?? []).some((r: any) => r.kind === "Everyone" || (r.kind?.Group ?? []).includes(acct));
       const props: any[] = last > 0 ? await call(rpc, v.board, "get_proposals", { from_index: Math.max(0, last - 25), limit: 25 }) : [];
       const inProgress = props.filter((p) => p.status === "InProgress").reverse();
-      parts.push(`<div class="act"><div><b>Board</b> <span class="muted">· ${esc(v.board)}</span><br/><span class="muted">${council ? "You can vote on this board." : "Your account is not on this board, so you can read proposals but not vote."} ${inProgress.length ? "" : "No open proposals."}</span></div></div>`);
+      parts.push(`<div class="act" data-roles="board"><div><b>Board</b> <span class="muted">· ${esc(v.board)}</span><br/><span class="muted">${council ? "You can vote on this board." : "Your account is not on this board, so you can read proposals but not vote."} ${inProgress.length ? "" : "No open proposals."}</span></div></div>`);
       for (const p of inProgress) {
         const voted = p.votes && p.votes[acct];
-        parts.push(`<div class="act sub"><div>#${esc(p.id)} <span class="muted">${esc(String(p.description).slice(0, 140))}</span><br/><span class="muted">approve ${esc(p.vote_counts ? Object.values(p.vote_counts).map((c: any) => c[0]).reduce((a: number, b: number) => a + b, 0) : 0)} · proposer ${esc(p.proposer)}</span></div><button class="btn sm" data-a="vote" data-p="${esc(p.id)}" ${council && !voted ? "" : "disabled"}>${voted ? "Already voted" : "Approve"}</button></div>`);
+        parts.push(`<div class="act sub" data-roles="board"><div>#${esc(p.id)} <span class="muted">${esc(String(p.description).slice(0, 140))}</span><br/><span class="muted">approve ${esc(p.vote_counts ? Object.values(p.vote_counts).map((c: any) => c[0]).reduce((a: number, b: number) => a + b, 0) : 0)} · proposer ${esc(p.proposer)}</span></div><button class="btn sm" data-a="vote" data-p="${esc(p.id)}" ${council && !voted ? "" : "disabled"}>${voted ? "Already voted" : "Approve"}</button></div>`);
       }
-    } catch { parts.push(`<div class="act"><div><b>Board</b><br/><span class="muted">Could not read the board's proposals (is ${esc(v.board)} a Sputnik DAO?).</span></div></div>`); }
+    } catch { parts.push(`<div class="act" data-roles="board"><div><b>Board</b><br/><span class="muted">Could not read the board's proposals (is ${esc(v.board)} a Sputnik DAO?).</span></div></div>`); }
     host.innerHTML = `<div class="chain-h"><span class="mono muted">YOUR ACTIONS · SIGNED AS <b>${esc(acct)}</b></span></div>${parts.join("")}`;
+    reapplyRole();
     host.querySelectorAll<HTMLButtonElement>("button[data-a]").forEach((b) => b.onclick = () => {
       const a = b.dataset.a!;
       if (a === "faucet") void run(explorer, v.token, [{ method: "storage_deposit", args: { account_id: acct } }, { method: "faucet", args: { account_id: acct, amount: (10_000_000n * M).toString() } }], "register and get $10,000,000 test USDC", reload);

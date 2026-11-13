@@ -12,10 +12,13 @@ export interface Review {
   id: number; status: string; description: string; proposer: string;
   /** one line: what the vote does */ title: string; lines: string[]; findings: Finding[]; table?: Table;
   call?: { receiver: string; method: string; argsText: string };
+  /** ownership before and after, for the dilution bars (public rounds only; a confidential round's table is sealed) */
+  diff?: Diff;
   /** match: a hash in the vote was re-checked and equals the plan; mismatch: something does not add up; unchecked: nothing to re-check */
   verdict: "match" | "mismatch" | "unchecked";
 }
 
+export interface Diff { holders: { holder: string; before: bigint; after: bigint }[]; totalBefore: bigint; totalAfter: bigint }
 const M = 1_000_000n;
 const n = (x: bigint | string) => BigInt(x).toLocaleString("en-US");
 const POOL = "unissued_pool";
@@ -63,7 +66,8 @@ export function proposalText(r: RoundRec, link: string): string {
 }
 
 /** Holdings before and after the round, per holder (all classes together). */
-function ownership(v: ChainView, r: RoundRec): Table | undefined {
+/** Holdings before and after, as a table and as numbers for the before/after bars. */
+export function ownershipOf(v: ChainView, r: RoundRec): { table: Table; diff: Diff } | undefined {
   const p = planOf(r); if (!p) return undefined;
   const now: Record<string, bigint> = {}, add: Record<string, bigint> = {};
   for (const [h, , s] of v.holdings) now[h] = (now[h] ?? 0n) + BigInt(s);
@@ -77,8 +81,18 @@ function ownership(v: ChainView, r: RoundRec): Table | undefined {
   }
   const total = Object.values(after).reduce((a, b) => a + b, 0n);
   const hs = Object.keys(after).filter((h) => after[h] > 0n || before[h] > 0n).sort((a, b) => (after[b] > after[a] ? 1 : after[b] < after[a] ? -1 : a < b ? -1 : 1));
-  return { title: applied ? "Ownership after this round (already applied)" : "Ownership if this round is approved and closed", head: ["Holder", "Before", "This plan issues", "After", "Share after"],
-    rows: hs.map((h) => [label(h), n(before[h]), (add[h] ?? 0n) > 0n ? `+${n(add[h] ?? 0n)}` : "", n(after[h]), pct(after[h], total)]) };
+  const totalBefore = hs.reduce((a, h) => a + before[h], 0n);
+  return { diff: { holders: hs.map((h) => ({ holder: label(h), before: before[h], after: after[h] })), totalBefore, totalAfter: total },
+    table: { title: applied ? "Ownership after this round (already applied)" : "Ownership if this round is approved and closed", head: ["Holder", "Before", "This plan issues", "After", "Share after"],
+    rows: hs.map((h) => [label(h), n(before[h]), (add[h] ?? 0n) > 0n ? `+${n(add[h] ?? 0n)}` : "", n(after[h]), pct(after[h], total)]) } };
+}
+
+/** Change in ownership in percentage points, one decimal (half away from zero): "-12.3". Exact integer arithmetic on basis points. */
+export function deltaPts(before: bigint, totalBefore: bigint, after: bigint, totalAfter: bigint): string {
+  const bps = (a: bigint, t: bigint) => (t === 0n ? 0n : (a * 100_000n) / t); // hundredths of a basis point: floor
+  const d = bps(after, totalAfter) - bps(before, totalBefore); const abs = d < 0n ? -d : d;
+  const tenths = (abs + 50n) / 100n; // 1000 units = 1 pt; round to 0.1 pt
+  return `${d < 0n && tenths > 0n ? "-" : d > 0n && tenths > 0n ? "+" : ""}${tenths / 10n}.${tenths % 10n}`;
 }
 
 const bad = (text: string): Finding => ({ level: "fail", text });
@@ -118,7 +132,8 @@ export async function reviewProposal(p: Proposal, v: ChainView): Promise<Review>
     if (p0 && typeof p0.merkle_root === "string") base.findings.push(info("The cap table is sealed, so the numbers cannot be shown here. Before voting, open the Board check in the Confidential mode section with the table file the proposer gave you: it re-seals the table and compares it with this root."));
     const funded = r.raise.every(([, amt], k) => BigInt(r.deposits[k]?.[1] ?? "0") === BigInt(amt));
     if (r.raise.length) base.findings.push(info(funded ? "Every investor has paid into escrow." : "Not every investor has paid into escrow yet."));
-    return done(d.title, { lines: d.lines, table: ownership(v, r), call });
+    const own = ownershipOf(v, r);
+    return done(d.title, { lines: d.lines, table: own?.table, diff: own?.diff, call });
   }
 
   if (receiver === v.contract && method === "approve_exit") {

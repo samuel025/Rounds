@@ -3,11 +3,25 @@
 import { account, onAccount, send } from "./wallet";
 import { call, esc, type ChainView } from "./chain";
 import { toast, txLink } from "./actions";
-import { reviewProposal, proposalText, type Proposal, type Review } from "./review-core";
+import { suggestRole, reapplyRole } from "./roles";
+import { reviewProposal, proposalText, deltaPts, type Proposal, type Review, type Diff } from "./review-core";
 
 const chip = (s: string) => `<span class="chip ${esc(s.toLowerCase())}">${esc(s)}</span>`;
 const lvl = (l: string) => (l === "pass" ? `<span class="pass">PASS</span>` : l === "fail" ? `<span class="fail">FAIL</span>` : `<span class="muted">note</span>`);
 let unsub: (() => void) | null = null;
+
+const PALETTE = ["#fafafa", "#3080ff", "#44ffa4", "#f99c00", "#d946ef", "#a1a1aa", "#2ca86c", "#ff6b6b"];
+const pct1 = (a: bigint, t: bigint) => (t === 0n ? "0.0" : `${(a * 1000n) / t / 10n}.${((a * 1000n) / t) % 10n}`);
+/** Two stacked bars, before and after, on the same 100% scale, and one line per holder with the change in points: dilution at a glance. */
+export function diffHtml(d: Diff): string {
+  const col = (i: number) => PALETTE[i % PALETTE.length];
+  const bar = (key: "before" | "after", total: bigint) => `<div class="bar" role="img" aria-label="${esc(key)}: ${d.holders.map((h) => `${esc(h.holder)} ${pct1(h[key], total)}%`).join(", ")}">${d.holders.map((h, i) => h[key] > 0n ? `<div style="flex:${Number((h[key] * 10000n) / (total || 1n)) || 1};background:${col(i)}" title="${esc(h.holder)} ${pct1(h[key], total)}%"></div>` : "").join("")}</div>`;
+  return `<div class="diff"><p class="muted" style="margin:12px 0 4px">Who owns what, before and after (same scale)</p>
+    <div class="barlab"><span>Before</span><span>${d.totalBefore.toLocaleString("en-US")} shares</span></div>${bar("before", d.totalBefore)}
+    <div class="barlab"><span>After</span><span>${d.totalAfter.toLocaleString("en-US")} shares</span></div>${bar("after", d.totalAfter)}
+    <ul class="diff-l">${d.holders.map((h, i) => { const dl = deltaPts(h.before, d.totalBefore, h.after, d.totalAfter); const neg = dl.startsWith("-"), pos = dl.startsWith("+");
+      return `<li><i style="background:${col(i)}"></i><span class="diff-n">${esc(h.holder)}</span><span class="n">${pct1(h.before, d.totalBefore)}% → ${pct1(h.after, d.totalAfter)}%</span><span class="n ${neg ? "fail" : pos ? "pass" : "muted"}">${esc(dl)} pts</span></li>`; }).join("")}</ul></div>`;
+}
 
 function card(r: Review, canVote: boolean, voted: boolean): string {
   const vote = r.status !== "InProgress" ? "" :
@@ -16,6 +30,7 @@ function card(r: Review, canVote: boolean, voted: boolean): string {
   return `<div class="rv" id="proposal-${r.id}"><div class="rv-h"><b>#${r.id}</b> ${chip(r.status)} <b>${esc(r.title)}</b> ${r.verdict === "match" ? `<span class="pass">VERIFIED</span>` : r.verdict === "mismatch" ? `<span class="fail">DOES NOT MATCH</span>` : ""}</div>
     ${r.lines.length ? `<ul class="rv-l">${r.lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
     <div class="rv-f">${r.findings.map((f) => `<div>${lvl(f.level)} ${esc(f.text)}</div>`).join("")}</div>
+    ${r.diff ? diffHtml(r.diff) : ""}
     ${r.table ? `<p class="muted" style="margin:12px 0 4px">${esc(r.table.title)}</p><table><tr>${r.table.head.map((h, i) => `<th${i ? ' class="n"' : ""}>${esc(h)}</th>`).join("")}</tr>${r.table.rows.map((row) => `<tr>${row.map((c, i) => `<td${i ? ' class="n"' : ' class="mono"'}>${esc(c)}</td>`).join("")}</tr>`).join("")}</table>` : ""}
     <p class="muted" style="margin:10px 0 0">Proposer's own description (never used for the checks above): “${esc(r.description.slice(0, 400))}” · proposed by <span class="mono">${esc(r.proposer)}</span></p>
     ${r.call ? `<details class="gloss"><summary>The raw call</summary><pre class="out">${esc(r.call.receiver)} . ${esc(r.call.method)}(${esc(r.call.argsText.slice(0, 1500))})</pre></details>` : ""}
@@ -36,6 +51,7 @@ export async function renderReview(host: HTMLElement, v: ChainView, rpc: string,
 
   const draw = (acct: string | null) => {
     const council = !!acct && (policy.roles ?? []).some((r: any) => (r.kind?.Group ?? []).includes(acct));
+    if (council) suggestRole("board");
     const votedBy = (id: number) => !!acct && !!props.find((p) => p.id === id)?.votes?.[acct];
     // rounds waiting for approval that nobody has put to a vote yet: a board member can propose them with a readable description
     const queued = new Set(open.filter((r) => r.call?.method === "approve_round").map((r) => String(JSON.parse(r.call!.argsText).round_id)));
@@ -45,6 +61,7 @@ export async function renderReview(host: HTMLElement, v: ChainView, rpc: string,
       ${open.length ? `<div class="chain-h"><span class="mono muted">OPEN FOR VOTES</span></div>${open.map((r) => card(r, council, votedBy(r.id))).join("")}` : `<p class="note"><b>No proposals are open for votes.</b></p>`}
       ${council && toPropose.length ? `<div class="chain-h"><span class="mono muted">PUT A ROUND TO THE BOARD</span></div>${toPropose.map((r) => `<div class="act"><div><b>Round ${r.id}</b> awaits approval<br/><span class="muted">${esc(proposalText(r, link)).slice(0, 220)}…</span></div><button class="btn sm" data-propose="${r.id}">Propose to the board</button></div>`).join("")}<p class="note">This writes the description from the plan itself and links back here, so voters in any DAO tool can read what they are voting on. The proposal carries a bond set by the DAO.</p>` : ""}
       ${past.length ? `<details class="gloss" ${open.length ? "" : "open"}><summary>Earlier proposals of this board (${past.length}), each re-checked against the chain now</summary>${past.map((r) => card(r, false, false)).join("")}</details>` : ""}`;
+    reapplyRole();
     host.querySelectorAll<HTMLButtonElement>("button[data-vote]").forEach((b) => b.onclick = async () => {
       const id = Number(b.dataset.vote); b.disabled = true;
       try { toast(`Waiting for your wallet to approve your vote on proposal #${id} …`); const r = await send(v.board, [{ method: "act_proposal", args: { id, action: "VoteApprove" }, gasTgas: 200 }]); if (r.hash) { toast(`<span class="pass">DONE</span> your vote on #${id}: ${txLink(explorer, r.hash)}`, "ok"); reload(); } }

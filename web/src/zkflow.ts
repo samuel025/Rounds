@@ -8,6 +8,7 @@ import { call, esc, loadChain, type ChainView } from "./chain";
 import { toast, txLink, boardAct } from "./actions";
 import { usdExact as usd } from "./format";
 import type { CapEntry, ClaimFile, HolderKey, TableFile, EscrowFile } from "../../src/engine/zk";
+import type { FreshAccount } from "../../src/engine/stealth";
 
 export interface ZkDeps {
   rpc: string; explorer: string; contract: string; board: string; token: string;
@@ -229,6 +230,8 @@ function mountBoardCheck(host: HTMLElement, d: ZkDeps) {
 /** The Private Claim panel: a holder's own key, their claim file, any fresh recipient account, a proof made locally, and (if a relayer is configured) a submission that does not involve the holder's wallet. */
 function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
   let claim: (ClaimFile & { holderSecret?: string }) | null = null, holderKey: HolderKey | null = null, claimName: string | null = null, keyName: string | null = null, exits: any[] = [], busy = false, reading = false, status = "", exitId = 0, relayer: string | null = null, useRelayer = true, madeKey: HolderKey | null = null, recipientVal = "";
+  // a fresh payout account made in this tab: held in memory only, never in storage, so leaving the page without saving the phrase loses it
+  let fresh: FreshAccount | null = null, freshSaved = false, showPhrase = false;
   const roots = new Map<number, string>(); // round id -> the committed root, to match a claim file to the payouts of its own cap table
   async function load() {
     reading = true; // while the chain is re-read, never claim that the file does not match
@@ -257,9 +260,24 @@ function mountPrivateClaim(host: HTMLElement, d: ZkDeps) {
       <span class="fl">2 · Your holder key</span>${dropHtml("zk-keyfile", keyName, "Choose your holder key, or drop it here")}
       <span class="fl">3 · Which payout</span><select id="zk-exit" style="width:auto;min-width:260px;max-width:100%">${exits.map((x) => `<option value="${x.id}" ${x.id === exitId ? "selected" : ""}>Payout ${x.id}: pot ${esc(usd(BigInt(x.pot)))}${x.approved ? "" : " (not approved yet)"}</option>`).join("") || `<option value="">no private payouts yet</option>`}</select>
       <span class="fl">4 · Receiving account (any fresh testnet account; the contract registers it with the token)</span><input type="text" id="zk-recipient" value="${esc(recipientVal)}" placeholder="fresh-account.testnet" autocomplete="off" spellcheck="false"/>
+      <div class="zbar" style="margin-top:8px"><button class="btn sm" id="zk-fresh">Generate a fresh payout account</button><span class="muted">A brand-new account made in this browser. Nothing to fund: the contract registers it with the token, and ${relayer ? "the relayer pays the gas" : "a relayer can pay the gas"}.</span></div>
+      ${fresh ? `<div class="card" style="margin:10px 0;padding:12px 14px"><div class="mono muted" style="font-size:11px">YOUR NEW PAYOUT ACCOUNT</div><div class="mono" style="word-break:break-all;margin:6px 0">${esc(fresh.accountId)}</div>
+        <p class="note" style="margin:6px 0"><b>Save the recovery phrase now.</b> It is shown here only; the page does not store it. Whoever has it controls the money paid to this account, and if you lose it the money is gone. Import it into any NEAR wallet (MyNearWallet, Meteor) to spend. <b>Paying it onward to an account linked to you (an exchange, your main wallet) links the two again.</b></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" id="zk-fresh-show">${showPhrase ? "Hide" : "Show"} recovery phrase</button><button class="btn sm" id="zk-fresh-dl">Download recovery file</button></div>
+        ${showPhrase ? `<pre class="out mono" style="white-space:pre-wrap;margin:8px 0 0">${esc(fresh.phrase)}</pre>` : ""}
+        <label style="display:flex;gap:8px;align-items:center;margin:10px 0 6px"><input type="checkbox" id="zk-fresh-ok" style="width:auto" ${freshSaved ? "checked" : ""}/> I saved the recovery phrase</label>
+        <button class="btn primary sm" id="zk-fresh-use" ${freshSaved ? "" : "disabled"}>Use this account as the receiving account</button></div>` : ""}
       ${relayer ? `<label style="display:flex;gap:8px;align-items:center;margin:10px 0 0"><input type="checkbox" id="zk-relay" style="width:auto" ${useRelayer ? "checked" : ""}/> Submit through the relayer (my wallet does not sign or appear on chain)</label>` : ""}
       <p class="muted" style="margin:10px 0">${claim ? `Claim file: ${esc(claim.holderId)} · ${esc(claim.shareClass)}${mine !== null ? ` · you would receive ${esc(usd(mine))}` : ""}.` : "No claim file yet."} ${keyOk ? "Holder key loaded." : claim ? "Now add your holder key." : ""} ${mismatch ? `<span class="fail">This claim file belongs to a different cap table than the selected payout.</span>` : ""} ${reading && claim ? `<span class="muted">Reading the chain …</span>` : ""} ${esc(status)}</p>
       <button class="btn primary sm" id="zk-claim-btn" ${busy || reading || !keyOk || !e || !e.approved || mismatch ? "disabled" : ""}>Prove and claim privately</button>`;
+    (host.querySelector("#zk-fresh") as HTMLButtonElement).onclick = async () => { const st = await import("../../src/engine/stealth"); fresh = st.generateFreshAccount(); freshSaved = false; showPhrase = false; draw(); };
+    const fb = (id: string) => host.querySelector<HTMLElement>(`#${id}`);
+    if (fresh) {
+      fb("zk-fresh-show")!.onclick = () => { showPhrase = !showPhrase; draw(); };
+      fb("zk-fresh-dl")!.onclick = () => { download("rounds-fresh-payout-account.json", { note: "Import the recovery phrase into a NEAR wallet to control this account. Keep this file private.", accountId: fresh!.accountId, publicKey: fresh!.publicKey, recoveryPhrase: fresh!.phrase }); freshSaved = true; draw(); };
+      (fb("zk-fresh-ok") as HTMLInputElement).onchange = (ev) => { freshSaved = (ev.target as HTMLInputElement).checked; draw(); };
+      fb("zk-fresh-use")!.onclick = () => { recipientVal = fresh!.accountId; draw(); };
+    }
     (host.querySelector("#zk-mkkey") as HTMLButtonElement).onclick = async () => { await nodeGlobals(); const zk = await import("../../src/engine/zk"); madeKey = await zk.generateHolderKey(); download("rounds-holder-key.json", madeKey); draw(); };
     bindDrop(host, "zk-file", async (f) => { try { const j = await readJson(f); claim = Array.isArray(j) ? j[0] : j; claimName = f.name; if (claim?.holderSecret) holderKey = null; status = Array.isArray(j) && j.length > 1 ? "That file holds several claim files; the first is used." : ""; } catch { claim = null; claimName = null; status = "That file is not a claim file."; } await load(); });
     bindDrop(host, "zk-keyfile", async (f) => { try { const j = await readJson(f); holderKey = Array.isArray(j) ? j[0] : j; keyName = f.name; status = ""; } catch { holderKey = null; keyName = null; status = "That file is not a holder key."; } draw(); });

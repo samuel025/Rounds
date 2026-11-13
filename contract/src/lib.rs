@@ -5,7 +5,7 @@ use near_sdk::serde::Deserialize;
 use near_sdk::store::{IterableMap, IterableSet, LookupMap, LookupSet};
 mod zk;
 use zk::Groth16Proof;
-use near_sdk::{env, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError};
+use near_sdk::{env, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue};
 
 const GAS_FT: Gas = Gas::from_tgas(10);
 const GAS_CB: Gas = Gas::from_tgas(15);
@@ -150,6 +150,17 @@ pub struct Rounds {
     used_nullifiers: LookupSet<String>, private_exits: IterableMap<u64, PrivateExit>, next_private_exit: u64, private_funds_total: u128,
     /// NEAR the contract attaches when it registers a claim's recipient with the payment token (0 for test tokens; a real NEP-141 token asks for about 0.00125 NEAR)
     registration_deposit: u128,
+    /// A fixed fee (in payment-token units) a claim pays to whoever submitted it, taken out of the holder's payout, so a holder can claim to a fresh account
+    /// through ANY relayer with no gas and no setup. 0 = no fee. Set by the board; a holder who submits their own claim pays no fee.
+    claim_fee: u128,
+    /// Fees whose payment to the relayer failed (for example the relayer was not registered with the token); the relayer takes them with `withdraw_fee`.
+    unpaid_fees: LookupMap<AccountId, u128>,
+    /// Sealed claim data per holder, posted by the proposer: key "round|tag", tag = sha256 hex of the holder's public code. The contract stores the bytes and cannot read them.
+    claim_blobs: LookupMap<String, String>, blob_rounds: LookupSet<u64>,
+    /// The hash of the investors' signed-off bundle for a round, committed while it is still Funding.
+    signoff_hashes: LookupMap<u64, String>,
+    /// Each account's public encryption key (X25519, 64 hex chars), so a proposer can seal the private table for the board's council members.
+    enc_keys: LookupMap<AccountId, String>,
 }
 
 fn event(name: &str, data: &str) {
@@ -205,6 +216,7 @@ impl Rounds {
             safts: IterableMap::new(b"f"), token_grants: IterableMap::new(b"k"), next_token_grant: 1,
             confidential_roots: LookupMap::new(b"R"), confidential_supply: LookupMap::new(b"S"), used_nullifiers: LookupSet::new(b"N"),
             private_exits: IterableMap::new(b"X"), next_private_exit: 1, private_funds_total: 0, registration_deposit: 0,
+            claim_fee: 0, unpaid_fees: LookupMap::new(b"U"), claim_blobs: LookupMap::new(b"B"), blob_rounds: LookupSet::new(b"b"), signoff_hashes: LookupMap::new(b"G"), enc_keys: LookupMap::new(b"E"),
         }
     }
     fn only_board(&self) { require!(env::predecessor_account_id() == self.board, "only the board"); }
@@ -853,31 +865,134 @@ impl Rounds {
         let public = [zk::field_element(&root), zk::field_element(&nullifier), zk::field_from_u64(exit_id), zk::field_from_u128(e.total_shares.0), zk::field_from_u128(e.pot.0),
             zk::field_from_u128(payout_amount.0), zk::recipient_hash(recipient_id.as_str())];
         require!(zk::verify(&zk::claim_key(), &proof, &public), "ERR_INVALID_PROOF");
+        // The relayer fee comes OUT of the holder's payout (the proof fixes the payout, so nobody can take more than the board-set fee). A holder who
+        // sends their own claim (caller == recipient) pays nothing.
+        let relayer = env::predecessor_account_id();
+        let fee = if relayer == recipient_id { 0 } else { self.claim_fee };
+        require!(fee == 0 || payout_amount.0 > fee, "ERR_FEE_EXCEEDS_PAYOUT");
+        let net = payout_amount.0 - fee;
         self.used_nullifiers.insert(nullifier.clone());
         e.claimed = U128(e.claimed.0 + payout_amount.0); self.private_exits.insert(exit_id, e);
         // The contract registers the recipient with the token itself (paying the storage deposit), so the claimant never has to send a visible
-        // registration transaction from their own wallet. Then the payout; the callback looks only at the payout's result.
+        // registration transaction from their own wallet. Then the payout; the callback looks only at the payout's result. The fee is paid in a
+        // second step, only after the holder has been paid, so a failure can never leave a holder unpaid and a relayer paid.
+        let cb_gas = if fee > 0 { GAS_CB.saturating_add(GAS_FT).saturating_add(GAS_FT).saturating_add(GAS_CB) } else { GAS_CB };
         Promise::new(self.payment_token.clone())
             .function_call("storage_deposit", format!("{{\"account_id\":\"{}\",\"registration_only\":true}}", recipient_id).into_bytes(), NearToken::from_yoctonear(self.registration_deposit), GAS_FT)
             .then(Promise::new(self.payment_token.clone())
-                .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", recipient_id, payout_amount.0).into_bytes(), YOCTO, GAS_FT))
-            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_private_claim(exit_id, nullifier, payout_amount))
+                .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", recipient_id, net).into_bytes(), YOCTO, GAS_FT))
+            .then(Self::ext(env::current_account_id()).with_static_gas(cb_gas).on_private_claim(exit_id, nullifier, payout_amount, relayer, U128(fee)))
     }
     /// The board sets how much NEAR the contract attaches when registering a claim's recipient with the payment token.
     pub fn set_registration_deposit(&mut self, yocto: U128) { self.only_board(); self.registration_deposit = yocto.0; }
     pub fn registration_deposit(&self) -> U128 { U128(self.registration_deposit) }
     #[private]
-    pub fn on_private_claim(&mut self, exit_id: u64, nullifier: String, amount: U128, #[callback_result] res: Result<(), PromiseError>) -> bool {
+    pub fn on_private_claim(&mut self, exit_id: u64, nullifier: String, amount: U128, relayer: AccountId, fee: U128, #[callback_result] res: Result<(), PromiseError>) -> PromiseOrValue<bool> {
         let mut e = self.private_exits.get(&exit_id).cloned().unwrap_or_else(|| env::panic_str("no such private exit"));
         if res.is_err() {
-            // the payout did not go out (for example the recipient is not registered with the token): free the nullifier so the claim can be retried
+            // the payout did not go out (for example the recipient is not registered with the token): free the nullifier so the claim can be retried.
+            // Nothing was paid to the relayer yet, so the whole payout (holder share and fee) is back in the pot.
             self.used_nullifiers.remove(&nullifier); e.claimed = U128(e.claimed.0.saturating_sub(amount.0)); self.private_exits.insert(exit_id, e);
+            return PromiseOrValue::Value(false);
+        }
+        // the holder's net share is out; the fee is still in the contract and still counted in private_funds_total until the relayer has it
+        self.private_funds_total = self.private_funds_total.checked_sub(amount.0 - fee.0).unwrap_or_else(|| env::panic_str("private funds underflow"));
+        event("private_payout_sent", &format!("{{\"exit_id\":{},\"nullifier\":\"{}\",\"amount\":\"{}\",\"fee\":\"{}\"}}", exit_id, nullifier, amount.0, fee.0));
+        if fee.0 == 0 { return PromiseOrValue::Value(true); }
+        PromiseOrValue::Promise(Promise::new(self.payment_token.clone())
+            .function_call("storage_deposit", format!("{{\"account_id\":\"{}\",\"registration_only\":true}}", relayer).into_bytes(), NearToken::from_yoctonear(self.registration_deposit), GAS_FT)
+            .then(Promise::new(self.payment_token.clone())
+                .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", relayer, fee.0).into_bytes(), YOCTO, GAS_FT))
+            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_relayer_fee(relayer, fee)))
+    }
+    #[private]
+    pub fn on_relayer_fee(&mut self, relayer: AccountId, fee: U128, #[callback_result] res: Result<(), PromiseError>) -> bool {
+        if res.is_err() {
+            // keep the fee for the relayer to take later; it stays in private_funds_total, so the ledger still balances
+            let cur = self.unpaid_fees.get(&relayer).copied().unwrap_or(0);
+            self.unpaid_fees.insert(relayer.clone(), cur.checked_add(fee.0).unwrap_or_else(|| env::panic_str("fee overflow")));
+            event("relayer_fee_unpaid", &format!("{{\"relayer\":\"{}\",\"fee\":\"{}\"}}", relayer, fee.0));
             return false;
         }
-        self.private_funds_total = self.private_funds_total.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("private funds underflow"));
-        event("private_payout_sent", &format!("{{\"exit_id\":{},\"nullifier\":\"{}\",\"amount\":\"{}\"}}", exit_id, nullifier, amount.0));
+        self.private_funds_total = self.private_funds_total.checked_sub(fee.0).unwrap_or_else(|| env::panic_str("private funds underflow"));
+        event("relayer_fee_paid", &format!("{{\"relayer\":\"{}\",\"fee\":\"{}\"}}", relayer, fee.0));
         true
     }
+    /// The board sets the relayer fee taken from each relayed claim (0 turns it off). Applies to claims submitted after the change.
+    pub fn set_claim_fee(&mut self, fee: U128) { self.only_board(); require!(fee.0 < (1u128 << 64), "ERR_FEE_OUT_OF_RANGE"); self.claim_fee = fee.0; event("claim_fee_set", &format!("{{\"fee\":\"{}\"}}", fee.0)); }
+    pub fn claim_fee(&self) -> U128 { U128(self.claim_fee) }
+    pub fn unpaid_fee(&self, account: AccountId) -> U128 { U128(self.unpaid_fees.get(&account).copied().unwrap_or(0)) }
+    /// A relayer takes the fees that could not be paid when they were earned. The amount is zeroed before the transfer and restored if it fails.
+    pub fn withdraw_fee(&mut self) -> Promise {
+        let who = env::predecessor_account_id();
+        let amt = self.unpaid_fees.get(&who).copied().unwrap_or(0); require!(amt > 0, "no unpaid fee");
+        self.unpaid_fees.remove(&who);
+        Promise::new(self.payment_token.clone())
+            .function_call("ft_transfer", format!("{{\"receiver_id\":\"{}\",\"amount\":\"{}\"}}", who, amt).into_bytes(), YOCTO, GAS_FT)
+            .then(Self::ext(env::current_account_id()).with_static_gas(GAS_CB).on_fee_withdrawn(who, U128(amt)))
+    }
+    #[private]
+    pub fn on_fee_withdrawn(&mut self, who: AccountId, amount: U128, #[callback_result] res: Result<(), PromiseError>) -> bool {
+        if res.is_err() { let cur = self.unpaid_fees.get(&who).copied().unwrap_or(0); self.unpaid_fees.insert(who, cur + amount.0); return false; }
+        self.private_funds_total = self.private_funds_total.checked_sub(amount.0).unwrap_or_else(|| env::panic_str("private funds underflow"));
+        true
+    }
+
+    // ---------- sealed claim data, sign-off commitments and encryption keys (no secrets: the contract only stores bytes it cannot read) ----------
+    /// The proposer posts each holder's sealed claim data once, right after proposing a confidential round, so holders recover their claim by
+    /// connecting a wallet instead of keeping a file. Each blob is addressed by sha256(holder code) in hex, never by an account, so the chain does
+    /// not list who the holders are. The caller pays the storage it uses (attach NEAR; the excess is returned).
+    #[payable]
+    pub fn publish_claim_blobs(&mut self, round_id: u64, blobs: Vec<(String, String)>) {
+        self.only_officer();
+        let r = self.rounds.get(&round_id).unwrap_or_else(|| env::panic_str("no such round"));
+        require!(matches!(r.kind, RoundKind::Confidential), "ERR_NOT_CONFIDENTIAL");
+        require!(!self.blob_rounds.contains(&round_id), "ERR_BLOBS_ALREADY_PUBLISHED");
+        require!(!blobs.is_empty() && blobs.len() <= 64, "ERR_BLOB_COUNT");
+        let before = env::storage_usage();
+        let mut seen = std::collections::HashSet::new();
+        for (tag, blob) in &blobs {
+            require!(tag.len() == 64 && tag.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)), "ERR_BAD_BLOB_TAG");
+            require!(!blob.is_empty() && blob.len() <= 4096, "ERR_BAD_BLOB_SIZE");
+            require!(seen.insert(tag.clone()), "ERR_DUPLICATE_BLOB_TAG");
+            self.claim_blobs.insert(format!("{}|{}", round_id, tag), blob.clone());
+        }
+        self.blob_rounds.insert(round_id);
+        let used = env::storage_usage().saturating_sub(before) as u128;
+        let cost = used * env::storage_byte_cost().as_yoctonear();
+        let paid = env::attached_deposit().as_yoctonear();
+        require!(paid >= cost, "ERR_ATTACH_STORAGE_DEPOSIT");
+        if paid > cost { Promise::new(env::predecessor_account_id()).transfer(NearToken::from_yoctonear(paid - cost)); }
+        event("claim_blobs_published", &format!("{{\"round_id\":{},\"count\":{}}}", round_id, blobs.len()));
+    }
+    pub fn claim_blob(&self, round_id: u64, tag: String) -> Option<String> { self.claim_blobs.get(&format!("{}|{}", round_id, tag)).cloned() }
+    pub fn claim_blobs_published(&self, round_id: u64) -> bool { self.blob_rounds.contains(&round_id) }
+
+    /// An officer commits the hash of the investors' signed-off bundle for a round that is still awaiting approval, so the proposer cannot swap
+    /// or hide it once the board votes. It may be replaced while the round is Funding (more signatures arrive); each commitment is logged.
+    pub fn commit_signoffs(&mut self, round_id: u64, bundle_hash: String) {
+        self.only_officer();
+        let r = self.rounds.get(&round_id).unwrap_or_else(|| env::panic_str("no such round"));
+        require!(matches!(r.status, RoundStatus::Funding), "ERR_ROUND_NOT_FUNDING");
+        require!(bundle_hash.len() == 64 && bundle_hash.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)), "ERR_BAD_BUNDLE_HASH");
+        self.signoff_hashes.insert(round_id, bundle_hash.clone());
+        event("signoffs_committed", &format!("{{\"round_id\":{},\"bundle_hash\":\"{}\"}}", round_id, bundle_hash));
+    }
+    pub fn signoffs_of(&self, round_id: u64) -> Option<String> { self.signoff_hashes.get(&round_id).cloned() }
+
+    /// Any account publishes its own X25519 encryption public key (hex), so a proposer can seal the private table for it. Costs a small fixed deposit.
+    #[payable]
+    pub fn register_enc_key(&mut self, public_key: String) {
+        require!(public_key.len() == 64 && public_key.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)), "ERR_BAD_ENC_KEY");
+        let need = 200u128 * env::storage_byte_cost().as_yoctonear();
+        let paid = env::attached_deposit().as_yoctonear();
+        require!(paid >= need || self.enc_keys.contains_key(&env::predecessor_account_id()), "ERR_ATTACH_STORAGE_DEPOSIT");
+        let who = env::predecessor_account_id();
+        if paid > need { Promise::new(who.clone()).transfer(NearToken::from_yoctonear(paid - need)); }
+        self.enc_keys.insert(who.clone(), public_key.clone());
+        event("enc_key_registered", &format!("{{\"account\":\"{}\"}}", who));
+    }
+    pub fn enc_key_of(&self, account: AccountId) -> Option<String> { self.enc_keys.get(&account).cloned() }
     pub fn private_exit(&self, exit_id: u64) -> Option<PrivateExit> { self.private_exits.get(&exit_id).cloned() }
     pub fn nullifier_used(&self, nullifier: String) -> bool { self.used_nullifiers.contains(&nullifier) }
 

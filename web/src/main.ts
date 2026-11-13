@@ -6,6 +6,9 @@ import { mountZkFlow } from "./zkflow";
 import { send, account } from "./wallet";
 import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "./chain";
 import { usd, usdExact, price4 } from "./format";
+import { initRoles, reapplyRole, suggestRole } from "./roles";
+import { initDrafts } from "./drafts";
+import { splitRaise, type DraftAlloc } from "../../src/engine/draft";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, sealPlan, NO_DEADLINE, proRataDistribution, distributionPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -20,19 +23,32 @@ const sandboxContracts = new Set<string>(); // contracts that the guided "Run a 
 let defaultContract = "", defaultRpc = "https://test.rpc.fastnear.com", explorerBase = "https://testnet.nearblocks.io";
 const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
-  proceeds: 20_000_000, pot: 100_000, month: 18, filter: "All", investor: "fund", locked: false };
+  proceeds: 20_000_000, pot: 100_000, month: 18, filter: "All", investor: "fund", locked: false,
+  /** how the new money is split between named investors (basis points of the raise); empty = one investor, whoever proposes */ allocs: [] as DraftAlloc[], note: "", confidential: false };
 const COLORS: Record<string, string> = { ada: "#fafafa", bayo: "#a1a1aa", safe1: "#44ffa4", safe2: "#2ca86c", fund: "#3080ff", unissued_pool: "#f99c00", efe: "#d946ef" };
 const names: Record<string, string> = {}; // filled with the real account ids when the modeler is tied to a sandbox on chain
-const labelRaw = (k: string) => names[k] ?? ({ unissued_pool: "Option pool (unissued)", fund: "New investor (Series A)", safe1: "Chidi · early investor, SAFE 1", safe2: "Dayo · early investor, SAFE 2", ada: "Ada · founder", bayo: "Bayo · founder", efe: "Efe · employee (options)" } as Record<string, string>)[k] ?? k;
+/** The new investors of the modeled round: "fund" alone, or one key per named investor (inv0, inv1, …). */
+const invKeys = () => (state.allocs.length ? state.allocs.map((_, i) => `inv${i}`) : ["fund"]);
+const isInv = (k: string) => k === "fund" || /^inv\d+$/.test(k);
+/** The account behind an investor key: the connected account (or an example name) for "fund", the named account otherwise. */
+const invHolder = (k: string, acct = "fund.testnet") => (k === "fund" ? acct : state.allocs[+k.slice(3)]?.holder ?? k);
+const INV_COLORS = ["#3080ff", "#5aa0ff", "#8cbfff", "#b3d4ff"];
+const colorOf = (k: string) => COLORS[k] ?? (/^inv\d+$/.test(k) ? INV_COLORS[+k.slice(3) % INV_COLORS.length] : "#888");
+/** Each investor's money in micro-dollars: the raise split by their shares of it (the last one takes the rounding remainder). */
+function raiseByInvestor(): Record<string, bigint> {
+  const total = BigInt(state.raise) * M; if (!state.allocs.length) return { fund: total };
+  return Object.fromEntries(splitRaise(total, state.allocs).map(([, amt], i) => [`inv${i}`, amt]));
+}
+const labelRaw = (k: string) => (/^inv\d+$/.test(k) ? `${invHolder(k)} · new investor (${(state.allocs[+k.slice(3)]?.bps ?? 0) / 100}%)` : null) ?? names[k] ?? ({ unissued_pool: "Option pool (unissued)", fund: "New investor (Series A)", safe1: "Chidi · early investor, SAFE 1", safe2: "Dayo · early investor, SAFE 2", ada: "Ada · founder", bayo: "Bayo · founder", efe: "Efe · employee (options)" } as Record<string, string>)[k] ?? k;
 // Names can come from the chain (a plan's holder is any string a proposer chose), so everything that goes into HTML is escaped.
 const label = (k: string) => esc(labelRaw(k));
-const CLASS_OF: Record<string, string> = { ada: "Common", bayo: "Common", unissued_pool: "Common", fund: "Series A Preferred", safe1: "SAFE 1 shadow preferred", safe2: "SAFE 2 shadow preferred" };
+const CLASS_OF: Record<string, string> = new Proxy({ ada: "Common", bayo: "Common", unissued_pool: "Common", fund: "Series A Preferred", safe1: "SAFE 1 shadow preferred", safe2: "SAFE 2 shadow preferred" } as Record<string, string>, { get: (t, k: string) => t[k] ?? (isInv(k) ? "Series A Preferred" : undefined) });
 
 function input(): PricedRoundInput {
   return {
     common: { ada: BigInt(state.ada), bayo: BigInt(state.bayo) }, unissuedPool: BigInt(state.poolNow),
     safes: state.safes.map((s): Safe => ({ id: s.id, holder: s.holder, amount: BigInt(s.amt) * M, postMoneyCap: BigInt(s.cap) * M, discountBps: Math.round(s.disc * 100) })),
-    preMoney: BigInt(state.pre) * M, investors: { fund: BigInt(state.raise) * M }, poolTarget: { num: BigInt(state.pool), den: 100n },
+    preMoney: BigInt(state.pre) * M, investors: raiseByInvestor(), poolTarget: { num: BigInt(state.pool), den: 100n },
   };
 }
 type Res = ReturnType<typeof priceRound>;
@@ -42,9 +58,9 @@ function solve(): { r: Res | null; err: string | null } {
 
 function bars(parts: [string, bigint][], total: bigint) {
   return `<div class="bar" role="img" aria-label="${parts.map(([k, v]) => `${label(k)} ${pct(v, total)}`).join(", ")}">${parts.filter(([, v]) => v > 0n).map(([k, v]) =>
-    `<div style="flex:${Number((v * 10000n) / (total || 1n)) || 1};background:${COLORS[k] ?? "#888"}" title="${label(k)} ${pct(v, total)}"></div>`).join("")}</div>`;
+    `<div style="flex:${Number((v * 10000n) / (total || 1n)) || 1};background:${colorOf(k)}" title="${label(k)} ${pct(v, total)}"></div>`).join("")}</div>`;
 }
-const legend = (keys: string[]) => keys.map((k) => `<span><i style="background:${COLORS[k] ?? "#888"}"></i>${label(k)}</span>`).join("");
+const legend = (keys: string[]) => keys.map((k) => `<span><i style="background:${colorOf(k)}"></i>${label(k)}</span>`).join("");
 
 // ---------- render: hero + modeler ----------
 function renderModel() {
@@ -53,7 +69,7 @@ function renderModel() {
   if (!r) { out.innerHTML = `<p class="warn">Cannot solve: ${err}</p>`; hero.innerHTML = ""; return; }
   const preTotal = BigInt(state.ada + state.bayo + state.poolNow);
   const before: [string, bigint][] = [["ada", BigInt(state.ada)], ["bayo", BigInt(state.bayo)], ["unissued_pool", BigInt(state.poolNow)]];
-  const keys = ["ada", "bayo", ...state.safes.map((s) => s.id), "fund", "unissued_pool"];
+  const keys = ["ada", "bayo", ...state.safes.map((s) => s.id), ...invKeys(), "unissued_pool"];
   const after: [string, bigint][] = keys.map((k) => [k, r.holdings[k] ?? 0n]);
   const chart = `<div class="barlab"><span>Before</span><span>${n(preTotal)} shares</span></div>${bars(before, preTotal)}<div class="barlab"><span>After</span><span>${n(r.fullyDiluted)} shares</span></div>${bars(after, r.fullyDiluted)}`;
   hero.innerHTML = chart; $("hero-legend").innerHTML = legend(keys); $("hero-price").textContent = `PRICE ${price4(r.priceMicro)} / SHARE`;
@@ -68,14 +84,14 @@ function renderModel() {
   renderCap(r); renderPeople(r); renderExit(r); void renderShare(r);
 }
 async function renderPlan(r: Res) {
-  const raise: [string, bigint][] = [["fund.testnet", BigInt(state.raise) * M]];
-  const plan = sealPlan(pricedRoundPlan(input(), r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred" }), { kind: "Priced", raise });
+  const raise: [string, bigint][] = state.allocs.length ? Object.entries(raiseByInvestor()).map(([k, a]) => [invHolder(k), a]) : [["fund.testnet", BigInt(state.raise) * M]];
+  const plan = sealPlan(pricedRoundPlan(input(), r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: (k) => invHolder(k) }), { kind: "Priced", raise });
   const canon = canonicalJson(plan); const h = await planHash(canon);
   $("plan-card").innerHTML = `<div class="card-h"><span class="mono muted">PLAN HASH · SHA-256 OF RFC 8785 JSON ${RULES("r9")}</span></div><div class="hash">${h}</div>
-  <p class="note" style="margin-top:12px">This is the exact value the board votes on. It covers the shares issued <b>and</b> the money: who pays how much, and the funding deadline. (Shown here for an example investor <span class="mono">fund.testnet</span> and no deadline; proposing with your wallet puts your account and a 7-day deadline into the plan, so that plan has its own hash.) Propose it with your wallet, or with the command below; either way the contract accepts it only from an officer account, and the DAO then approves it by this hash.</p>
+  <p class="note" style="margin-top:12px">This is the exact value the board votes on. It covers the shares issued <b>and</b> the money: who pays how much, and the funding deadline. (Shown here ${state.allocs.length ? "for the investors you named" : `for an example investor <span class="mono">fund.testnet</span>`} and no deadline; proposing with your wallet puts your account and a 7-day deadline into the plan, so that plan has its own hash.) Propose it with your wallet, or with the command below; either way the contract accepts it only from an officer account, and the DAO then approves it by this hash.</p>
   <div id="propose-row" style="margin:10px 0"${state.locked ? " hidden" : ""}><button class="btn primary sm" id="propose-btn">Propose on chain with my wallet</button> <span class="note" id="propose-note">Sends <span class="mono">propose_round</span> to the contract in the box under Events &amp; verify, with your account as the investor. Testnet only.</span></div>
   ${state.locked ? `<p class="note">Propose this exact plan in the guided steps below: <a href="#try" class="mono">Run a round on testnet</a>.</p>` : ""}
-  <pre class="out" id="cli">near contract call-function as-transaction &lt;ROUNDS&gt; propose_round json-args '{"kind":"Priced","plan_hash":"${h}","plan_uri":"…","plan":${JSON.stringify(canon).replace(/&/g, "&amp;").replace(/</g, "&lt;")},"raise":[["fund.testnet","${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${NO_DEADLINE}}' …</pre>`;
+  <pre class="out" id="cli">near contract call-function as-transaction &lt;ROUNDS&gt; propose_round json-args '{"kind":"Priced","plan_hash":"${h}","plan_uri":"…","plan":${JSON.stringify(canon).replace(/&/g, "&amp;").replace(/</g, "&lt;")},"raise":${JSON.stringify(raise.map(([w, a]) => [w, a.toString()]))},"deadline_ns":${NO_DEADLINE}}' …</pre>`;
   $("propose-btn").onclick = async () => {
     const acct = account();
     if (!acct) { toast("Connect a testnet wallet first (top right), then press the button again.", "info"); document.getElementById("wallet-btn")?.click(); return; }
@@ -103,16 +119,17 @@ async function proposeModeled(contract: string) {
   // survive that unchanged to equal the deadline inside the hashed plan (a whole second in ns is exact in a double and prints as itself)
   const deadline = ((BigInt(Math.floor(Date.now() / 1000)) + 7n * 86_400n) * 1_000_000_000n).toString();
   // the money terms go inside the hashed plan; the contract refuses the call if they differ from the arguments below
-  const mine = sealPlan(pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: () => acct }), { kind: "Priced", raise: [[acct, BigInt(state.raise) * M]], deadlineNs: deadline });
+  const raise: [string, bigint][] = Object.entries(raiseByInvestor()).map(([k, a]) => [invHolder(k, acct), a]);
+  const mine = sealPlan(pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: (k) => invHolder(k, acct) }), { kind: "Priced", raise, deadlineNs: deadline });
   const c = canonicalJson(mine); const hh = await planHash(c);
-  const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":[[${JSON.stringify(acct)},"${(BigInt(state.raise) * M).toString()}"]],"deadline_ns":${deadline}}`;
+  const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":${JSON.stringify(raise.map(([w, a]) => [w, a.toString()]))},"deadline_ns":${deadline}}`;
   return send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
 }
 /** The modeled round as a flat cap table (pool excluded) for confidential mode, with the connected account as the new investor. */
 const zkModel = (acct: string) => {
   const { r } = solve(); if (!r) return null;
   const classes = ["Common", "Series A Preferred", "SAFE 1 shadow preferred", "SAFE 2 shadow preferred"];
-  const entries = ["ada", "bayo", "safe1", "safe2", "fund"].filter((k) => (r.holdings[k] ?? 0n) > 0n).map((k) => ({ holderId: k === "fund" ? acct : (names[k] ?? k), shareClass: CLASS_OF[k], shares: r.holdings[k] }));
+  const entries = ["ada", "bayo", "safe1", "safe2", ...invKeys()].filter((k) => (r.holdings[k] ?? 0n) > 0n).map((k) => ({ holderId: isInv(k) ? invHolder(k, acct) : (names[k] ?? k), shareClass: CLASS_OF[k], shares: r.holdings[k] }));
   return { entries, classes, raiseMicro: BigInt(state.raise) * M };
 };
 const modelSummary = () => { const { r, err } = solve(); return r ? `Pre-money ${usd(BigInt(state.pre) * M)} · new money ${usd(BigInt(state.raise) * M)} · pool ${state.pool}% → price ${price4(r.priceMicro)} per share` : `No valid solution: ${err}`; };
@@ -127,7 +144,7 @@ async function syncModelToChain(v: ChainView, contract: string) {
   state.ada = Number(commons[0][2]); state.bayo = Number(commons[1][2]); state.poolNow = Number(pool[2]);
   names.ada = `${commons[0][0]} (founder)`; names.bayo = `${commons[1][0]} (founder)`;
   for (const s of state.safes) { const rec = sf.get(s.id); s.amt = Number(BigInt(rec.amount) / M); s.cap = Number(BigInt(rec.post_money_cap) / M); s.disc = rec.discount_bps / 100; s.holder = rec.holder; names[s.id] = `${rec.holder} · early investor, ${s.id === "safe1" ? "SAFE 1" : "SAFE 2"}`; }
-  state.locked = true; renderForm(); renderModel();
+  state.locked = true; state.allocs = []; renderForm(); renderModel();
   const sub = document.querySelector("#model .sub"); if (sub) sub.textContent = "This is the open sandbox company on testnet: its founders, pool and SAFEs are read from the chain. Choose the round (valuation, new money, option pool) and see the price per share and everyone's ownership after it. When you propose it below, this is exactly the plan that is sent.";
   document.getElementById("propose-row")?.setAttribute("hidden", "");
 }
@@ -140,12 +157,12 @@ function renderCap(r: Res) {
   const rows: { k: string; round: string; price: string; shares: bigint }[] = [
     { k: "ada", round: "Founders", price: "$0.0000", shares: r.holdings.ada }, { k: "bayo", round: "Founders", price: "$0.0000", shares: r.holdings.bayo },
     ...state.safes.map((s) => ({ k: s.id, round: "SAFEs", price: price4(r.safeConversionPriceMicro[s.id]), shares: r.holdings[s.id] })),
-    { k: "fund", round: "Series A", price: price4(r.priceMicro), shares: r.holdings.fund },
+    ...invKeys().map((k) => ({ k, round: "Series A", price: price4(r.priceMicro), shares: r.holdings[k] ?? 0n })),
     { k: "unissued_pool", round: "Founders", price: "—", shares: r.holdings.unissued_pool },
   ];
   const show = rows.filter((x) => state.filter === "All" || x.round === state.filter);
   $("cap-table").innerHTML = `<tr><th>Holder</th><th>Class</th><th class="n">Shares</th><th class="n">Fully diluted ${RULES("r2")}</th><th class="n">Price paid</th></tr>` +
-    show.map((x) => `<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;background:${COLORS[x.k]}"></i>${label(x.k)}</td><td>${CLASS_OF[x.k]}</td><td class="n">${n(x.shares)}</td><td class="n">${pct(x.shares, fd)}</td><td class="n">${x.price}</td></tr>`).join("") +
+    show.map((x) => `<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;background:${colorOf(x.k)}"></i>${label(x.k)}</td><td>${CLASS_OF[x.k]}</td><td class="n">${n(x.shares)}</td><td class="n">${pct(x.shares, fd)}</td><td class="n">${x.price}</td></tr>`).join("") +
     `<tr><td><b>Total</b></td><td></td><td class="n"><b>${n(fd)}</b></td><td class="n">100.00%</td><td></td></tr>`;
   $("csv-btn").onclick = () => {
     const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -158,10 +175,10 @@ function renderCap(r: Res) {
 // ---------- investor + employee ----------
 const GRANT = { shares: 100_000n, term: 48, cliff: 12 };
 function renderPeople(r: Res) {
-  const who = ["fund", ...state.safes.map((s) => s.id)];
-  const k = who.includes(state.investor) ? state.investor : "fund";
-  const isSafe = k !== "fund"; const s = state.safes.find((x) => x.id === k);
-  const paid = isSafe ? BigInt(s!.amt) * M : BigInt(state.raise) * M;
+  const who = [...invKeys(), ...state.safes.map((s) => s.id)];
+  const k = who.includes(state.investor) ? state.investor : who[0];
+  const isSafe = !isInv(k); const s = state.safes.find((x) => x.id === k);
+  const paid = isSafe ? BigInt(s!.amt) * M : raiseByInvestor()[k];
   $("investor").innerHTML = `<div class="card-h"><span class="mono muted">INVESTOR VIEW</span><select id="inv" style="width:auto">${who.map((w) => `<option value="${w}" ${w === k ? "selected" : ""}>${label(w)}</option>`).join("")}</select></div>
   <div class="stat" style="grid-template-columns:1fr 1fr"><div><b>${n(r.holdings[k])}</b><span>Shares</span></div><div><b>${pct(r.holdings[k], r.fullyDiluted)}</b><span>Of fully diluted</span></div></div>
   <table><tr><td>Paid in</td><td class="n">${usd(paid)}</td></tr><tr><td>${isSafe ? "Converted at" : "Price per share"}</td><td class="n">${price4(isSafe ? r.safeConversionPriceMicro[k] : r.priceMicro)}</td></tr>${isSafe ? `<tr><td>Regime</td><td class="n">${r.safeRegime[k]}</td></tr>` : ""}<tr><td>Liquidation preference (1×)</td><td class="n">${usd(paid)}</td></tr><tr><td>Value at round price</td><td class="n">${usd(r.holdings[k] * r.priceMicro)}</td></tr></table>
@@ -180,13 +197,13 @@ function renderPeople(r: Res) {
 
 // ---------- exit ----------
 function renderExit(r: Res) {
-  const classes = Object.fromEntries(["safe1", "safe2", "fund"].map((k) => {
-    const sf = state.safes.find((x) => x.id === k); const pref = k === "fund" ? BigInt(state.raise) * M : BigInt(sf?.amt ?? 0) * M;
+  const classes = Object.fromEntries(["safe1", "safe2", ...invKeys()].map((k) => {
+    const sf = state.safes.find((x) => x.id === k); const pref = isInv(k) ? raiseByInvestor()[k] : BigInt(sf?.amt ?? 0) * M;
     return [k, { shares: r.holdings[k] ?? 0n, preferenceMicro: pref }];
   }).filter(([k]) => (r.holdings[k as string] ?? 0n) > 0n));
   const w = waterfall({ classes, commonShares: { ada: r.holdings.ada, bayo: r.holdings.bayo }, options: { efe: { shares: GRANT.shares, strikeMicro: r.priceMicro } }, proceedsMicro: BigInt(state.proceeds) * M });
   const E = BigInt(state.proceeds) * M || 1n;
-  const ids = ["ada", "bayo", "safe1", "safe2", "fund", "efe"].filter((k) => w.payoutsMicro[k] !== undefined);
+  const ids = ["ada", "bayo", "safe1", "safe2", ...invKeys(), "efe"].filter((k) => w.payoutsMicro[k] !== undefined);
   $("exit-card").innerHTML = `<div class="stat"><div><b>${usd(BigInt(state.proceeds) * M)}</b><span>Proceeds</span></div><div><b>${w.converts.length ? w.converts.map(label).join(", ") : "none"}</b><span>Convert to common ${RULES("r8")}</span></div><div><b>${usd(w.remainderMicro, true)}</b><span>Rounding remainder</span></div></div>
   <input type="range" id="proceeds" min="0" max="100000000" step="500000" value="${state.proceeds}" aria-label="Exit proceeds in dollars"/>
   <div style="margin-top:16px">${bars(ids.map((k) => [k, w.payoutsMicro[k]] as [string, bigint]), E)}</div>
@@ -197,7 +214,7 @@ function renderExit(r: Res) {
 
 // ---------- shared payout (RULES.md R10) ----------
 async function renderShare(r: Res) {
-  const ids = ["ada", "bayo", "safe1", "safe2", "fund"].filter((k) => (r.holdings[k] ?? 0n) > 0n);
+  const ids = ["ada", "bayo", "safe1", "safe2", ...invKeys()].filter((k) => (r.holdings[k] ?? 0n) > 0n);
   const shares = Object.fromEntries(ids.map((k) => [k, r.holdings[k]]));
   const pot = BigInt(state.pot) * M, d = proRataDistribution(shares, pot), got = Object.fromEntries(d.payouts);
   const h = await planHash(canonicalJson(distributionPlan(d)));
@@ -293,9 +310,11 @@ async function initChain() {
         try { await navigator.clipboard.writeText(b.dataset.copy!); toast(`Link copied. Anyone who opens it sees this contract with round ${esc(b.dataset.r!)} highlighted, and its hash re-checked.`, "ok"); }
         catch { toast(`Copy this link: <span class="mono">${esc(b.dataset.copy!)}</span>`, "info"); }
       }));
+      { const me = account(); if (me && v.holdings.some(([h]) => h === me)) suggestRole("investor"); }
       if (sandboxContracts.has(v.contract)) $("chain-actions").innerHTML = `<div class="chain-h"><span class="mono muted">YOUR ACTIONS</span></div><p class="note">This is an open sandbox. Everything you can do on it is in the guided steps: <a href="#try" class="mono">Run a round on testnet</a>.</p>`;
       else void renderActions($("chain-actions"), v, dep.rpc, dep.explorer, reloadChain);
       void renderReview($("review-body"), v, dep.rpc, dep.explorer, reloadChain).catch((e) => { $("review-body").innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read the board: ${esc((e as Error).message)}</p>`; });
+      reapplyRole();
       if (only) document.getElementById(`round-${only}`)?.scrollIntoView({ block: "center" });
     } catch (e) { out.innerHTML = `<p class="note"><span class="fail">FAIL</span> could not read <span class="mono">${esc(id)}</span>: ${esc((e as Error).message)}. It must be a deployed Rounds contract on ${esc(dep.network)}.</p>`; }
   };
@@ -323,7 +342,8 @@ async function initChain() {
   // confidential mode: shown when a ZK-enabled sandbox is configured; the modeler's toggle reveals it either way
   const zkSb: { rounds?: string; board?: string; token?: string } | null = await fetch("zk-sandbox.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const zkToggle = $<HTMLInputElement>("zk-toggle");
-  zkToggle.onchange = () => { $("zk").hidden = !zkToggle.checked && !zkSb?.rounds; if (zkToggle.checked) document.getElementById("zk")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  zkToggle.onchange = (ev) => { state.confidential = zkToggle.checked; $("zk").hidden = !zkToggle.checked && !zkSb?.rounds; if (zkToggle.checked && ev?.isTrusted !== false) document.getElementById("zk")?.scrollIntoView({ behavior: "smooth", block: "start" }); }; // a draft link sets the box without scrolling the page away
+  if (zkToggle.checked) zkToggle.onchange(new Event("change"));
   if (zkSb?.rounds && zkSb.board && zkSb.token) {
     $("zk").hidden = false; $("nav-zk").hidden = false;
     const zd = { rpc: dep.rpc, explorer: dep.explorer, contract: zkSb.rounds, board: zkSb.board, token: zkSb.token };
@@ -334,5 +354,24 @@ async function initChain() {
   if (qs.get("contract") || /^#verify\//.test(location.hash)) { await run(); }
 }
 
-renderForm(); renderModel(); void initChain(); void initVerify().then(() => { if (location.hash === "#verify-run") $<HTMLButtonElement>("verify-btn").click(); });
+initRoles(); renderForm(); renderModel(); void initChain();
+void initDrafts({
+  get: () => ({ v: 1, pre: state.pre, raise: state.raise, pool: state.pool, ada: state.ada, bayo: state.bayo, poolNow: state.poolNow, confidential: state.confidential, note: state.note,
+    safes: state.safes.map((x) => ({ id: x.id, holder: x.holder, amt: x.amt, cap: x.cap, disc: x.disc })), allocs: state.allocs.map((a) => ({ ...a })) }),
+  locked: () => state.locked,
+  redraw: () => { renderForm(); renderModel(); },
+  set: (d) => {
+    let msg: string | null = null;
+    state.pre = d.pre; state.raise = d.raise; state.pool = d.pool; state.note = d.note;
+    if (state.locked) msg = "This page is tied to the sandbox company on chain, so only the round's terms were applied.";
+    else {
+      const fits = d.safes.length === state.safes.length && d.safes.every((x) => state.safes.some((y) => y.id === x.id));
+      if (fits) { state.ada = d.ada; state.bayo = d.bayo; state.poolNow = d.poolNow; for (const x of d.safes) Object.assign(state.safes.find((y) => y.id === x.id)!, { holder: x.holder, amt: x.amt, cap: x.cap, disc: x.disc }); }
+      else msg = "The draft's SAFEs are not the two this modeler has (safe1, safe2), so the company's starting numbers were not applied.";
+      state.allocs = d.allocs.map((a) => ({ ...a }));
+    }
+    state.confidential = d.confidential; const t = document.getElementById("zk-toggle") as HTMLInputElement | null; if (t) { t.checked = d.confidential; t.onchange?.(new Event("change")); }
+    return msg;
+  },
+}); void initVerify().then(() => { if (location.hash === "#verify-run") $<HTMLButtonElement>("verify-btn").click(); });
 if (import.meta.env.DEV) (window as any).__test = { names, rerender: () => { renderForm(); renderModel(); } }; // dev-server only: lets scripts/e2e checks feed hostile names

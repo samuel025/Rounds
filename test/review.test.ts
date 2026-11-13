@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reviewProposal, describeRound, proposalText, type Proposal } from "../web/src/review-core";
+import { reviewProposal, describeRound, proposalText, deltaPts, type Proposal } from "../web/src/review-core";
 import { planHash, canonicalJson, saftConversionPlan } from "../src/engine/index";
 import { demoPlans, type Accounts } from "../scripts/plans";
 import type { ChainView, RoundRec } from "../web/src/chain";
@@ -148,5 +148,29 @@ describe("check before you vote: SAFTs and tokens", () => {
     expect(r.lines.join(" ")).toContain("seals a private cap table of 1,000 shares"); expect(r.lines.join(" ")).toContain("commits to an encrypted copy");
     expect(r.findings.some((f) => /Board check/.test(f.text))).toBe(true);
     expect(r.table).toBeUndefined(); // no ownership table: there is nothing public to show
+  });
+});
+
+describe("dilution diff", () => {
+  it("a priced round carries before/after numbers that add up and show the founders diluted", async () => {
+    const { v, hashes } = await world();
+    const r = await reviewProposal(prop(CORE, "approve_round", { round_id: 4, plan_hash: hashes[3] }), v);
+    expect(r.diff).toBeDefined(); const d = r.diff!;
+    expect(d.holders.reduce((a, h) => a + h.after, 0n)).toBe(d.totalAfter);
+    expect(d.holders.reduce((a, h) => a + h.before, 0n)).toBe(d.totalBefore);
+    const ada = d.holders.find((h) => h.holder === "ada.t")!; expect(ada.after).toBe(ada.before); // issuing shares to others does not change Ada's count...
+    expect(deltaPts(ada.before, d.totalBefore, ada.after, d.totalAfter).startsWith("-")).toBe(true); // ...but it dilutes her share
+  });
+  it("a confidential round has no diff (its table is sealed)", async () => {
+    const { v } = await world();
+    const plan = JSON.stringify({ deadline_ns: "1", kind: "Confidential", merkle_root: "123", raise: [["fund.t", "9000000000000"]], total_shares: "100" });
+    const h = await planHash(plan);
+    v.rounds.push({ id: 9, kind: "Confidential", status: "Funding", plan_hash: h, plan_uri: "confidential", plan, raise: [["fund.t", "9000000000000"]], deposits: [["fund.t", "0"]] });
+    expect((await reviewProposal(prop(CORE, "approve_round", { round_id: 9, plan_hash: h }), v)).diff).toBeUndefined();
+  });
+  it("deltaPts: exact, signed, one decimal", () => {
+    expect(deltaPts(50n, 100n, 25n, 100n)).toBe("-25.0"); expect(deltaPts(25n, 100n, 50n, 100n)).toBe("+25.0"); expect(deltaPts(1n, 3n, 1n, 3n)).toBe("0.0");
+    expect(deltaPts(1n, 1000n, 1n, 100_000n)).toBe("-0.1"); // 0.1% -> 0.001%: -0.099 pts rounds to -0.1
+    expect(deltaPts(1n, 1_000_000n, 1n, 1_000_001n)).toBe("0.0"); // a rounding-sized change shows no sign
   });
 });

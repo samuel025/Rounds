@@ -13,9 +13,10 @@
 <body>
   <header class="nav"><div class="wrap nav-in">
     <a class="brand" href="#top"><span class="dot"></span>Rounds</a>
-    <nav><a href="#zk" id="nav-zk" hidden>Confidential</a><a href="#cap">Cap table</a><a href="#model">Model a round</a><a href="#try" id="nav-try" hidden>Run it</a><a href="#people">Investors &amp; employees</a><a href="#exit">Exit</a><a href="#share">Share a pot</a><a href="#verify">Verify</a><a href="https://github.com/samuel025/Rounds" target="_blank" rel="noopener">GitHub ↗</a></nav><button class="btn sm" id="wallet-btn">Connect wallet</button>
+    <nav><a href="#zk" id="nav-zk" hidden>Confidential</a><a href="#cap">Cap table</a><a href="#model" data-roles="founder">Model a round</a><a href="#try" id="nav-try" data-roles="founder" hidden>Run it</a><a href="#people" data-roles="investor">My stake</a><a href="#exit" data-roles="founder investor">Exit</a><a href="#share" data-roles="founder">Share a pot</a><a href="#verify">Verify</a><a href="https://github.com/samuel025/Rounds" target="_blank" rel="noopener">GitHub ↗</a></nav><button class="btn sm" id="wallet-btn">Connect wallet</button>
     <span class="net"><i></i>NEAR testnet</span>
   </div></header>
+  <div id="rolebar"></div>
   <main id="top">
     <section class="hero wrap">
       <p class="eyebrow">Collective ownership · Sputnik DAO · NEAR</p>
@@ -49,24 +50,25 @@
       <div class="card" id="zk-run"><p class="note">No confidential-mode contract is configured on this deployment.</p></div></section>
     <section id="cap" class="wrap sec"><h2>Cap table</h2><p class="sub">Who owns what in the example company, after the Series A you set in the modeler below. Every number comes from the engine, never from an AI model; <a href="rules.html" class="mono">RULES.md</a> defines each rule, and the small ? links jump to it.</p>
       <div class="tabs" id="cap-filter"></div><div class="card"><table id="cap-table"></table></div></section>
-    <section id="model" class="wrap sec"><h2>Round modeler</h2><p class="sub">A made-up company. Choose the round (valuation, new money, option pool) and see the price per share and everyone's ownership after it. The engine re-solves SAFE conversion, pool top-up and price exactly as you type.</p>
-      <div class="model-grid"><div class="card form" id="form"></div><div><div class="card" id="model-out"></div><div class="card" id="plan-card"></div></div></div>
-      <div class="card" id="zk-toggle-card"><label style="display:flex;gap:10px;align-items:flex-start;margin:0"><input type="checkbox" id="zk-toggle" style="width:auto;margin-top:4px"/><span><b>Confidential mode (ZK)</b> · keep each holder's shares private: only a Merkle root and the totals go on chain, and holders claim payouts with receipts. Opt-in; public mode is unchanged. <a href="#zk">What stays private</a></span></label></div></section>
-    <section id="try" class="wrap sec" hidden><h2>Run a round on testnet</h2><p class="sub">Eight steps on an open sandbox: connect a wallet, set the round above, propose it, fund it, approve it as the board, close it. Testnet, no value. The sandbox is a real company on testnet: the modeler above is tied to it (its founders, pool and SAFEs are read from the chain and locked), so what you model is exactly what gets proposed.</p>
+    <section id="model" class="wrap sec" data-roles="founder"><h2>Round modeler</h2><p class="sub">A made-up company. Choose the round (valuation, new money, option pool) and see the price per share and everyone's ownership after it. The engine re-solves SAFE conversion, pool top-up and price exactly as you type.</p>
+      <div class="model-grid"><div class="card form" id="form"></div><div><div class="card" id="model-out"></div><div class="card tech" id="plan-card"></div></div></div>
+      <div class="card" id="draft-card"></div>
+      <div class="card" id="zk-toggle-card"><label style="display:flex;gap:10px;align-items:flex-start;margin:0"><input type="checkbox" id="zk-toggle" style="width:auto;margin-top:4px"/><span><b>Hide individual holdings on chain</b> · opt-in confidential mode. Only a sealed fingerprint (a Merkle root) and the totals go on chain; each holder's share stays private and is claimed with a zero-knowledge proof. The page sets up the proofs for you. <span class="muted">What this does <b>not</b> hide: who paid into the round, the totals, and the amount of each payout. Up to 64 holders; the proving keys come from a one-person development setup (testnet only). Decide before you propose: a round is either public or confidential.</span> <a href="#zk">Details and the private workflow</a></span></label></div></section>
+    <section id="try" class="wrap sec" data-roles="founder" hidden><h2>Run a round on testnet</h2><p class="sub">Eight steps on an open sandbox: connect a wallet, set the round above, propose it, fund it, approve it as the board, close it. Testnet, no value. The sandbox is a real company on testnet: the modeler above is tied to it (its founders, pool and SAFEs are read from the chain and locked), so what you model is exactly what gets proposed.</p>
       <div class="card" id="flow"></div></section>
-    <section id="people" class="wrap sec"><h2>Investors &amp; employees</h2>
+    <section id="people" class="wrap sec" data-roles="investor"><h2>Investors &amp; employees</h2>
       <div class="grid2"><div class="card" id="investor"></div><div class="card" id="employee"></div></div></section>
-    <section id="exit" class="wrap sec"><h2>Exit simulator</h2><p class="sub">Drag proceeds. Preferred takes its preference or converts, whichever pays more.</p>
+    <section id="exit" class="wrap sec" data-roles="founder investor"><h2>Exit simulator</h2><p class="sub">Drag proceeds. Preferred takes its preference or converts, whichever pays more.</p>
       <div class="card" id="exit-card"></div></section>
-    <section id="share" class="wrap sec"><h2>Share a pot with the holders</h2><p class="sub">A group's treasury pays money out to everyone who holds shares, by how many they hold. The engine works out the split exactly and the board approves its fingerprint, like any other plan. Drag the pot; on the open sandbox you can run a real one yourself in the card below.</p>
+    <section id="share" class="wrap sec" data-roles="founder"><h2>Share a pot with the holders</h2><p class="sub">A group's treasury pays money out to everyone who holds shares, by how many they hold. The engine works out the split exactly and the board approves its fingerprint, like any other plan. Drag the pot; on the open sandbox you can run a real one yourself in the card below.</p>
       <div class="card" id="share-card"></div>
       <div class="card" id="share-run" hidden><div class="card-h"><span class="mono muted">RUN IT ON TESTNET · SHARE A POT WITH THIS SANDBOX'S HOLDERS</span></div><div id="share-run-body"></div></div></section>
     <section id="verify" class="wrap sec"><h2>Events &amp; verify</h2><p class="sub">Everything here is read from NEAR testnet, not from this website. <b>tx ↗</b> opens that transaction in a block explorer (nearblocks). <b>Copy link</b> copies a link that opens a contract with that round highlighted and its hash re-checked. <b>PASS</b> means the plan on chain hashes to exactly the fingerprint the board approved.</p><p class="sub" id="verify-sub"></p>
-      <div class="card" id="chain-card"><div class="card-h"><span class="mono muted">ANY ROUNDS CONTRACT · READ FROM THE CHAIN</span></div>
+      <div class="card" id="chain-card" data-roles="founder investor"><div class="card-h"><span class="mono muted">ANY ROUNDS CONTRACT · READ FROM THE CHAIN</span></div>
         <div style="display:flex;gap:10px;align-items:end;margin-top:6px"><div style="flex:1"><label for="contract">Contract account (NEAR testnet)</label><input type="text" id="contract" placeholder="rounds-core-332657.testnet" autocomplete="off" spellcheck="false"/></div><button class="btn primary sm" id="chain-btn">Load and verify</button></div>
         <div id="chain-presets"></div><div id="chain-out"></div><div id="chain-actions"></div></div>
-      <div class="card" id="review"><div class="card-h"><span class="mono muted">BOARD PROPOSALS · CHECK BEFORE YOU VOTE</span></div><div id="review-body"><p class="note">Load a contract above to review its board's proposals.</p></div></div>
-      <div class="card"><div class="card-h"><span class="mono muted">ON-CHAIN EVENTS</span><button class="btn primary sm" id="verify-btn">Verify</button></div><div id="events"></div><pre class="out" id="verify-out"></pre></div></section>
+      <div class="card" id="review" data-roles="board"><div class="card-h"><span class="mono muted">BOARD PROPOSALS · CHECK BEFORE YOU VOTE</span></div><div id="review-body"><p class="note">Load a contract above to review its board's proposals.</p></div></div>
+      <div class="card tech"><div class="card-h"><span class="mono muted">ON-CHAIN EVENTS</span><button class="btn primary sm" id="verify-btn">Verify</button></div><div id="events"></div><pre class="out" id="verify-out"></pre></div></section>
   </main>
   <footer class="wrap foot"><p><a href="https://github.com/samuel025/Rounds" target="_blank" rel="noopener">Source code, tests and every command that checks a claim: github.com/samuel025/Rounds ↗</a></p><p>Rounds is a model and a testnet demo, not a securities offering, and it has no legal validity. Holdings on the demo contract are public on chain. Test dollars have no value.</p></footer>
   <script type="module" src="./src/main.ts"></script>
