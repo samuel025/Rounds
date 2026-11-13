@@ -8,6 +8,7 @@ import { call, loadChain, type ChainView, checkRound, validAccount, esc } from "
 import { usd, usdExact, price4 } from "./format";
 import { initRoles, reapplyRole, suggestRole } from "./roles";
 import { initDrafts } from "./drafts";
+import { mountSignoff } from "./signoff";
 import { splitRaise, type DraftAlloc } from "../../src/engine/draft";
 import { priceRound, waterfall, vested, exerciseCost, canonicalJson, planHash, pricedRoundPlan, sealPlan, NO_DEADLINE, proRataDistribution, distributionPlan, type PricedRoundInput, type Safe } from "../../src/engine/index";
 
@@ -24,7 +25,7 @@ let defaultContract = "", defaultRpc = "https://test.rpc.fastnear.com", explorer
 const state = { pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
   proceeds: 20_000_000, pot: 100_000, month: 18, filter: "All", investor: "fund", locked: false,
-  /** how the new money is split between named investors (basis points of the raise); empty = one investor, whoever proposes */ allocs: [] as DraftAlloc[], note: "", confidential: false };
+  /** how the new money is split between named investors (basis points of the raise); empty = one investor, whoever proposes */ allocs: [] as DraftAlloc[], note: "", confidential: false, /** funding deadline, unix seconds; 0 = 7 days from when the proposal is sent */ deadline: 0 };
 const COLORS: Record<string, string> = { ada: "#fafafa", bayo: "#a1a1aa", safe1: "#44ffa4", safe2: "#2ca86c", fund: "#3080ff", unissued_pool: "#f99c00", efe: "#d946ef" };
 const names: Record<string, string> = {}; // filled with the real account ids when the modeler is tied to a sandbox on chain
 /** The new investors of the modeled round: "fund" alone, or one key per named investor (inv0, inv1, …). */
@@ -109,19 +110,25 @@ async function renderPlan(r: Res) {
 }
 
 
-/** Send the currently modeled Series A to a Rounds contract, with the connected account as the investor. Throws on refusal. */
-async function proposeModeled(contract: string) {
-  const acct = account(); if (!acct) throw new Error("connect a wallet first");
+/** The modeled round as the exact plan a proposal would carry for `acct` (the investor when none are named), with its hash. */
+async function modeledPlan(acct: string, contract: string) {
   const { r } = solve(); if (!r) throw new Error("the modeled round has no valid solution; fix the inputs");
   const inp = input();
   for (const sf of inp.safes) { try { const rec = await call(defaultRpc, contract, "safe", { id: sf.id }); if (rec?.holder) sf.holder = rec.holder; } catch { /* no such SAFE on this contract: keep the label */ } }
-  // 7 days out, in whole seconds: the argument travels as a JSON number and some wallets pass it through a double, so it must
+  // 7 days out (or the deadline the draft names), in whole seconds: the argument travels as a JSON number and some wallets pass it through a double, so it must
   // survive that unchanged to equal the deadline inside the hashed plan (a whole second in ns is exact in a double and prints as itself)
-  const deadline = ((BigInt(Math.floor(Date.now() / 1000)) + 7n * 86_400n) * 1_000_000_000n).toString();
-  // the money terms go inside the hashed plan; the contract refuses the call if they differ from the arguments below
+  const nowS = Math.floor(Date.now() / 1000);
+  if (state.deadline && state.deadline <= nowS + 60) throw new Error("the funding deadline in the draft has passed; set a new one");
+  const deadline = ((BigInt(state.deadline || nowS + 7 * 86_400)) * 1_000_000_000n).toString();
   const raise: [string, bigint][] = Object.entries(raiseByInvestor()).map(([k, a]) => [invHolder(k, acct), a]);
+  // the money terms go inside the hashed plan; the contract refuses the call if they differ from the arguments sent
   const mine = sealPlan(pricedRoundPlan(inp, r, { safeClass: (id) => CLASS_OF[id], seriesClass: "Series A Preferred", investorHolder: (k) => invHolder(k, acct) }), { kind: "Priced", raise, deadlineNs: deadline });
-  const c = canonicalJson(mine); const hh = await planHash(c);
+  const c = canonicalJson(mine); return { c, hh: await planHash(c), raise, deadline };
+}
+/** Send the currently modeled Series A to a Rounds contract, with the connected account as the investor. Throws on refusal. */
+async function proposeModeled(contract: string) {
+  const acct = account(); if (!acct) throw new Error("connect a wallet first");
+  const { c, hh, raise, deadline } = await modeledPlan(acct, contract);
   const raw = `{"kind":"Priced","plan_hash":"${hh}","plan_uri":"app://rounds-modeler","plan":${JSON.stringify(c)},"raise":${JSON.stringify(raise.map(([w, a]) => [w, a.toString()]))},"deadline_ns":${deadline}}`;
   return send(contract, [{ method: "propose_round", args: new TextEncoder().encode(raw), gasTgas: 100 }]);
 }
@@ -356,13 +363,13 @@ async function initChain() {
 
 initRoles(); renderForm(); renderModel(); void initChain();
 void initDrafts({
-  get: () => ({ v: 1, pre: state.pre, raise: state.raise, pool: state.pool, ada: state.ada, bayo: state.bayo, poolNow: state.poolNow, confidential: state.confidential, note: state.note,
+  get: () => ({ v: 1, pre: state.pre, raise: state.raise, pool: state.pool, ada: state.ada, bayo: state.bayo, poolNow: state.poolNow, confidential: state.confidential, note: state.note, deadline: state.deadline,
     safes: state.safes.map((x) => ({ id: x.id, holder: x.holder, amt: x.amt, cap: x.cap, disc: x.disc })), allocs: state.allocs.map((a) => ({ ...a })) }),
   locked: () => state.locked,
   redraw: () => { renderForm(); renderModel(); },
   set: (d) => {
     let msg: string | null = null;
-    state.pre = d.pre; state.raise = d.raise; state.pool = d.pool; state.note = d.note;
+    state.pre = d.pre; state.raise = d.raise; state.pool = d.pool; state.note = d.note; state.deadline = d.deadline;
     if (state.locked) msg = "This page is tied to the sandbox company on chain, so only the round's terms were applied.";
     else {
       const fits = d.safes.length === state.safes.length && d.safes.every((x) => state.safes.some((y) => y.id === x.id));
@@ -375,3 +382,11 @@ void initDrafts({
   },
 }); void initVerify().then(() => { if (location.hash === "#verify-run") $<HTMLButtonElement>("verify-btn").click(); });
 if (import.meta.env.DEV) (window as any).__test = { names, rerender: () => { renderForm(); renderModel(); } }; // dev-server only: lets scripts/e2e checks feed hostile names
+mountSignoff($("signoff-card"), { rpc: defaultRpc, explorer: explorerBase, context: async () => {
+  if (state.confidential) return { error: "Sign-off covers public rounds, where each investor's row is in the plan. A confidential round hides its rows, so there the board uses the Board check and each holder's own claim." };
+  if (!state.allocs.length) return { error: "Name the investors above (a share of the raise each) to collect their sign-offs; with a single anonymous investor there is nobody to sign." };
+  if (!state.deadline) return { error: "Set a funding deadline in the draft first: the deadline is inside the plan hash, so signatures only make sense once it is fixed." };
+  const contract = ($("contract") as HTMLInputElement).value.trim().toLowerCase() || defaultContract;
+  if (!validAccount(contract)) return { error: "Put a Rounds contract account in the box under Events & verify: the sign-off names the contract." };
+  const { c, hh } = await modeledPlan(account() ?? "fund.testnet", contract); return { contract, plan: c, hash: hh };
+} });

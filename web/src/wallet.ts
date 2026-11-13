@@ -13,7 +13,7 @@ export const account = () => current;
 export const onAccount = (f: (a: string | null) => void) => { listeners.add(f); f(current); return () => listeners.delete(f); };
 
 // Dev-server only (stripped from production builds): scripts/e2e-wallet.mjs injects a signer backed by throwaway testnet keys.
-const testWallet = (): { account: string; send(receiver: string, acts: unknown[]): Promise<unknown> } | null =>
+const testWallet = (): { account: string; send(receiver: string, acts: unknown[]): Promise<unknown>; signMessage?(message: string, recipient: string, nonce: Uint8Array): Promise<SignedMsg> } | null =>
   import.meta.env.DEV ? ((window as any).__testWallet ?? null) : null;
 
 export async function initWallet() {
@@ -85,4 +85,22 @@ export function readReturn(): { hash?: string; error?: string } | null {
   ["transactionHashes", "errorCode", "errorMessage"].forEach((k) => u.searchParams.delete(k));
   history.replaceState(null, "", u.pathname + u.search + u.hash);
   return h ? { hash: h.split(",").pop()! } : { error: decodeURIComponent(err!) };
+}
+
+export interface SignedMsg { accountId: string; publicKey: string; signature: string }
+/** Asks the connected wallet to sign a message (NEP-413). Returns the signature as base64, whatever form the wallet used. The wallet shows the message and recipient. */
+export async function signMessage(message: string, recipient: string, nonce: Uint8Array): Promise<SignedMsg> {
+  if (!current) throw new Error("connect a wallet first");
+  const tw = testWallet(); let out: any;
+  if (tw?.signMessage) out = await tw.signMessage(message, recipient, nonce);
+  else {
+    const w: any = await selector!.wallet();
+    if (typeof w.signMessage !== "function") throw new Error("this wallet cannot sign messages; use a holder key file instead");
+    out = await w.signMessage({ message, recipient, nonce: (globalThis as any).Buffer.from(nonce) });
+  }
+  if (!out || !out.signature || !out.publicKey) throw new Error("the wallet did not return a signature (was the request closed?)");
+  let sig: string = String(out.signature);
+  if (sig.startsWith("ed25519:")) { const { base58 } = await import("@scure/base"); sig = btoa(String.fromCharCode(...base58.decode(sig.slice(8)))); }
+  if (out.accountId && out.accountId !== current) throw new Error(`the wallet signed as ${out.accountId}, not as ${current}`);
+  return { accountId: current, publicKey: String(out.publicKey), signature: sig };
 }

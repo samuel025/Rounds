@@ -111,9 +111,10 @@ export async function checkTableFile(table: TableFile, onChain: { merkleRoot: st
   return { ok: problems.length === 0, problems, computedRoot: b ? dec(b.root) : null, computedTotal: b ? dec(b.totalShares) : null, rows: table.entries.map((e) => ({ holderId: e.holderId, shareClass: e.shareClass, shares: e.shares })), byClass };
 }
 
-/** Demo mode: this tab creates every holder's key itself (so the page can run the whole flow alone). Real holders create their own with generateHolderKey. */
-export async function generateShareholderReceipts(capTable: CapEntry[], opts: { classes: string[]; random?: () => bigint }) {
-  const keys = await Promise.all(capTable.map(() => generateHolderKey(opts.random)));
+/** Demo mode: this tab creates every holder's key itself (so the page can run the whole flow alone). Real holders create their own with generateHolderKey.
+ *  `keyFor` may supply a key for a row (for example one derived from the connected wallet, so it can be recovered later); a row it skips gets a random key. */
+export async function generateShareholderReceipts(capTable: CapEntry[], opts: { classes: string[]; random?: () => bigint; keyFor?: (entry: CapEntry, index: number) => Promise<HolderKey | null> }) {
+  const keys = await Promise.all(capTable.map(async (e, i) => (await opts.keyFor?.(e, i)) ?? (await generateHolderKey(opts.random))));
   const b = await buildConfidentialTable(capTable.map((e, i) => ({ ...e, holderCode: keys[i].holderCode })), opts.classes, opts.random);
   const receipts: Receipt[] = b.claimFiles.map((c, i) => ({ ...c, holderSecret: keys[i].holderSecret }));
   return { root: b.root, totalShares: b.totalShares, receipts, keys, claimFiles: b.claimFiles, tableFile: b.tableFile, witness: b.witness };

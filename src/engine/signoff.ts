@@ -59,8 +59,20 @@ export async function evaluateSignoffs(bundle: SignoffBundle | null, expected: {
   return { rows, confirmed, total: rows.length, unsigned: expected.unsigned, all: rows.length > 0 && confirmed === rows.length };
 }
 
-/** sha256 of the bundle with sorted keys: the commitment the proposer can put on chain so the bundle cannot be swapped or withheld. */
+/** The bundle as the exact text committed on chain (sorted keys, signoffs ordered by account). The contract stores this text and logs its sha256. */
+export function serializeBundle(b: SignoffBundle): string {
+  return canonicalJson({ contract: b.contract, planHash: b.planHash, signoffs: [...b.signoffs].sort((x, y) => (x.account < y.account ? -1 : 1)).map((s) => ({ account: s.account, message: s.message, nonce: s.nonce, publicKey: s.publicKey, recipient: s.recipient, signature: s.signature })), version: b.version });
+}
+/** sha256 of the serialized bundle: equals the contract's `signoffs_hash_of`. */
 export async function bundleHash(b: SignoffBundle): Promise<string> {
-  const canon = canonicalJson({ contract: b.contract, planHash: b.planHash, signoffs: [...b.signoffs].sort((x, y) => (x.account < y.account ? -1 : 1)).map((s) => ({ account: s.account, message: s.message, nonce: s.nonce, publicKey: s.publicKey, recipient: s.recipient, signature: s.signature })), version: b.version });
-  return toHex(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canon))));
+  return toHex(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(serializeBundle(b)))));
+}
+/** Reads a bundle from chain text; anything malformed is null (it then counts as "no sign-offs"), never a crash. */
+export function parseBundle(text: string | null): SignoffBundle | null {
+  if (!text) return null;
+  try {
+    const j = JSON.parse(text); if (j?.version !== 1 || typeof j.contract !== "string" || typeof j.planHash !== "string" || !Array.isArray(j.signoffs)) return null;
+    const ok = (s: any) => s && ["account", "message", "nonce", "recipient", "publicKey", "signature"].every((k) => typeof s[k] === "string");
+    return { version: 1, contract: j.contract, planHash: j.planHash, signoffs: j.signoffs.filter(ok) };
+  } catch { return null; }
 }

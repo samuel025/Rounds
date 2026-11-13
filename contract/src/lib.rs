@@ -157,8 +157,10 @@ pub struct Rounds {
     unpaid_fees: LookupMap<AccountId, u128>,
     /// Sealed claim data per holder, posted by the proposer: key "round|tag", tag = sha256 hex of the holder's public code. The contract stores the bytes and cannot read them.
     claim_blobs: LookupMap<String, String>, blob_rounds: LookupSet<u64>,
-    /// The hash of the investors' signed-off bundle for a round, committed while it is still Funding.
-    signoff_hashes: LookupMap<u64, String>,
+    /// The investors' signed-off bundle (JSON text) for a round, committed while it is still Funding; its sha256 is computed here, so it cannot be misreported.
+    signoffs: LookupMap<u64, String>,
+    /// The sealed copy of a confidential round's private table for the board (an envelope, JSON text), posted once; its hash is the round plan's `escrow_hash`.
+    board_envelopes: LookupMap<u64, String>,
     /// Each account's public encryption key (X25519, 64 hex chars), so a proposer can seal the private table for the board's council members.
     enc_keys: LookupMap<AccountId, String>,
 }
@@ -216,7 +218,7 @@ impl Rounds {
             safts: IterableMap::new(b"f"), token_grants: IterableMap::new(b"k"), next_token_grant: 1,
             confidential_roots: LookupMap::new(b"R"), confidential_supply: LookupMap::new(b"S"), used_nullifiers: LookupSet::new(b"N"),
             private_exits: IterableMap::new(b"X"), next_private_exit: 1, private_funds_total: 0, registration_deposit: 0,
-            claim_fee: 0, unpaid_fees: LookupMap::new(b"U"), claim_blobs: LookupMap::new(b"B"), blob_rounds: LookupSet::new(b"b"), signoff_hashes: LookupMap::new(b"G"), enc_keys: LookupMap::new(b"E"),
+            claim_fee: 0, unpaid_fees: LookupMap::new(b"U"), claim_blobs: LookupMap::new(b"B"), blob_rounds: LookupSet::new(b"b"), signoffs: LookupMap::new(b"G"), board_envelopes: LookupMap::new(b"V"), enc_keys: LookupMap::new(b"E"),
         }
     }
     fn only_board(&self) { require!(env::predecessor_account_id() == self.board, "only the board"); }
@@ -958,6 +960,8 @@ impl Rounds {
             self.claim_blobs.insert(format!("{}|{}", round_id, tag), blob.clone());
         }
         self.blob_rounds.insert(round_id);
+        // near_sdk's store collections cache writes until the call ends; flush them so storage_usage already counts what was added
+        self.claim_blobs.flush();
         let used = env::storage_usage().saturating_sub(before) as u128;
         let cost = used * env::storage_byte_cost().as_yoctonear();
         let paid = env::attached_deposit().as_yoctonear();
@@ -968,17 +972,46 @@ impl Rounds {
     pub fn claim_blob(&self, round_id: u64, tag: String) -> Option<String> { self.claim_blobs.get(&format!("{}|{}", round_id, tag)).cloned() }
     pub fn claim_blobs_published(&self, round_id: u64) -> bool { self.blob_rounds.contains(&round_id) }
 
-    /// An officer commits the hash of the investors' signed-off bundle for a round that is still awaiting approval, so the proposer cannot swap
-    /// or hide it once the board votes. It may be replaced while the round is Funding (more signatures arrive); each commitment is logged.
-    pub fn commit_signoffs(&mut self, round_id: u64, bundle_hash: String) {
+    /// An officer commits the investors' signed-off bundle (JSON text, at most 48 KB) for a round that is still awaiting approval, so the proposer cannot
+    /// swap or hide it once the board votes. The contract only stores it and logs its sha256; every signature is verified by the reader. It may be replaced
+    /// while the round is Funding (more signatures arrive); each commitment is logged. The caller pays the storage (the excess is returned).
+    #[payable]
+    pub fn commit_signoffs(&mut self, round_id: u64, bundle: String) {
         self.only_officer();
         let r = self.rounds.get(&round_id).unwrap_or_else(|| env::panic_str("no such round"));
         require!(matches!(r.status, RoundStatus::Funding), "ERR_ROUND_NOT_FUNDING");
-        require!(bundle_hash.len() == 64 && bundle_hash.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)), "ERR_BAD_BUNDLE_HASH");
-        self.signoff_hashes.insert(round_id, bundle_hash.clone());
-        event("signoffs_committed", &format!("{{\"round_id\":{},\"bundle_hash\":\"{}\"}}", round_id, bundle_hash));
+        require!(!bundle.is_empty() && bundle.len() <= 48 * 1024, "ERR_BAD_BUNDLE_SIZE");
+        let before = env::storage_usage();
+        self.signoffs.insert(round_id, bundle.clone()); self.signoffs.flush();
+        self.charge_storage(before);
+        event("signoffs_committed", &format!("{{\"round_id\":{},\"bundle_hash\":\"{}\"}}", round_id, hex(&env::sha256(bundle.as_bytes()))));
     }
-    pub fn signoffs_of(&self, round_id: u64) -> Option<String> { self.signoff_hashes.get(&round_id).cloned() }
+    pub fn signoffs_of(&self, round_id: u64) -> Option<String> { self.signoffs.get(&round_id).cloned() }
+    pub fn signoffs_hash_of(&self, round_id: u64) -> Option<String> { self.signoffs.get(&round_id).map(|b| hex(&env::sha256(b.as_bytes()))) }
+
+    /// The proposer posts the sealed copy of a confidential round's private table once, so each council member can open it with their own wallet (no file,
+    /// no passphrase). The contract cannot read it. Its hash is the `escrow_hash` the board approved inside the plan; readers re-check that.
+    #[payable]
+    pub fn publish_board_envelope(&mut self, round_id: u64, envelope: String) {
+        self.only_officer();
+        let r = self.rounds.get(&round_id).unwrap_or_else(|| env::panic_str("no such round"));
+        require!(matches!(r.kind, RoundKind::Confidential), "ERR_NOT_CONFIDENTIAL");
+        require!(!self.board_envelopes.contains_key(&round_id), "ERR_ENVELOPE_ALREADY_PUBLISHED");
+        require!(!envelope.is_empty() && envelope.len() <= 96 * 1024, "ERR_BAD_ENVELOPE_SIZE");
+        let before = env::storage_usage();
+        self.board_envelopes.insert(round_id, envelope); self.board_envelopes.flush();
+        self.charge_storage(before);
+        event("board_envelope_published", &format!("{{\"round_id\":{}}}", round_id));
+    }
+    pub fn board_envelope(&self, round_id: u64) -> Option<String> { self.board_envelopes.get(&round_id).cloned() }
+
+    /// Requires the attached deposit to cover the storage used since `before` and returns the excess.
+    fn charge_storage(&self, before: u64) {
+        let cost = env::storage_usage().saturating_sub(before) as u128 * env::storage_byte_cost().as_yoctonear();
+        let paid = env::attached_deposit().as_yoctonear();
+        require!(paid >= cost, "ERR_ATTACH_STORAGE_DEPOSIT");
+        if paid > cost { Promise::new(env::predecessor_account_id()).transfer(NearToken::from_yoctonear(paid - cost)); }
+    }
 
     /// Any account publishes its own X25519 encryption public key (hex), so a proposer can seal the private table for it. Costs a small fixed deposit.
     #[payable]

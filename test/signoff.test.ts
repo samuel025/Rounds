@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ed25519 } from "@noble/curves/ed25519.js";
-import { rowsOfPlan, signoffMessage, signoffPayload, toSignoff, evaluateSignoffs, bundleHash, type SignoffBundle } from "../src/engine/signoff";
+import { rowsOfPlan, signoffMessage, signoffPayload, toSignoff, evaluateSignoffs, bundleHash, serializeBundle, parseBundle, type SignoffBundle } from "../src/engine/signoff";
 import { nep413Hash, toB64, formatPublicKey } from "../src/engine/walletkey";
 
 const plan = JSON.stringify({ issuances: [
@@ -54,5 +54,11 @@ describe("evaluating sign-offs", () => {
     const b = bundleOf(["chidi.testnet", "fund.testnet"]); const h = await bundleHash(b);
     expect(await bundleHash({ ...b, signoffs: [...b.signoffs].reverse() })).toBe(h);
     expect(await bundleHash({ ...b, signoffs: [b.signoffs[0]] })).not.toBe(h);
+  });
+  it("what the contract stores is the serialized text, and reading it back gives the same bundle; junk reads as no bundle", async () => {
+    const b = bundleOf(["chidi.testnet", "fund.testnet"]); const text = serializeBundle(b);
+    expect(parseBundle(text)).toEqual(JSON.parse(text)); expect(await bundleHash(parseBundle(text)!)).toBe(await bundleHash(b));
+    expect(parseBundle("not json")).toBeNull(); expect(parseBundle(null)).toBeNull(); expect(parseBundle('{"version":2}')).toBeNull();
+    expect(parseBundle(JSON.stringify({ version: 1, contract: C, planHash: HASH, signoffs: [{ account: "x" }, 5] }))!.signoffs).toEqual([]); // malformed entries are dropped
   });
 });

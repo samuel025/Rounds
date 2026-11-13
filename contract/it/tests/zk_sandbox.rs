@@ -154,3 +154,152 @@ async fn escrow_hash_is_committed_in_the_plan_the_board_approves() -> anyhow::Re
     let _ = (&e.board, &e.treasury, &e.investor, &e.zed);
     Ok(())
 }
+
+/// Opens confidential round 1, approves, funds and closes it, then opens, funds and approves private exit 1 (a $10,000 pot over 1000 shares).
+async fn open_exit(e: &Env, f: &Value) -> anyhow::Result<()> {
+    let raise = json!([[e.investor.id(), (1_000 * USD).to_string()]]);
+    assert!(e.propose(&f["merkle_root"], &f["commit_proof"], "1000", raise).await.is_success());
+    let round: Value = e.rounds.view("round").args_json(json!({"round_id": 1})).await?.json()?;
+    e.board.call(e.rounds.id(), "approve_round").args_json(json!({"round_id": 1, "plan_hash": round["plan_hash"]})).transact().await?.into_result()?;
+    e.investor.call(e.ft.id(), "ft_transfer_call").args_json(json!({"receiver_id": e.rounds.id(), "amount": (1_000 * USD).to_string(), "msg": json!({"action": "round", "id": 1}).to_string()})).deposit(ONE).max_gas().transact().await?.into_result()?;
+    e.zed.call(e.rounds.id(), "close_round").args_json(json!({"round_id": 1})).gas(Gas::from_tgas(100)).transact().await?.into_result()?;
+    let pot: u128 = f["pot"].as_str().unwrap().parse()?;
+    e.ada.call(e.rounds.id(), "propose_private_exit").args_json(json!({"round_id": 1, "pot": pot.to_string()})).transact().await?.into_result()?;
+    e.zed.call(e.ft.id(), "ft_transfer_call").args_json(json!({"receiver_id": e.rounds.id(), "amount": pot.to_string(), "msg": json!({"action": "pexit", "id": 1}).to_string()})).deposit(ONE).max_gas().transact().await?.into_result()?;
+    e.board.call(e.rounds.id(), "approve_private_exit").args_json(json!({"exit_id": 1})).transact().await?.into_result()?;
+    Ok(())
+}
+
+/// A relayed claim pays the relayer a board-set fee out of the holder's payout; a holder's own claim pays none; the ledger always balances.
+#[tokio::test]
+async fn relayer_fee_is_taken_from_the_payout_and_never_more_than_the_board_set() -> anyhow::Result<()> {
+    let e = setup().await?; let f = fx(); open_exit(&e, &f).await?;
+    let fee = 5 * USD;
+    assert!(!e.ada.call(e.rounds.id(), "set_claim_fee").args_json(json!({"fee": fee.to_string()})).transact().await?.is_success(), "only the board sets the fee");
+    e.board.call(e.rounds.id(), "set_claim_fee").args_json(json!({"fee": fee.to_string()})).transact().await?.into_result()?;
+    assert_eq!(e.rounds.view("claim_fee").await?.json::<String>()?, fee.to_string());
+    let (c_inv, c_fnd, c_ang) = (&f["claims"]["investor"], &f["claims"]["founder"], &f["claims"]["angel"]);
+    let burner = account(&e.w, "burner").await; let burner2 = account(&e.w, "burner2").await; let burner3 = account(&e.w, "burner3").await;
+    for a in [&burner, &burner2, &burner3] { register(&e.ft, a.id()).await; }
+
+    // a relayer unrelated to the holder submits: the holder is paid payout - fee, the relayer gets the fee
+    let zed_before = balance(&e.ft, e.zed.id()).await;
+    let r = e.claim(&e.zed, 1, c_inv, "burner.test.near", &c_inv["proof"]).await;
+    assert!(r.is_success(), "{:?}", r);
+    assert_eq!(balance(&e.ft, burner.id()).await, 6_000 * USD - fee, "the holder gets the exact share minus the fee");
+    assert_eq!(balance(&e.ft, e.zed.id()).await, zed_before + fee, "the relayer gets the fee");
+    assert_eq!(e.ledger().await, 10_000 * USD - 6_000 * USD, "the whole payout left the contract (holder + fee)");
+    assert!(e.used(&c_inv["nullifier"]).await);
+
+    // a holder who submits their own claim pays no fee
+    let own = e.claim(&burner2, 1, c_fnd, "burner2.test.near", &c_fnd["proof"]).await;
+    assert!(own.is_success(), "{:?}", own);
+    assert_eq!(balance(&e.ft, burner2.id()).await, 3_000 * USD, "no fee on a holder's own claim");
+
+    // a fee as large as the payout is refused, and a refused claim burns nothing
+    e.board.call(e.rounds.id(), "set_claim_fee").args_json(json!({"fee": (1_000 * USD).to_string()})).transact().await?.into_result()?;
+    let big = e.claim(&e.zed, 1, c_ang, "burner3.test.near", &c_ang["proof"]).await;
+    assert!(failed(&big, "ERR_FEE_EXCEEDS_PAYOUT"), "{:?}", big);
+    assert!(!e.used(&c_ang["nullifier"]).await);
+    // the fee can be turned off
+    e.board.call(e.rounds.id(), "set_claim_fee").args_json(json!({"fee": "0"})).transact().await?.into_result()?;
+    assert!(e.claim(&e.zed, 1, c_ang, "burner3.test.near", &c_ang["proof"]).await.is_success());
+    assert_eq!(balance(&e.ft, burner3.id()).await, 1_000 * USD, "with no fee the holder gets everything");
+    assert_eq!(e.ledger().await, 0, "the pot is fully paid out, fees included");
+    Ok(())
+}
+
+/// A relayer that is not registered with the token is registered by the contract and paid; a transfer that fails restores the claim and pays no fee.
+#[tokio::test]
+async fn relayer_fee_registers_an_unregistered_relayer_and_a_failed_payout_pays_no_fee() -> anyhow::Result<()> {
+    let e = setup().await?; let f = fx(); open_exit(&e, &f).await?;
+    e.board.call(e.rounds.id(), "set_claim_fee").args_json(json!({"fee": (2 * USD).to_string()})).transact().await?.into_result()?;
+    let c = &f["claims"]["founder"];
+    let burner2 = account(&e.w, "burner2").await; register(&e.ft, burner2.id()).await;
+    let relayer = account(&e.w, "relayer").await; // never registered with the token
+    assert_eq!(e.ft.view("ft_balance_of").args_json(json!({"account_id": relayer.id()})).await?.json::<String>()?, "0");
+    // payouts failing: nothing is paid to anyone and the nullifier is free again
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": true})).transact().await?.into_result()?;
+    let _ = e.claim(&relayer, 1, c, "burner2.test.near", &c["proof"]).await;
+    assert!(!e.used(&c["nullifier"]).await, "a failed payout restores the nullifier");
+    let ex: Value = e.rounds.view("private_exit").args_json(json!({"exit_id": 1})).await?.json()?;
+    assert_eq!(ex["claimed"], "0", "and the claimed total");
+    e.ft.call("set_fail_transfers").args_json(json!({"fail": false})).transact().await?.into_result()?;
+    let ok = e.claim(&relayer, 1, c, "burner2.test.near", &c["proof"]).await;
+    assert!(ok.is_success(), "{:?}", ok);
+    assert_eq!(balance(&e.ft, burner2.id()).await, 3_000 * USD - 2 * USD);
+    assert_eq!(balance(&e.ft, relayer.id()).await, 2 * USD, "the contract registered the relayer with the token and paid the fee");
+    assert_eq!(e.ledger().await, 10_000 * USD - 3_000 * USD, "only the claimed share left the pot");
+    Ok(())
+}
+
+/// Sealed claim data is posted once per confidential round, by an officer, addressed by a hash and never by an account; storage is paid by the caller.
+#[tokio::test]
+async fn claim_blobs_are_published_once_by_an_officer_addressed_by_hash() -> anyhow::Result<()> {
+    let e = setup().await?; let f = fx();
+    let tag = |c: char| c.to_string().repeat(64);
+    let blobs = json!([[tag('a'), "sealed-a"], [tag('b'), "sealed-b"]]);
+    let post = |who: &Account, round: u64, b: Value, dep: NearToken| who.call(e.rounds.id(), "publish_claim_blobs").args_json(json!({"round_id": round, "blobs": b})).deposit(dep).max_gas().transact();
+    assert!(failed(&post(&e.ada, 1, blobs.clone(), NearToken::from_near(1)).await?, "no such round"), "no round yet");
+    let raise = json!([[e.investor.id(), (1_000 * USD).to_string()]]);
+    assert!(e.propose(&f["merkle_root"], &f["commit_proof"], "1000", raise).await.is_success());
+    assert!(failed(&post(&e.zed, 1, blobs.clone(), NearToken::from_near(1)).await?, "only an officer"), "only an officer posts");
+    assert!(failed(&post(&e.ada, 1, blobs.clone(), NearToken::from_yoctonear(1)).await?, "ERR_ATTACH_STORAGE_DEPOSIT"), "the caller pays for the storage");
+    assert!(failed(&post(&e.ada, 1, json!([["not-a-hash", "x"]]), NearToken::from_near(1)).await?, "ERR_BAD_BLOB_TAG"));
+    assert!(failed(&post(&e.ada, 1, json!([[tag('a'), "x"], [tag('a'), "y"]]), NearToken::from_near(1)).await?, "ERR_DUPLICATE_BLOB_TAG"));
+    assert!(failed(&post(&e.ada, 1, json!([[tag('a'), "z".repeat(4097)]]), NearToken::from_near(1)).await?, "ERR_BAD_BLOB_SIZE"));
+    assert!(failed(&post(&e.ada, 1, json!([]), NearToken::from_near(1)).await?, "ERR_BLOB_COUNT"));
+    let before = e.ada.view_account().await?.balance;
+    let ok = post(&e.ada, 1, blobs.clone(), NearToken::from_near(1)).await?; assert!(ok.is_success(), "{:?}", ok);
+    let spent = before.as_yoctonear() - e.ada.view_account().await?.balance.as_yoctonear();
+    assert!(spent < NearToken::from_millinear(100).as_yoctonear(), "the excess deposit comes back: spent {} yocto", spent);
+    assert_eq!(e.rounds.view("claim_blob").args_json(json!({"round_id": 1, "tag": tag('a')})).await?.json::<Option<String>>()?, Some("sealed-a".into()));
+    assert_eq!(e.rounds.view("claim_blob").args_json(json!({"round_id": 1, "tag": tag('c')})).await?.json::<Option<String>>()?, None);
+    assert!(e.rounds.view("claim_blobs_published").args_json(json!({"round_id": 1})).await?.json::<bool>()?);
+    assert!(failed(&post(&e.ada, 1, blobs, NearToken::from_near(1)).await?, "ERR_BLOBS_ALREADY_PUBLISHED"), "once per round: nobody can swap a holder's data later");
+    Ok(())
+}
+
+/// The sign-off bundle is committed while the round awaits approval (the contract logs its sha256); the sealed board copy is posted once by an officer.
+#[tokio::test]
+async fn signoff_bundle_and_board_envelope_and_encryption_keys() -> anyhow::Result<()> {
+    let e = setup().await?; let f = fx();
+    let raise = json!([[e.investor.id(), (1_000 * USD).to_string()]]);
+    assert!(e.propose(&f["merkle_root"], &f["commit_proof"], "1000", raise).await.is_success());
+    let commit = |who: &Account, b: &str, dep: NearToken| who.call(e.rounds.id(), "commit_signoffs").args_json(json!({"round_id": 1, "bundle": b})).deposit(dep).transact();
+    assert!(failed(&commit(&e.zed, "{}", NearToken::from_near(1)).await?, "only an officer"));
+    assert!(failed(&commit(&e.ada, "", NearToken::from_near(1)).await?, "ERR_BAD_BUNDLE_SIZE"));
+    assert!(failed(&commit(&e.ada, &"x".repeat(49 * 1024), NearToken::from_near(1)).await?, "ERR_BAD_BUNDLE_SIZE"));
+    assert!(failed(&commit(&e.ada, "{\"a\":1}", NearToken::from_yoctonear(1)).await?, "ERR_ATTACH_STORAGE_DEPOSIT"), "the caller pays for the storage");
+    let one = "{\"signoffs\":[1]}";
+    let ok = commit(&e.ada, one, NearToken::from_near(1)).await?; assert!(ok.is_success(), "{:?}", ok);
+    assert_eq!(e.rounds.view("signoffs_of").args_json(json!({"round_id": 1})).await?.json::<Option<String>>()?, Some(one.to_string()));
+    assert_eq!(e.rounds.view("signoffs_hash_of").args_json(json!({"round_id": 1})).await?.json::<Option<String>>()?, Some(h(one)), "the hash is computed on chain");
+    let two = "{\"signoffs\":[1,2]}";
+    assert!(commit(&e.ada, two, NearToken::from_near(1)).await?.is_success(), "more signatures may arrive while the round is Funding");
+    let round: Value = e.rounds.view("round").args_json(json!({"round_id": 1})).await?.json()?;
+    e.board.call(e.rounds.id(), "approve_round").args_json(json!({"round_id": 1, "plan_hash": round["plan_hash"]})).transact().await?.into_result()?;
+    assert!(failed(&commit(&e.ada, "{\"late\":1}", NearToken::from_near(1)).await?, "ERR_ROUND_NOT_FUNDING"), "after approval the commitment is frozen");
+    assert_eq!(e.rounds.view("signoffs_of").args_json(json!({"round_id": 1})).await?.json::<Option<String>>()?, Some(two.to_string()));
+
+    // the sealed board copy: once, by an officer, for a confidential round
+    let post = |who: &Account, round: u64, env_: &str| who.call(e.rounds.id(), "publish_board_envelope").args_json(json!({"round_id": round, "envelope": env_})).deposit(NearToken::from_near(1)).max_gas().transact();
+    assert!(failed(&post(&e.zed, 1, "{}").await?, "only an officer"));
+    assert!(failed(&post(&e.ada, 9, "{}").await?, "no such round"));
+    assert!(failed(&post(&e.ada, 1, "").await?, "ERR_BAD_ENVELOPE_SIZE"));
+    assert!(post(&e.ada, 1, "{\"sealed\":true}").await?.is_success());
+    assert_eq!(e.rounds.view("board_envelope").args_json(json!({"round_id": 1})).await?.json::<Option<String>>()?, Some("{\"sealed\":true}".to_string()));
+    assert!(failed(&post(&e.ada, 1, "{\"swap\":true}").await?, "ERR_ENVELOPE_ALREADY_PUBLISHED"), "once per round: it cannot be swapped after the board saw it");
+
+    let k = "0f".repeat(32);
+    let reg = |who: &Account, key: &str, dep: NearToken| who.call(e.rounds.id(), "register_enc_key").args_json(json!({"public_key": key})).deposit(dep).transact();
+    assert!(failed(&reg(&e.zed, "xyz", NearToken::from_near(1)).await?, "ERR_BAD_ENC_KEY"));
+    assert!(failed(&reg(&e.zed, &k, NearToken::from_yoctonear(1)).await?, "ERR_ATTACH_STORAGE_DEPOSIT"));
+    assert!(reg(&e.zed, &k, NearToken::from_near(1)).await?.is_success());
+    assert_eq!(e.rounds.view("enc_key_of").args_json(json!({"account": e.zed.id()})).await?.json::<Option<String>>()?, Some(k.clone()));
+    assert_eq!(e.rounds.view("enc_key_of").args_json(json!({"account": e.ada.id()})).await?.json::<Option<String>>()?, None, "an account cannot publish a key for another");
+    let k2 = "1e".repeat(32);
+    assert!(reg(&e.zed, &k2, NearToken::from_yoctonear(0)).await?.is_success(), "an account may rotate its own key without paying again");
+    assert_eq!(e.rounds.view("enc_key_of").args_json(json!({"account": e.zed.id()})).await?.json::<Option<String>>()?, Some(k2));
+    Ok(())
+}

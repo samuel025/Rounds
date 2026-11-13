@@ -11,6 +11,8 @@ export interface Draft {
   v: 1; pre: number; raise: number; pool: number; ada: number; bayo: number; poolNow: number;
   safes: DraftSafe[]; /** how the new money is split between investors, in basis points of the raise; empty = one investor (whoever proposes) */ allocs: DraftAlloc[];
   confidential: boolean; note: string;
+  /** the funding deadline as unix seconds; 0 = not set (the proposal then uses 7 days from the moment it is sent). Sign-offs need it set, because the deadline is inside the plan hash. */
+  deadline: number;
 }
 export const DRAFT_PREFIX = "draft=";
 export const MAX_DRAFT_CHARS = 8_000; // chat apps cut long links; the file download is the fallback
@@ -39,7 +41,7 @@ export function validateDraft(x: unknown): Draft {
   const note = o.note === undefined ? "" : String(o.note); if (note.length > 280) throw new Error("the note is longer than 280 characters");
   return { v: 1, pre: int(o.pre, 0, MAX_DOLLARS, "the valuation"), raise: int(o.raise, 0, MAX_DOLLARS, "the raise"), pool: int(o.pool, 0, 99, "the pool target"),
     ada: int(o.ada, 0, 2 ** 53 - 1, "Ada's shares"), bayo: int(o.bayo, 0, 2 ** 53 - 1, "Bayo's shares"), poolNow: int(o.poolNow, 0, 2 ** 53 - 1, "the pool"),
-    safes, allocs, confidential: o.confidential === true, note };
+    safes, allocs, confidential: o.confidential === true, note, deadline: o.deadline === undefined ? 0 : (o.deadline === 0 ? 0 : int(o.deadline, 1_700_000_000, 4_100_000_000, "the deadline")) };
 }
 
 const b64u = (u: Uint8Array) => btoa(String.fromCharCode(...u)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

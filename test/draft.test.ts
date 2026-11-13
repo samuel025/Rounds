@@ -3,7 +3,7 @@ import { encodeDraft, decodeDraft, validateDraft, splitRaise, MAX_DRAFT_CHARS, t
 
 const base: Draft = { v: 1, pre: 21_000_000, raise: 9_000_000, pool: 10, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000,
   safes: [{ id: "safe1", holder: "chidi.testnet", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo.testnet", amt: 250_000, cap: 10_000_000, disc: 0 }],
-  allocs: [{ holder: "fund.testnet", bps: 7000 }, { holder: "lead.testnet", bps: 3000 }], confidential: false, note: "v3 after call with lead" };
+  allocs: [{ holder: "fund.testnet", bps: 7000 }, { holder: "lead.testnet", bps: 3000 }], confidential: false, note: "v3 after call with lead", deadline: 1_800_000_000 };
 
 describe("draft links", () => {
   it("round-trips and is the same text every time", async () => {
@@ -17,7 +17,7 @@ describe("draft links", () => {
     ["a bad version", { ...base, v: 2 }], ["a negative raise", { ...base, raise: -1 }], ["a fractional pool", { ...base, pool: 1.5 }], ["a huge number", { ...base, pre: 1e15 }],
     ["a markup holder name", { ...base, safes: [{ ...base.safes[0], holder: "<script>" }] }], ["a duplicate SAFE id", { ...base, safes: [base.safes[0], base.safes[0]] }],
     ["investor shares that do not add up", { ...base, allocs: [{ holder: "a.testnet", bps: 5000 }] }], ["a duplicated investor", { ...base, allocs: [{ holder: "a.testnet", bps: 5000 }, { holder: "a.testnet", bps: 5000 }] }],
-    ["a long note", { ...base, note: "x".repeat(281) }], ["a string where a number goes", { ...base, ada: "5" }], ["not an object", 5],
+    ["a deadline in the past", { ...base, deadline: 5 }], ["a long note", { ...base, note: "x".repeat(281) }], ["a string where a number goes", { ...base, ada: "5" }], ["not an object", 5],
   ])("refuses %s", (_n, d) => { expect(() => validateDraft(d)).toThrow(); });
   it("refuses a damaged, oversized or foreign link without crashing", async () => {
     await expect(decodeDraft("#draft=!!!")).rejects.toThrow();
@@ -39,5 +39,12 @@ describe("splitting the raise", () => {
   it("adds up exactly; the last investor takes the remainder", () => {
     const s = splitRaise(1_000_001n, [{ holder: "a.testnet", bps: 3333 }, { holder: "b.testnet", bps: 3333 }, { holder: "c.testnet", bps: 3334 }]);
     expect(s.reduce((a, [, x]) => a + x, 0n)).toBe(1_000_001n);
+  });
+});
+
+describe("deadline", () => {
+  it("defaults to unset, round-trips when set, and a link without it still loads", async () => {
+    const { deadline, ...old } = base as any; expect(validateDraft(old).deadline).toBe(0);
+    expect((await decodeDraft(await encodeDraft(base))).deadline).toBe(1_800_000_000);
   });
 });
