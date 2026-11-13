@@ -4,6 +4,9 @@ import { spawn, execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, openSync } from "node:fs";
 import { N, VOICE as VOICE_, ttsFile } from "./demo-script.mjs";
 import { createHash } from "node:crypto";
+import { ed25519 } from "@noble/curves/ed25519.js";
+import { sha256 as nsha } from "@noble/hashes/sha2.js";
+import { base58 } from "@scure/base";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -44,6 +47,15 @@ async function signAndSend(signer, receiver, act) {
 }
 const execActs = async (signer, receiver, acts) => { let last; for (const a of acts) { last = await signAndSend(signer, receiver, a); if (last.status?.Failure) return last; } return last; };
 const bindings = [];
+// the test signer also signs NEP-413 messages (the wallet-derived keys) with the judge's throwaway key, like a wallet would
+const u32 = (n) => Buffer.from([n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]);
+const bstr = (x) => { const b = Buffer.from(x); return Buffer.concat([u32(b.length), b]); };
+function signNep413(m) {
+  const cred = JSON.parse(readFileSync(`${process.env.HOME}/.near-credentials/testnet/${JUDGE}.json`, "utf8"));
+  const sk = base58.decode(cred.private_key.replace("ed25519:", "")).slice(0, 32);
+  const hash = nsha(Buffer.concat([u32(2147484061), bstr(m.message), Buffer.from(m.nonce, "base64"), bstr(m.recipient), Buffer.from([0])]));
+  return { accountId: JUDGE, publicKey: cred.public_key, signature: Buffer.from(ed25519.sign(hash, sk)).toString("base64") };
+}
 // confidential recording: a local relayer submits the claim, and a brand-new account (never registered with the token) receives it
 let relayerProc = null, BURNER = "";
 if (ZKMODE) {
@@ -79,8 +91,8 @@ await send("Page.enable"); await send("Runtime.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
 await send("Runtime.addBinding", { name: "nodeSend" });
-await send("Page.addScriptToEvaluateOnNewDocument", { source: `window.__testWallet = { account: ${JSON.stringify(JUDGE)}, send: (receiver, acts) => new Promise((res) => { const id = Math.random().toString(36).slice(2); (window.__p ||= {})[id] = res; window.nodeSend(JSON.stringify({ id, receiver, acts })); }) };` });
-(async () => { for (;;) { while (bindings.length) { const b = bindings.shift(); const { id: cid, receiver, acts } = JSON.parse(b.payload); let out; try { console.log(`signer: ${acts.map((x) => x.method).join("+")} -> ${receiver.slice(0, 26)}`); out = await execActs(JUDGE, receiver, acts); if (out?.status?.Failure) console.log("signer failure:", JSON.stringify(out.status.Failure).slice(0, 300)); } catch (e) { console.log("signer error:", String(e.message).slice(0, 300)); out = { status: { Failure: String(e.message) }, transaction: { hash: null } }; } await ev(`window.__p[${JSON.stringify(cid)}](${JSON.stringify(out)})`); } await sleep(150); } })();
+await send("Page.addScriptToEvaluateOnNewDocument", { source: `window.__testWallet = { account: ${JSON.stringify(JUDGE)}, send: (receiver, acts) => new Promise((res) => { const id = Math.random().toString(36).slice(2); (window.__p ||= {})[id] = res; window.nodeSend(JSON.stringify({ id, receiver, acts })); }), signMessage: (message, recipient, nonce) => new Promise((res) => { const id = Math.random().toString(36).slice(2); (window.__p ||= {})[id] = res; window.nodeSend(JSON.stringify({ kind: "sign", id, message, recipient, nonce: btoa(String.fromCharCode(...nonce)) })); }) };` });
+(async () => { for (;;) { while (bindings.length) { const b = bindings.shift(); const msg0 = JSON.parse(b.payload); if (msg0.kind === "sign") { await ev(`window.__p[${JSON.stringify(msg0.id)}](${JSON.stringify(signNep413(msg0))})`); continue; } const { id: cid, receiver, acts } = msg0; let out; try { console.log(`signer: ${acts.map((x) => x.method).join("+")} -> ${receiver.slice(0, 26)}`); out = await execActs(JUDGE, receiver, acts); if (out?.status?.Failure) console.log("signer failure:", JSON.stringify(out.status.Failure).slice(0, 300)); } catch (e) { console.log("signer error:", String(e.message).slice(0, 300)); out = { status: { Failure: String(e.message) }, transaction: { hash: null } }; } await ev(`window.__p[${JSON.stringify(cid)}](${JSON.stringify(out)})`); } await sleep(150); } })();
 await send("Page.navigate", { url: ZKMODE ? `${URL_}?relayer=${encodeURIComponent("http://127.0.0.1:8791/relay-claim")}` : `${URL_}?sandbox=${SANDBOX}` }); await sleep(2500);
 
 // overlay: cursor, ripple, caption
@@ -126,12 +138,17 @@ const rect0 = (sel, fx = 0.5, fy = 0.5) => ev(`(()=>{const e=document.querySelec
 const scrollTo = async (sel, block = "start") => { await quiet(); await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"smooth",block:${JSON.stringify(block)}})`); await sleep(1200); };
 let cur = [640, 400];
 const moveXY = async (x, y, ms = 900) => { cur = [x, y]; await ev(`document.getElementById("rc").style.transform="translate(${x}px,${y}px)"`); await sleep(ms + 100); };
-const point = async (sel, fx, fy, ms) => { let [x, y] = await rect(sel, fx, fy); if (y < 70 || y > H - 50) { await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"instant",block:"center"})`); await sleep(500); [x, y] = await rect0(sel, fx, fy); } await moveXY(x, y, ms); };
+// (y < 140 below: the sticky nav and role bar cover the top of the page)
+const point = async (sel, fx, fy, ms) => { let [x, y] = await rect(sel, fx, fy); if (y < 140 || y > H - 50) { await ev(`document.querySelector(${JSON.stringify(sel)}).scrollIntoView({behavior:"instant",block:"center"})`); await sleep(500); [x, y] = await rect0(sel, fx, fy); } await moveXY(x, y, ms); };
 const click = async (sel, fx, fy) => {
   await point(sel, fx, fy); const [x, y] = cur;
   await ev(`(()=>{const r=document.getElementById("rr");r.style.left="${x}px";r.style.top="${y}px";r.classList.remove("go");void r.offsetWidth;r.classList.add("go")})()`);
   await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 }); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 }); await sleep(500);
 };
+// like click(), but the press itself is a DOM click: a real mouse press is lost when the card redraws between press and release
+const clickJs = async (sel) => { await point(sel); const [x, y] = cur;
+  await ev(`(()=>{const r=document.getElementById("rr");r.style.left="${x}px";r.style.top="${y}px";r.classList.remove("go");void r.offsetWidth;r.classList.add("go")})()`);
+  await ev(`document.querySelector(${JSON.stringify(sel)}).click()`); await sleep(500); };
 const typeInto = async (sel, value) => { await click(sel); await ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});e.focus();e.select()})()`); await send("Input.insertText", { text: String(value) }); await sleep(900); };
 const drag = async (sel, from, to, steps = 24) => { // slider drag between fractions of its width
   const [x0, y] = await rect(sel, from, 0.5); const [x1] = await rect(sel, to, 0.5);
@@ -202,17 +219,22 @@ if (PART === "zk") {
   await scrollTo("#zk");
   await narrate(N.zkIntro, async () => { await point("#zk h2", 0.3, 0.5); await sleep(5000); await click("#zk details.zd summary"); await sleep(9000); await click("#zk details.zd summary"); await point("#zk-run", 0.5, 0.15); });
   await narrate(N.zkSetup, async () => { await doZk("faucet", 2); await doZk("officer", 3); });
-  await narrate(N.zkPropose, async () => { await typeInto("#zk-pass", "a board passphrase 2026"); await doZk("propose", 4); });
-  await narrate(N.zkFiles, async () => { await ev(`document.getElementById("zk-files").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500); await point("#zk-files", 0.3, 0.4); await sleep(5000); await point("#zk-files", 0.75, 0.5); });
+  // the board member (the judge plays one here) publishes an encryption key derived from their wallet, so the table can be sealed for them
+  await narrate(N.zkKeys, async () => {
+    await typeInto("#zk-members", JUDGE); await sleep(600);
+    await click("#zk-regkey");
+    await markWait(() => waitFor(`/publish my encryption key/.test(document.getElementById("toast")?.innerText ?? "") && /DONE|FAIL/.test(document.getElementById("toast")?.innerText ?? "")`, 120000));
+    await markWait(() => waitFor(`/ready/.test(document.getElementById("zk-memstat")?.textContent ?? "")`, 60000)); await point("#zk-memstat", 0.2, 0.5); await sleep(1200);
+  });
+  await narrate(N.zkPropose, async () => { await doZk("propose", 4); });
   // silent preparation (cut from the video): open the card, wait for the new round to be readable, pick it
   await click("details:has(#zk-board-body) > summary"); await sleep(900);
   await ev(`document.getElementById("zk-btable-drop").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1300);
   await markWait(async () => { for (let i = 0; i < 40 && !(await ev(`!![...document.querySelectorAll("#zk-bround option")].find((o) => o.value === "${next0}")`)); i++) { await ev(`document.getElementById("zk-breload").click()`); await sleep(3000); } });
   await ev(`document.getElementById("zk-bround").value="${next0}";document.getElementById("zk-bround").dispatchEvent(new Event("change"))`); await sleep(600);
   await narrate(N.zkBoard, async () => {
-    await point("#zk-btable-drop", 0.5, 0.5); await setFileJs("zk-btable", "window.__zkBuilt.escrow", "rounds-board-copy.escrow.json"); await sleep(700);
-    await typeInto("#zk-bpass", "a board passphrase 2026"); await click("#zk-bcheck");
-    await waitFor(`/re-seals/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000); await sleep(800);
+    await clickJs("#zk-bwallet");
+    await markWait(() => waitFor(`/Table matches the on-chain root/.test(document.getElementById("zk-bout")?.textContent ?? "")`, 120000)); await sleep(800);
     await ev(`document.getElementById("zk-bout").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1500); await point("#zk-bout", 0.3, 0.2); await sleep(1500);
   });
   await narrate(N.zkBoard2, async () => {
@@ -223,13 +245,15 @@ if (PART === "zk") {
     await ev(`document.getElementById("zk-bout").scrollIntoView({behavior:"smooth",block:"center"})`); await sleep(1200); await point("#zk-bout", 0.3, 0.2); await sleep(1800);
   });
   await narrate(N.zkFund, async () => { await doZk("fund", 5); await doZk("approve", 6); await doZk("close", 7); });
-  await narrate(N.zkPayout, async () => { await doZk("pexit", 8); await doZk("pfund", 9); await doZk("papprove", 10); });
+  await narrate(N.zkPayout, async () => { await doZk("pexit", 8); await doZk("pfund", 9); await ev(`(()=>{const e=document.getElementById("zk-fee");e.value="5";e.dispatchEvent(new Event("change"))})()`); await sleep(1200); await doZk("papprove", 10); });
   await narrate(N.zkClaim, async () => {
+    // a holder with no files at all: the browser's stored state is wiped, then the wallet alone brings the claim and the key back
+    await ev(`sessionStorage.clear()`);
     await ev(`document.getElementById("zk-claim-body").scrollIntoView({behavior:"smooth",block:"start"})`); await sleep(1500);
-    await point("#zk-file-drop", 0.5, 0.5); await setFileJs("zk-file", `window.__zkBuilt.claimFiles.find((c) => c.holderId === ${JSON.stringify(JUDGE)})`, "rounds-claim-file.json"); await sleep(1000);
-    await point("#zk-keyfile-drop", 0.5, 0.5); await setFileJs("zk-keyfile", `window.__zkBuilt.keys[window.__zkBuilt.claimFiles.findIndex((c) => c.holderId === ${JSON.stringify(JUDGE)})]`, "rounds-holder-key.json"); await sleep(1000);
-    await waitFor(`!!document.getElementById("zk-claim-btn") && /Holder key loaded/.test(document.getElementById("zk-claim-body").innerText) && !/Reading the chain/.test(document.getElementById("zk-claim-body").innerText)`, 60000);
-    await typeInto("#zk-recipient", BURNER); await sleep(800);
+    await clickJs("#zk-recover");
+    await markWait(() => waitFor(`/Recovered \\d+ claim file/.test(document.getElementById("zk-claim-body")?.innerText ?? "") && !/Reading the chain/.test(document.getElementById("zk-claim-body")?.innerText ?? "")`, 120000));
+    await point("#zk-claim-body", 0.5, 0.45); await sleep(1200);
+    await typeInto("#zk-recipient", BURNER); await sleep(1200);
     await click("#zk-claim-btn");
     await markWait(() => waitFor(`/claimed to|FAIL/.test(document.getElementById("toast")?.innerText ?? "")`, 300000));
   });
