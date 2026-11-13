@@ -1,6 +1,6 @@
 # Intro film
 
-A 14.5 second fly-over of the live landing page, used as the opening of `demo/rounds-demo.mp4`. One camera, no cuts: it glides down the page, rises to show the whole page as a strip, dives into the hero and lands it under the closing line. It is drawn by a WebGL2 page (`index.html`) from screenshots of the real page, so every frame is computed from time alone.
+A 14.5 second fly-over of the live landing page. One camera, no cuts: it glides down the page, rises to show the whole page as a strip, dives into the hero and lands it under the closing line. It is drawn by a WebGL2 page (`index.html`) from screenshots of the real page, so every frame is computed from time alone.
 
 ```
 cd scripts/intro-film

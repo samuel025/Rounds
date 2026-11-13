@@ -12,7 +12,7 @@
 
 ## See it in 60 seconds
 
-Screenshots of the live app (NEAR testnet), taken by `scripts/screenshots.mjs`; nothing here is mocked. The [demo video](docs/EVIDENCE.md#demo-video) walks through the same flows.
+Screenshots of the live app (NEAR testnet), taken by `scripts/screenshots.mjs`; nothing here is mocked.
 
 **A page for each role.** Founders, board voters and investors each see only what they need; the technical proof sits behind a toggle.
 
