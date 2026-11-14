@@ -1,6 +1,7 @@
 // "Run a round on testnet": one guided path on the open sandbox, from wallet to closed round.
 // The eight steps are always on screen in the same layout; only each step's state (done / current / waiting) and button change,
 // so refreshing chain data never makes the page grow or shrink.
+import { hint } from "./hints";
 import { account, onAccount, send, type Act } from "./wallet";
 import { call, esc, loadChain, type ChainView } from "./chain";
 import { toast, txLink, boardAct } from "./actions";
@@ -16,7 +17,7 @@ export interface FlowDeps {
 const M = 1_000_000n;
 
 type St = "done" | "current" | "wait";
-interface Row { n: number; title: string; help: string; st: St; label?: string; act?: string; off?: boolean; note?: string }
+interface Row { n: number; title: string; help: string; st: St; label?: string; act?: string; off?: boolean; hintKey?: string; note?: string }
 
 export function mountFlow(host: HTMLElement, d: FlowDeps) {
   let v: ChainView | null = null, bal = 0n, acct: string | null = null, officerDone = false, busy = false, readError = "";
@@ -41,14 +42,14 @@ export function mountFlow(host: HTMLElement, d: FlowDeps) {
     const cur = [s1, s2, s3, true, s5, s6, s7, s8].findIndex((x) => !x) + 1 || 9;
     const st = (n: number, done: boolean): St => (done ? "done" : n === cur ? "current" : "wait");
     return [
-      { n: 1, title: "Connect a testnet wallet", help: s1 ? `Connected as ${acct}.` : "MyNearWallet or Meteor. The app never holds a key; each step below opens your wallet to approve.", st: st(1, s1), label: s1 ? undefined : "Connect wallet", act: "connect" },
-      { n: 2, title: "Get test USDC", help: `A no-value token from the contract's public faucet. Your balance: ${usd(bal)}; this round needs ${usd(want)}.`, st: st(2, s2), label: "Get test USDC", act: "faucet", off: !s1 },
-      { n: 3, title: "Make yourself an officer", help: "Only officers can propose rounds. The open sandbox board grants it to anyone; the real demo's board is a 2-of-3 DAO.", st: st(3, s3), label: "Make me an officer", act: "officer", off: !s1 },
+      { n: 1, title: "Connect a testnet wallet", hintKey: "wallet", help: s1 ? `Connected as ${acct}.` : "MyNearWallet or Meteor. The app never holds a key; each step below opens your wallet to approve.", st: st(1, s1), label: s1 ? undefined : "Connect wallet", act: "connect" },
+      { n: 2, title: "Get test USDC", hintKey: "testnet", help: `A no-value token from the contract's public faucet. Your balance: ${usd(bal)}; this round needs ${usd(want)}.`, st: st(2, s2), label: "Get test USDC", act: "faucet", off: !s1 },
+      { n: 3, title: "Make yourself an officer", hintKey: "officer", help: "Only officers can propose rounds. The open sandbox board grants it to anyone; the real demo's board is a 2-of-3 DAO.", st: st(3, s3), label: "Make me an officer", act: "officer", off: !s1 },
       { n: 4, title: "Set the round", help: d.modelSummary(), st: s3 || mr ? "done" : "wait", label: "Edit in the modeler", act: "model" },
-      { n: 5, title: "Propose it on chain", help: mr ? `Round ${mr.id} is on chain with plan hash ${mr.plan_hash.slice(0, 16)}…` : "Sends your modeled plan and its SHA-256 hash to the contract, with you as the investor.", st: st(5, s5), label: "Propose on chain", act: "propose", off: !s3 || !!foreignDone() },
-      { n: 6, title: "Fund it", help: mr ? `Your wallet sends ${usd(BigInt(mr.raise[0]?.[1] ?? "0"))} into escrow; it is refunded if the round is cancelled.` : "Your money sits in escrow until the round closes.", st: st(6, s6), label: "Deposit", act: "deposit", off: !mr || status !== "Funding" || funded },
-      { n: 7, title: "Board approves the plan", help: "The board approves this exact plan hash; a changed plan would not match. On the open sandbox you act as the board.", st: st(7, s7), label: "Approve as the board", act: "approve", off: !mr || status !== "Funding" },
-      { n: 8, title: "Close the round", help: "Anyone can close an approved, funded round. The contract then issues the shares.", st: st(8, s8), label: "Close round", act: "close", off: !(status === "Approved" && funded) },
+      { n: 5, title: "Propose it on chain", hintKey: "planHash", help: mr ? `Round ${mr.id} is on chain with plan hash ${mr.plan_hash.slice(0, 16)}…` : "Sends your modeled plan and its SHA-256 hash to the contract, with you as the investor.", st: st(5, s5), label: "Propose on chain", act: "propose", off: !s3 || !!foreignDone() },
+      { n: 6, title: "Fund it", hintKey: "escrow", help: mr ? `Your wallet sends ${usd(BigInt(mr.raise[0]?.[1] ?? "0"))} into escrow; it is refunded if the round is cancelled.` : "Your money sits in escrow until the round closes.", st: st(6, s6), label: "Deposit", act: "deposit", off: !mr || status !== "Funding" || funded },
+      { n: 7, title: "Board approves the plan", hintKey: "board", help: "The board approves this exact plan hash; a changed plan would not match. On the open sandbox you act as the board.", st: st(7, s7), label: "Approve as the board", act: "approve", off: !mr || status !== "Funding" },
+      { n: 8, title: "Close the round", hintKey: "closeRound", help: "Anyone can close an approved, funded round. The contract then issues the shares.", st: st(8, s8), label: "Close round", act: "close", off: !(status === "Approved" && funded) },
     ];
   }
 
@@ -60,7 +61,7 @@ export function mountFlow(host: HTMLElement, d: FlowDeps) {
       : `<div class="flow-banner muted">${v ? `Sandbox <span class="mono">${esc(d.contract)}</span> · ${v.rounds.length} rounds on chain` : "Reading the sandbox…"}${busy ? " · working…" : ""}</div>`;
     const done = mr?.status === "Closed";
     const held = done && v ? v.holdings.filter(([h]) => h === acct).map(([, c, s]) => `${BigInt(s).toLocaleString("en-US")} ${esc(c)}`).join(", ") : "";
-    host.innerHTML = banner + `<ol class="flow">` + rows().map((r) => `<li class="flow-row ${r.st}"><span class="flow-n">${r.st === "done" ? "✓" : r.n}</span><div class="flow-t"><b>${esc(r.title)}</b><span class="muted">${r.n === 4 ? esc(r.help) : esc(r.help)}</span></div>${r.label ? `<button class="btn ${r.st === "current" ? "primary" : ""} sm" data-flow="${r.act}" ${r.off || busy ? "disabled" : ""}>${esc(r.label)}</button>` : `<span class="flow-ok">done</span>`}</li>`).join("") + `</ol>`
+    host.innerHTML = banner + `<ol class="flow">` + rows().map((r) => `<li class="flow-row ${r.st}"><span class="flow-n">${r.st === "done" ? "✓" : r.n}</span><div class="flow-t"><b>${esc(r.title)}</b>${r.hintKey ? hint(r.hintKey, r.title) : ""}<span class="muted">${r.n === 4 ? esc(r.help) : esc(r.help)}</span></div>${r.label ? `<button class="btn ${r.st === "current" ? "primary" : ""} sm" data-flow="${r.act}" ${r.off || busy ? "disabled" : ""}>${esc(r.label)}</button>` : `<span class="flow-ok">done</span>`}</li>`).join("") + `</ol>`
       + `<div class="flow-result">${done ? `<b>Done.</b> You now hold ${held || "your shares"}. <button class="btn primary sm" data-flow="result">See the cap table and re-check the hashes</button>` : `<span class="muted">When step 8 is done, your shares appear here.</span>`}</div>`;
     host.querySelectorAll<HTMLButtonElement>("button[data-flow]").forEach((b) => (b.onclick = () => void act(b.dataset.flow!)));
   }

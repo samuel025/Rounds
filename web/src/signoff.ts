@@ -4,6 +4,7 @@
 import { account, onAccount, send, signMessage } from "./wallet";
 import { esc, loadChain, call } from "./chain";
 import { toast, txLink } from "./actions";
+import { hint } from "./hints";
 import { usdExact } from "./format";
 import { rowsOfPlan, signoffMessage, signoffPayload, toSignoff, evaluateSignoffs, serializeBundle, bundleHash, type Signoff, type SignoffBundle, type SignoffRow } from "../../src/engine/signoff";
 import { nep413Hash, verifyNep413, fromB64 } from "../../src/engine/walletkey";
@@ -38,7 +39,7 @@ export function mountSignoff(host: HTMLElement, d: SignoffDeps) {
     if (!ctx || "error" in ctx) { host.innerHTML = `<div class="card-h"><span class="mono muted">INVESTOR SIGN-OFF</span></div><p class="note">${ctx ? esc(ctx.error) : "…"}</p>`; return; }
     const exp = rowsOfPlan(ctx.plan), me = account(), myRow = me ? exp.rows.find((r) => r.account === me) : undefined;
     const status = (a: string) => report?.rows.find((x) => x.account === a);
-    host.innerHTML = `<div class="card-h"><span class="mono muted">INVESTOR SIGN-OFF · EACH HOLDER CONFIRMS THEIR OWN ROW BEFORE THE BOARD VOTES</span></div>
+    host.innerHTML = `<div class="card-h"><span class="mono muted">INVESTOR SIGN-OFF · EACH HOLDER CONFIRMS THEIR OWN ROW BEFORE THE BOARD VOTES${hint("signoff")}</span></div>
       <p class="note">Plan hash <span class="mono">${esc(ctx.hash.slice(0, 16))}…</span>. Each investor signs a message that names this hash <b>and</b> their row, with their own wallet; nothing is sent to the chain. If any money term changes afterwards the hash changes and the signatures stop matching. This confirms an allocation, it is not legal consent.</p>
       ${exp.rows.length ? `<table><tr><th>Account</th><th>Their row</th><th>Status</th></tr>${exp.rows.map((r) => { const s = status(r.account); return `<tr><td class="mono">${esc(r.account)}</td><td>${esc(rowText(r))}</td><td>${s?.status === "confirmed" ? `<span class="pass">confirmed</span>` : s?.status === "invalid" ? `<span class="fail">invalid</span> <span class="muted">${esc((s as any).reason)}</span>` : `<span class="muted">not yet</span>`}</td></tr>`; }).join("")}</table>
         <p style="margin:10px 0 4px"><b>${report ? `${report.confirmed} of ${report.total} confirmed` : ""}</b> ${report?.all ? `<span class="pass">All investors confirmed</span>` : `<span class="muted">the board sees exactly who is missing</span>`}</p>

@@ -2,6 +2,7 @@
 // escrow, approve its plan hash on the open board, and the contract pays every shareholder once. It uses the contract's exit machinery,
 // so it needs no contract change and does not use up the sandbox (any number of visitors can run it; each run is its own exit).
 // The plan is worked out from the chain's cap table, so the exit that comes back is found by its plan hash, not by a return value.
+import { hint } from "./hints";
 import { account, onAccount, send, type Act } from "./wallet";
 import { call, esc, loadChain, type ChainView } from "./chain";
 import { toast, txLink, boardAct } from "./actions";
@@ -12,7 +13,7 @@ import { proRataDistribution, holderTotals, distributionPlan, canonicalJson, pla
 export interface ShareDeps { rpc: string; explorer: string; contract: string; board: string; token: string }
 const M = 1_000_000n, POTS = [1_000, 10_000, 100_000, 1_000_000];
 type St = "done" | "current" | "wait";
-interface Row { n: number; title: string; help: string; st: St; label?: string; act?: string; off?: boolean }
+interface Row { n: number; title: string; help: string; st: St; label?: string; act?: string; off?: boolean; hintKey?: string }
 interface Plan { d: Distribution; shares: Record<string, bigint>; canon: string; hash: string }
 
 const store = {
@@ -55,12 +56,12 @@ export function mountShareFlow(host: HTMLElement, d: ShareDeps) {
     const st = (n: number, done: boolean): St => (done ? "done" : n === curStep ? "current" : "wait");
     void want;
     return [
-      { n: 1, title: "Connect a testnet wallet", help: s1 ? `Connected as ${acct}.` : "MyNearWallet or Meteor. The app never holds a key; each step opens your wallet to approve.", st: st(1, s1), label: s1 ? undefined : "Connect wallet", act: "connect" },
+      { n: 1, title: "Connect a testnet wallet", hintKey: "wallet", help: s1 ? `Connected as ${acct}.` : "MyNearWallet or Meteor. The app never holds a key; each step opens your wallet to approve.", st: st(1, s1), label: s1 ? undefined : "Connect wallet", act: "connect" },
       { n: 2, title: "Get test USDC to be the treasury", help: `A no-value token from the contract's public faucet. Your balance: ${usd(bal)}; the pot you pay in is ${usd(total)}.`, st: st(2, s2), label: "Get test USDC", act: "faucet", off: !s1 },
-      { n: 3, title: "Make yourself an officer", help: "Only officers can propose a payout. The open sandbox board grants it to anyone; a real DAO's board decides.", st: st(3, s3), label: "Make me an officer", act: "officer", off: !s1 },
-      { n: 4, title: "Propose the payout", help: ex ? `Exit ${ex.id} is on chain with plan hash ${String(ex.plan_hash).slice(0, 16)}…` : cur ? `Sends the plan below (${cur.d.payouts.length} payouts worked out from this contract's cap table) and its SHA-256 hash.` : "Waiting for the cap table.", st: st(4, s4), label: "Propose payout", act: "propose", off: !s3 || !cur || cur.d.payouts.length === 0 },
-      { n: 5, title: "Fund it from your treasury", help: ex ? `You pay ${usd(BigInt(ex.total))} into the contract's escrow. Nobody is paid until the board approves.` : "The pot sits in escrow until the board approves its hash.", st: st(5, s5), label: "Fund", act: "fund", off: !ex || s5 },
-      { n: 6, title: "Board approves the plan", help: "The board approves this exact plan hash; a changed plan would not match. On the open sandbox you act as the board.", st: st(6, s6), label: "Approve as the board", act: "approve", off: !ex || !s5 || s6 },
+      { n: 3, title: "Make yourself an officer", hintKey: "officer", help: "Only officers can propose a payout. The open sandbox board grants it to anyone; a real DAO's board decides.", st: st(3, s3), label: "Make me an officer", act: "officer", off: !s1 },
+      { n: 4, title: "Propose the payout", hintKey: "planHash", help: ex ? `Exit ${ex.id} is on chain with plan hash ${String(ex.plan_hash).slice(0, 16)}…` : cur ? `Sends the plan below (${cur.d.payouts.length} payouts worked out from this contract's cap table) and its SHA-256 hash.` : "Waiting for the cap table.", st: st(4, s4), label: "Propose payout", act: "propose", off: !s3 || !cur || cur.d.payouts.length === 0 },
+      { n: 5, title: "Fund it from your treasury", hintKey: "escrow", help: ex ? `You pay ${usd(BigInt(ex.total))} into the contract's escrow. Nobody is paid until the board approves.` : "The pot sits in escrow until the board approves its hash.", st: st(5, s5), label: "Fund", act: "fund", off: !ex || s5 },
+      { n: 6, title: "Board approves the plan", hintKey: "board", help: "The board approves this exact plan hash; a changed plan would not match. On the open sandbox you act as the board.", st: st(6, s6), label: "Approve as the board", act: "approve", off: !ex || !s5 || s6 },
       { n: 7, title: "Pay every holder", help: `Anyone may run it. The contract pays each holder once; up to ${MAX_DISTRIBUTE} payouts per transaction.`, st: st(7, s7), label: "Pay out", act: "pay", off: !ex || !s6 || s7 },
     ];
   }
@@ -74,7 +75,7 @@ export function mountShareFlow(host: HTMLElement, d: ShareDeps) {
       : (cur?.d.payouts ?? []).map(([h, a]) => ({ holder: h, shares: cur!.shares[h], amount: a, state: "not proposed" }));
     host.innerHTML = banner
       + `<div style="display:flex;gap:10px;align-items:center;margin:4px 0 12px"><label for="share-pot" style="margin:0;white-space:nowrap">Pot to share</label><select id="share-pot" style="width:auto;min-width:180px" ${ex && !done ? "disabled" : ""}>${POTS.map((p) => `<option value="${p}" ${p === pot ? "selected" : ""}>$${p.toLocaleString("en-US")}</option>`).join("")}</select>${done ? `<button class="btn sm" data-share="again">Start another payout</button>` : ""}</div>`
-      + `<ol class="flow">` + rs.map((r) => `<li class="flow-row ${r.st}"><span class="flow-n">${r.st === "done" ? "✓" : r.n}</span><div class="flow-t"><b>${esc(r.title)}</b><span class="muted">${esc(r.help)}</span></div>${r.label ? `<button class="btn ${r.st === "current" ? "primary" : ""} sm" data-share="${r.act}" ${r.off || busy ? "disabled" : ""}>${esc(r.label)}</button>` : `<span class="flow-ok">done</span>`}</li>`).join("") + `</ol>`
+      + `<ol class="flow">` + rs.map((r) => `<li class="flow-row ${r.st}"><span class="flow-n">${r.st === "done" ? "✓" : r.n}</span><div class="flow-t"><b>${esc(r.title)}</b>${r.hintKey ? hint(r.hintKey, r.title) : ""}<span class="muted">${esc(r.help)}</span></div>${r.label ? `<button class="btn ${r.st === "current" ? "primary" : ""} sm" data-share="${r.act}" ${r.off || busy ? "disabled" : ""}>${esc(r.label)}</button>` : `<span class="flow-ok">done</span>`}</li>`).join("") + `</ol>`
       + `<div class="flow-result"><table><tr><th>Holder</th><th class="n">Shares</th><th class="n">Payout</th><th>State</th></tr>${lines.map((l) => `<tr><td class="mono">${esc(l.holder)}</td><td class="n">${l.shares.toLocaleString("en-US")}</td><td class="n">${esc(usd(l.amount))}</td><td>${esc(l.state)}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">no shareholders yet</td></tr>`}</table>${cur ? `<p class="muted" style="margin:8px 0 0">Plan hash <span class="mono">${esc((ex ? String(ex.plan_hash) : cur.hash).slice(0, 24))}…</span> · the unissued option pool receives nothing · remainder ${esc(usd(cur.d.remainderMicro))} stays with you.${done ? " <b>Done: every holder was paid once.</b>" : ""}</p>` : ""}</div>`;
     host.querySelectorAll<HTMLButtonElement>("button[data-share]").forEach((b) => (b.onclick = () => void act(b.dataset.share!)));
     const sel = host.querySelector<HTMLSelectElement>("#share-pot"); if (sel) sel.onchange = () => { pot = +sel.value; void computePlan().then(draw); };

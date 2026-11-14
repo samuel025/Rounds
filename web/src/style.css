@@ -132,3 +132,22 @@ nav{gap:14px;font-size:12.5px}
 body[data-role="investor"] .tech{display:none}
 body[data-role="investor"][data-tech="1"] .tech{display:block}
 @media (max-width:640px){#rolebar{position:static}}
+
+/* hints: a small ⓘ next to a term, one shared popover */
+.hint{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin:0 0 0 6px;padding:0;border-radius:50%;border:1px solid var(--line2);background:transparent;color:var(--muted);font:600 10px/1 var(--mono);cursor:help;vertical-align:middle;text-transform:none;letter-spacing:0}
+.hint:hover,.hint:focus-visible{color:var(--bg);background:var(--fg);border-color:var(--fg);outline:none}
+#hint-pop{position:fixed;display:none;z-index:100000;pointer-events:none;background:#161616;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;color:var(--fg);font:400 13px/1.5 var(--sans);box-shadow:0 8px 28px rgba(0,0,0,.55)}
+
+/* the role chooser in the hero, and a louder role bar */
+.role-pick{border-color:var(--line2);margin-bottom:16px}
+.rp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:10px}
+.rp-card{display:flex;flex-direction:column;gap:6px;text-align:left;padding:16px 18px;border-radius:12px;border:1px solid var(--line2);background:transparent;color:var(--fg);cursor:pointer;font:inherit;transition:border-color .15s,background .15s}
+.rp-card b{font-size:16px;font-weight:600}.rp-who{color:var(--fg);font-size:14px}.rp-does{color:var(--muted);font-size:13.5px;line-height:1.5}
+.rp-cta{margin-top:auto;padding-top:6px;color:var(--muted);font:500 12px var(--mono)}
+.rp-card:hover,.rp-card:focus-visible{border-color:var(--fg);background:rgba(127,127,127,.08);outline:none}
+.rp-card.on{border-color:var(--green);background:rgba(68,255,164,.06)}.rp-card.on .rp-cta{color:var(--green)}.rp-card.on .rp-cta::before{content:"✓ Selected · "}
+.role-pick.first .rp-card{animation:rp-pulse 2.4s ease-in-out 3}
+@keyframes rp-pulse{0%,100%{border-color:var(--line2)}50%{border-color:var(--green)}}
+.rb-lab{font-size:11px;color:var(--green);letter-spacing:.08em;white-space:nowrap}
+.rolebtns .tab{font-size:13px;padding:7px 14px}.rolebtns .tab.on{box-shadow:0 0 0 2px rgba(68,255,164,.45)}
+@media (max-width:760px){.rp-grid{grid-template-columns:1fr}}

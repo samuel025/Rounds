@@ -14,13 +14,17 @@
 
 Screenshots of the live app (NEAR testnet), taken by `scripts/screenshots.mjs`; nothing here is mocked.
 
-**A page for each role.** Founders, board voters and investors each see only what they need; the technical proof sits behind a toggle.
+**Pick who you are.** A "Who are you?" chooser at the top (and a "Viewing as" bar that stays on screen) sets the view: Founder, Board voter or Investor each see only what they need, and the technical proof sits behind a toggle. Nothing is locked.
 
-![The top of the app: the role bar (Founder, Board voter, Investor, Everything) above the headline](docs/img/01-home.png)
+![The top of the app: the headline, then a "Who are you?" chooser with three role cards (Founder, Board voter, Investor), under a "Viewing as" role bar](docs/img/01-home.png)
 
 **Model a round, then see the exact plan the board votes on.** Change the valuation, new money or option pool and watch the price per share and everyone's ownership update; every number comes from the exact-integer engine.
 
 ![The round modeler: inputs on the left, price, pool top-up and before/after ownership bars on the right, then the plan hash](docs/img/02-modeler.png)
+
+**Hints for anyone who has never seen a cap table.** Every term has a small ⓘ that explains it in plain words: valuation, option pool, SAFE, price per share, plan hash, escrow, the board and more. Hover, tap or tab to it.
+
+![The round modeler with a hint open: "The valuation before the round: what the company is said to be worth before the new money arrives..."](docs/img/07-hints.png)
 
 **A board member sees who is diluted before voting.** Each Sputnik DAO proposal is decoded and its hash re-checked in the browser, with a before/after ownership chart and the change in points per holder.
 

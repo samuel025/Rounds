@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { encodeDraft } from "../src/engine/draft";
 
+const ONLY = process.env.ONLY?.split(","), want = (n) => !ONLY || ONLY.includes(String(n)), SKIP = Symbol("skip");
 const APP = process.argv[2] ?? "http://127.0.0.1:5173/", OUT = "docs/img", PORT = 9611, W = 1280, H = 900;
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,7 +22,7 @@ await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceSc
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
 
 async function open(url, wait = 6000) { await send("Page.navigate", { url }); await sleep(wait); }
-async function save(name, clip) { const r = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true, ...(clip ? { clip: { ...clip, scale: 1 } } : {}) }); writeFileSync(join(OUT, name), Buffer.from(r.result.data, "base64")); console.log("wrote", name); }
+async function save(name, clip, viewportOnly = false) { const r = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: !viewportOnly, ...(clip ? { clip: { ...clip, scale: 1 } } : {}) }); writeFileSync(join(OUT, name), Buffer.from(r.result.data, "base64")); console.log("wrote", name); }
 /** crop to the union of the given elements, with a little margin */
 async function shotEl(name, sels, margin = 14) {
   await ev(`(()=>{const s=document.createElement("style");s.textContent=".nav,#rolebar{position:static!important}#toast{display:none!important}";document.head.appendChild(s)})()`);
@@ -33,10 +34,24 @@ const setRole = (role) => ev(`document.querySelector('#rolebar [data-role="${rol
 
 try {
   // 1. the top of the page, with the role bar
-  await open(APP); await ev(`window.scrollTo(0,0)`); await sleep(500); await save("01-home.png", { x: 0, y: 0, width: W, height: 820 });
+  if (!want(1)) throw SKIP;
+  await open(APP); await ev(`window.scrollTo(0,0)`); await sleep(500); await save("01-home.png", { x: 0, y: 0, width: W, height: 1060 });
+  } catch (e) { if (e !== SKIP) console.log("shot failed:", e.message); }
+  try {
   // 2. the round modeler: numbers in, price and ownership out, the plan hash the board votes on
+  if (!want(2)) throw SKIP;
   await shotEl("02-modeler.png", ["#model"]);
+  } catch (e) { if (e !== SKIP) console.log("shot failed:", e.message); }
+  try {
+  // 2b. a hint: the little "i" next to a term opens a plain-language explanation
+  if (!want(7)) throw SKIP;
+  await open(APP, 7000); await ev(`(()=>{const r=document.querySelector("#form").getBoundingClientRect();window.scrollTo({top:r.top+scrollY-170,behavior:"instant"})})()`); await sleep(600); // instant: the page scrolls smoothly by default
+  await ev(`document.querySelector("#form .hint").dispatchEvent(new MouseEvent("mouseover",{bubbles:true}))`); await sleep(500);
+  await save("07-hints.png", undefined, true);
+  } catch (e) { if (e !== SKIP) console.log("shot failed:", e.message); }
+  try {
   // 3. a draft link: two named investors, a deadline, and their sign-off table
+  if (!want(3)) throw SKIP;
   const draft = await encodeDraft({ v: 1, pre: 30_000_000, raise: 10_000_000, pool: 12, ada: 5_000_000, bayo: 2_750_000, poolNow: 1_000_000, confidential: false, note: "v2 after the call: lead wants a 12% pool",
     safes: [{ id: "safe1", holder: "chidi", amt: 500_000, cap: 5_000_000, disc: 0 }, { id: "safe2", holder: "dayo", amt: 250_000, cap: 10_000_000, disc: 0 }],
     allocs: [{ holder: "lead.testnet", bps: 6000 }, { holder: "fund.testnet", bps: 4000 }], deadline: 1_800_000_000 });
@@ -45,15 +60,19 @@ try {
   for (let i = 0; i < 60 && !/Plan hash/.test(await ev(`document.getElementById("signoff-card")?.textContent ?? ""`)); i++) await sleep(1500); // the card fills in once the contract has been read
   await ev(`(()=>{for(const p of document.querySelectorAll("#draft-card p.mono"))p.textContent=p.textContent.split("http://127.0.0.1:5173/").join("https://roundcap.vercel.app/")})()`);
   await shotEl("03-draft-signoff.png", ["#draft-card", "#signoff-card"]);
+  } catch (e) { if (e !== SKIP) console.log("shot failed:", e.message); }
+  try {
   // 4. confidential mode: the steps, and what stays private
+  if (!want(4)) throw SKIP;
   for (let tries = 0; tries < 6; tries++) { // a transient RPC failure would otherwise be photographed
     await open(APP, 9000);
     if (/Confidential sandbox/.test(await ev(`document.getElementById("zk-banner")?.textContent ?? ""`)) && !/Could not read/.test(await ev(`document.getElementById("zk-banner")?.textContent ?? ""`))) break;
   }
   await ev(`document.querySelector("#zk details.zd summary")?.click()`); await shotEl("04-confidential.png", ["#zk"]);
-  } catch (e) { console.log("shot failed:", e.message); }
+  } catch (e) { if (e !== SKIP) console.log("shot failed:", e.message); }
   try {
   // 5. the board's view of a vote: decoded, re-checked, with the before/after ownership bars
+  if (!want(5)) throw SKIP;
   await open(`${APP}?contract=rounds-core-332657.testnet#review`, 8000);
   for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("#review-body .rv")`)); i++) await sleep(1500); // the chain read can be slow
   if (!(await ev(`!!document.querySelector("#review-body .rv")`))) throw new Error("no proposals rendered: " + (await ev(`document.getElementById("review-body")?.innerText.slice(0,200)`)));
@@ -61,9 +80,10 @@ try {
   await ev(`document.querySelectorAll("#review-body details.gloss").forEach((d) => (d.open = true))`); await sleep(500);
   await ev(`(()=>{const e=document.querySelector("#review-body .rv:has(.diff)")||document.querySelector("#review-body .rv");e?.setAttribute("id","shot-rv")})()`);
   await shotEl("05-board-vote.png", ["#shot-rv"]);
-  } catch (e) { console.log("shot 5 failed:", e.message); }
+  } catch (e) { if (e !== SKIP) console.log("shot 5 failed:", e.message); }
   try {
   // 6. the investor view
+  if (!want(6)) throw SKIP;
   await open(APP); await setRole("investor"); await sleep(600); await shotEl("06-investor.png", ["#people"]);
-} catch (e) { console.log("FAILED", e.message); }
+} catch (e) { if (e !== SKIP) console.log("FAILED", e.message); }
 chrome.kill(); process.exit(0);

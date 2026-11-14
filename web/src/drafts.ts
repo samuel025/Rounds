@@ -2,6 +2,7 @@
 // Nothing here talks to a server or a chain. A link is untrusted input: decodeDraft validates and size-limits it, and every name is escaped when drawn.
 import { esc, validAccount } from "./chain";
 import { toast } from "./actions";
+import { hint } from "./hints";
 import { encodeDraft, decodeDraft, validateDraft, type Draft } from "../../src/engine/draft";
 
 export interface DraftHost {
@@ -23,12 +24,12 @@ export async function initDrafts(host: DraftHost) {
     const d = host.get(), locked = host.locked();
     const rows = d.allocs.map((a, i) => `<div class="row" style="display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:8px;align-items:end;margin-bottom:6px"><div><label for="al-h${i}">Investor ${i + 1} account</label><input type="text" id="al-h${i}" value="${esc(a.holder)}" autocomplete="off" spellcheck="false"/></div><div><label for="al-b${i}">Share of the raise (%)</label><input type="number" id="al-b${i}" value="${a.bps / 100}" min="0.01" max="100" step="0.01"/></div><button class="btn sm" data-al-rm="${i}" aria-label="Remove investor ${i + 1}">Remove</button></div>`).join("");
     const sum = d.allocs.reduce((a, b) => a + b.bps, 0);
-    card.innerHTML = `<div class="card-h"><span class="mono muted">SHARE A DRAFT · NEGOTIATE WITHOUT TOUCHING THE CHAIN</span></div>
+    card.innerHTML = `<div class="card-h"><span class="mono muted">SHARE A DRAFT · NEGOTIATE WITHOUT TOUCHING THE CHAIN${hint("draftLink")}</span></div>
       ${banner ? `<div class="flow-banner" style="border:1px solid var(--line2);border-radius:8px;padding:8px 12px;margin-bottom:10px">${banner}</div>` : ""}
       <p class="note">The link carries the numbers above (the round, the company and the SAFEs, and the split between investors) in its <span class="mono">#</span> part, which your browser never sends to a server. Anyone who opens it sees the same plan and can change it and send a new link back. It carries no account, no keys and no confidential table. It is <b>asynchronous</b>: each change makes a new link, there is no live co-editing.</p>
       ${locked ? `<p class="note">This is tied to the open sandbox company, so a draft link carries only the round's terms (valuation, new money, pool); the founders, pool and SAFEs always come from the chain.</p>` : `<div style="margin-top:8px"><span class="fl">Investors in this round</span>${rows || `<p class="note" style="margin:4px 0">One investor: whoever proposes (the connected wallet). Add named investors to split the new money between them, and each can sign off on their own row.</p>`}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="btn sm" id="al-add">Add an investor</button>${d.allocs.length ? `<button class="btn sm" id="al-even">Split evenly</button><span class="${sum === 10_000 ? "muted" : "fail"}" style="font-size:12.5px">${(sum / 100).toFixed(2)}% allocated${sum === 10_000 ? "" : " (must be 100%)"}</span>` : ""}</div></div>`}
-      <div style="margin-top:12px"><label for="draft-deadline">Funding deadline (optional; required to collect investor sign-offs, because it is inside the plan hash)</label><input type="date" id="draft-deadline" value="${d.deadline ? new Date(d.deadline * 1000).toISOString().slice(0, 10) : ""}"/></div>
+      <div style="margin-top:12px"><label for="draft-deadline">Funding deadline (optional; required to collect investor sign-offs, because it is inside the plan hash)${hint("deadline")}</label><input type="date" id="draft-deadline" value="${d.deadline ? new Date(d.deadline * 1000).toISOString().slice(0, 10) : ""}"/></div>
       <div style="margin-top:12px"><label for="draft-note">Note for the next person (kept in the link, 280 characters)</label><input type="text" id="draft-note" maxlength="280" value="${esc(d.note)}" placeholder="e.g. lead wants 12% pool, SAFE caps unchanged"/></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary sm" id="draft-copy" ${link ? "" : "disabled"}>Copy draft link</button><button class="btn sm" id="draft-dl">Download draft file</button><label class="btn sm" style="margin:0;cursor:pointer">Load a draft file<input type="file" id="draft-file" accept=".json,application/json" style="display:none"/></label></div>
       ${err ? `<p class="note"><span class="fail">${esc(err)}</span></p>` : link ? `<p class="note mono" style="word-break:break-all;margin-top:8px">${esc(clip(link, 120))} <span class="muted">(${link.length.toLocaleString("en-US")} characters)</span></p>` : ""}`;

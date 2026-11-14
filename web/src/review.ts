@@ -3,6 +3,7 @@
 import { account, onAccount, send } from "./wallet";
 import { call, esc, type ChainView } from "./chain";
 import { toast, txLink } from "./actions";
+import { hint } from "./hints";
 import { suggestRole, reapplyRole } from "./roles";
 import { verifyBoardCopyWithWallet, boardCopyState } from "./zkflow";
 import { keyOnAccount } from "./signoff";
@@ -19,7 +20,7 @@ const pct1 = (a: bigint, t: bigint) => (t === 0n ? "0.0" : `${(a * 1000n) / t / 
 export function diffHtml(d: Diff): string {
   const col = (i: number) => PALETTE[i % PALETTE.length];
   const bar = (key: "before" | "after", total: bigint) => `<div class="bar" role="img" aria-label="${esc(key)}: ${d.holders.map((h) => `${esc(h.holder)} ${pct1(h[key], total)}%`).join(", ")}">${d.holders.map((h, i) => h[key] > 0n ? `<div style="flex:${Number((h[key] * 10000n) / (total || 1n)) || 1};background:${col(i)}" title="${esc(h.holder)} ${pct1(h[key], total)}%"></div>` : "").join("")}</div>`;
-  return `<div class="diff"><p class="muted" style="margin:12px 0 4px">Who owns what, before and after (same scale)</p>
+  return `<div class="diff"><p class="muted" style="margin:12px 0 4px">Who owns what, before and after (same scale)${hint("diff")}</p>
     <div class="barlab"><span>Before</span><span>${d.totalBefore.toLocaleString("en-US")} shares</span></div>${bar("before", d.totalBefore)}
     <div class="barlab"><span>After</span><span>${d.totalAfter.toLocaleString("en-US")} shares</span></div>${bar("after", d.totalAfter)}
     <ul class="diff-l">${d.holders.map((h, i) => { const dl = deltaPts(h.before, d.totalBefore, h.after, d.totalAfter); const neg = dl.startsWith("-"), pos = dl.startsWith("+");
@@ -41,7 +42,7 @@ function card(r: Review, canVote: boolean, voted: boolean, x: Extra = {}): strin
     bad ? `<button class="btn sm" disabled title="The private table does not match the root in this vote">Do not approve: the table does not match</button>` :
     r.verdict === "mismatch" ? `<button class="btn sm" disabled title="The hash or terms in this vote do not match the chain">Do not approve: it does not match</button>`
     : `<button class="btn ${r.verdict === "match" ? "primary " : ""}sm" data-vote="${r.id}" ${canVote && !voted ? "" : "disabled"}>${voted ? "You already voted" : canVote ? (r.verdict === "match" ? "Approve this exact plan" : "Approve (nothing to re-check)") : "Only board members can vote"}</button>`;
-  return `<div class="rv" id="proposal-${r.id}"><div class="rv-h"><b>#${r.id}</b> ${chip(r.status)} <b>${esc(r.title)}</b> ${r.verdict === "match" ? `<span class="pass">VERIFIED</span>` : r.verdict === "mismatch" ? `<span class="fail">DOES NOT MATCH</span>` : ""}</div>
+  return `<div class="rv" id="proposal-${r.id}"><div class="rv-h"><b>#${r.id}</b> ${chip(r.status)} <b>${esc(r.title)}</b> ${r.verdict === "match" ? `<span class="pass">VERIFIED</span>${hint("verified")}` : r.verdict === "mismatch" ? `<span class="fail">DOES NOT MATCH</span>` : ""}</div>
     ${r.lines.length ? `<ul class="rv-l">${r.lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
     <div class="rv-f">${r.findings.map((f) => `<div>${lvl(f.level)} ${esc(f.text)}</div>`).join("")}</div>
     ${extraHtml(x)}
