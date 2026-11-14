@@ -151,3 +151,10 @@ body[data-role="investor"][data-tech="1"] .tech{display:block}
 .rb-lab{font-size:11px;color:var(--green);letter-spacing:.08em;white-space:nowrap}
 .rolebtns .tab{font-size:13px;padding:7px 14px}.rolebtns .tab.on{box-shadow:0 0 0 2px rgba(68,255,164,.45)}
 @media (max-width:760px){.rp-grid{grid-template-columns:1fr}}
+
+/* role bar: one row on a wide screen; the Technical proof switch is a pill like the roles and sits at the right */
+.rolebar-in{flex-wrap:nowrap}
+#role-hint{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#tech-wrap{margin-left:auto;flex:none;white-space:nowrap}
+#tech-wrap.on{background:transparent;color:var(--green);border-color:var(--green)}
+@media (max-width:980px){.rolebar-in{flex-wrap:wrap}#role-hint{display:none}#tech-wrap{margin-left:0}}

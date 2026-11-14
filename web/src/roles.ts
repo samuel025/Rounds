@@ -7,9 +7,9 @@
 import { hint } from "./hints";
 export type Role = "founder" | "board" | "investor" | "all";
 export const ROLES: { id: Role; label: string; hint: string }[] = [
-  { id: "founder", label: "Founder / proposer", hint: "Model a round, share a draft, collect sign-offs, propose it" },
-  { id: "board", label: "Board voter", hint: "Check a proposal and see who gets diluted before you vote" },
-  { id: "investor", label: "Investor / employee", hint: "See your stake, deposit to escrow, claim a payout" },
+  { id: "founder", label: "Founder / proposer", hint: "Model a round, draft, sign-offs, propose" },
+  { id: "board", label: "Board voter", hint: "Check a proposal, see who is diluted, vote" },
+  { id: "investor", label: "Investor / employee", hint: "Your stake, escrow, vesting, payouts" },
   { id: "all", label: "Everything", hint: "The full page, every section" },
 ];
 const CARDS: { id: Role; title: string; who: string; does: string; go: string }[] = [
@@ -35,7 +35,7 @@ export function applyRole(role: Role, root: ParentNode = document) {
   document.getElementById("role-pick")?.classList.toggle("first", !explicit);
   const cur = document.getElementById("rp-cur"); if (cur) cur.innerHTML = explicit || role !== "founder" ? `Viewing as <b>${ROLES.find((r) => r.id === role)?.label}</b>` : "Not chosen yet: showing the founder view";
   window.dispatchEvent(new Event("rounds:role")); // panels that draw their own tabs (the confidential card) follow the view
-  const tech = document.getElementById("tech-wrap"); if (tech) tech.style.display = role === "investor" ? "flex" : "none";
+  const tech = document.getElementById("tech-wrap"); if (tech) tech.style.display = role === "investor" ? "inline-flex" : "none";
 }
 export function setRole(role: Role, userChoice = true) { if (userChoice) { explicit = true; store.set(KEY, role); } applyRole(role); }
 
@@ -46,10 +46,12 @@ export function initRoles() {
   const saved = store.get(KEY); explicit = isRole(saved); current = isRole(saved) ? saved : "founder";
   const bar = document.getElementById("rolebar"); if (!bar) return;
   bar.innerHTML = `<div class="wrap rolebar-in"><span class="mono rb-lab">VIEWING AS</span><div class="rolebtns" role="group" aria-label="Choose your view">${ROLES.map((r) => `<button class="tab" data-role="${r.id}" aria-pressed="false">${r.label}</button>`).join("")}</div><span class="muted" id="role-hint" style="font-size:12.5px"></span>
-    <label id="tech-wrap" class="muted" style="font-size:12.5px;display:none;gap:6px;align-items:center;margin-left:auto"><input type="checkbox" id="tech-toggle" style="width:auto"/> Technical proof</label></div>`;
+    <button type="button" id="tech-wrap" class="tab" role="switch" aria-checked="false" title="Show the hashes, proofs and raw calls behind each number" style="display:none">Technical proof: off</button></div>`;
   bar.querySelectorAll<HTMLButtonElement>("[data-role]").forEach((b) => (b.onclick = () => setRole(b.dataset.role as Role)));
-  const tt = bar.querySelector<HTMLInputElement>("#tech-toggle")!; tt.checked = store.get(TECH) === "1"; document.body.dataset.tech = tt.checked ? "1" : "";
-  tt.onchange = () => { document.body.dataset.tech = tt.checked ? "1" : ""; store.set(TECH, tt.checked ? "1" : "0"); };
+  const tt = bar.querySelector<HTMLButtonElement>("#tech-wrap")!;
+  const setTech = (on: boolean) => { document.body.dataset.tech = on ? "1" : ""; tt.classList.toggle("on", on); tt.setAttribute("aria-checked", String(on)); tt.textContent = `Technical proof: ${on ? "on" : "off"}`; };
+  setTech(store.get(TECH) === "1");
+  tt.onclick = () => { const on = document.body.dataset.tech !== "1"; setTech(on); store.set(TECH, on ? "1" : "0"); };
   const pick = document.getElementById("role-pick");
   if (pick) {
     pick.innerHTML = `<div class="card-h"><span class="mono muted">START HERE · WHO ARE YOU?${hint("roles", "the role choice")}</span><span class="muted" id="rp-cur"></span></div>
