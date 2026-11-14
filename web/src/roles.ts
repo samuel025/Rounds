@@ -25,6 +25,7 @@ export function applyRole(role: Role, root: ParentNode = document) {
   root.querySelectorAll<HTMLElement>("[data-roles]").forEach((el) => el.classList.toggle("role-off", !visibleIn(el.dataset.roles, role)));
   document.querySelectorAll<HTMLButtonElement>("#rolebar [data-role]").forEach((b) => { const on = b.dataset.role === role; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
   const hint = document.getElementById("role-hint"); if (hint) hint.textContent = ROLES.find((r) => r.id === role)?.hint ?? "";
+  window.dispatchEvent(new Event("rounds:role")); // panels that draw their own tabs (the confidential card) follow the view
   const tech = document.getElementById("tech-wrap"); if (tech) tech.style.display = role === "investor" ? "flex" : "none";
 }
 export function setRole(role: Role, userChoice = true) { if (userChoice) { explicit = true; store.set(KEY, role); } applyRole(role); }

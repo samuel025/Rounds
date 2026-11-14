@@ -4,6 +4,7 @@
 //  - the Private claim panel: a holder's own key + a claim file + any fresh account, optionally submitted through a relayer so the holder's wallet never signs.
 // Honest limits: the paid AMOUNT of a claim is public, deposits are public, and a relayer operator sees the requester's network address. See the README.
 import { account, onAccount, send, type Act } from "./wallet";
+import { getRole, reapplyRole } from "./roles";
 import { call, esc, loadChain, type ChainView } from "./chain";
 import { toast, txLink, boardAct } from "./actions";
 import { usdExact as usd } from "./format";
@@ -53,11 +54,11 @@ interface Built { claimFiles: ClaimFile[]; keys: HolderKey[]; tableFile: TableFi
 
 /** The whole confidential workspace in one card with two tabs: 1 · the round (build, check, approve, close) and 2 · the payout (open, fund, approve, claim). */
 export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
-  host.innerHTML = `<div class="ztabs"><button class="ztab on" data-ztab="round">1 · Create and approve the round</button><button class="ztab" data-ztab="payout">2 · Pay out and claim</button></div>
-    <div class="zpanel" id="zk-p-round"><div id="zk-banner"></div><div id="zk-opts" class="zbar"></div><ol class="flow compact" id="zk-rows-round"></ol><div class="flow-result" id="zk-files"></div>
-      <details class="zd" id="zk-bdetails"><summary>Board check: re-seal the private table before approving</summary><div id="zk-board-body"></div></details></div>
-    <div class="zpanel" id="zk-p-payout" hidden><ol class="flow compact" id="zk-rows-payout"></ol>
-      <details class="zd" id="zk-cdetails" open><summary>Claim a payout with a holder key</summary><div id="zk-claim-body"></div></details></div>`;
+  host.innerHTML = `<div class="ztabs" data-roles="founder board"><button class="ztab on" data-ztab="round">1 · Create and approve the round</button><button class="ztab" data-ztab="payout">2 · Pay out and claim</button></div>
+    <div class="zpanel" id="zk-p-round"><div data-roles="founder board"><div id="zk-banner"></div><div id="zk-opts" class="zbar"></div><ol class="flow compact" id="zk-rows-round"></ol><div class="flow-result" id="zk-files"></div></div>
+      <details class="zd" id="zk-bdetails" data-roles="board founder"><summary>Board check: re-seal the private table before approving</summary><div id="zk-board-body"></div></details></div>
+    <div class="zpanel" id="zk-p-payout" hidden><ol class="flow compact" id="zk-rows-payout" data-roles="founder board"></ol>
+      <details class="zd" id="zk-cdetails" data-roles="investor founder" open><summary>Claim a payout with a holder key</summary><div id="zk-claim-body"></div></details></div>`;
   const $z = (id: string) => host.querySelector<HTMLElement>(`#${id}`)!;
   let v: ChainView | null = null, bal = 0n, acct: string | null = null, busy = false, status = "", readError = "", pot = 10_000, fee = 0, chainFee = 0n, pass = "", optsKey = "", members = "", wkey = true, encKeys: Record<string, string | null> = {};
   let built: Built | null = null, pexits: any[] = [], tab: "round" | "payout" = "round", lastWant: "round" | "payout" = "round";
@@ -123,7 +124,7 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
   function draw() {
     const rs = rows(), r = myRound();
     // follow the progress: once the round is closed, the work is on the payout tab (the person can still click either tab)
-    const want = rs[6].st === "done" ? "payout" : "round"; if (want !== lastWant) { lastWant = want; showTab(want); }
+    const want = rs[6].st === "done" ? "payout" : "round"; if (getRole() === "investor") showTab("payout"); else if (want !== lastWant) { lastWant = want; showTab(want); }
     $z("zk-banner").innerHTML = readError ? `<div class="flow-banner fail">Could not read the contract: ${esc(readError)}</div>` : `<div class="flow-banner muted">Confidential sandbox <span class="mono">${esc(d.contract)}</span>${v ? ` · ${v.rounds.length} round(s)` : ""}${busy ? " · working…" : ""}</div>`;
     const ok = `${pot}|${!!r}|${fee}`; // re-draw the options only when they change, so typing a passphrase is never interrupted
     if (ok !== optsKey) {
@@ -228,6 +229,9 @@ export function mountZkFlow(host: HTMLElement, d: ZkDeps) {
       await boardAct(d.explorer, d.board, "approve_private_exit", { exit_id: ex.id }, `approve private payout ${ex.id}`, () => {}); await new Promise((res) => setTimeout(res, 2500)); busy = false; await refresh(); }
   }
 
+  // an investor sees only the claim panel (their part of this card); the other views keep the tabs
+  window.addEventListener("rounds:role", () => { if (getRole() === "investor") showTab("payout"); else showTab(lastWant); });
+  reapplyRole();
   draw(); onAccount(() => void refresh()); void refresh();
   mountBoardCheck($z("zk-board-body"), d); mountPrivateClaim($z("zk-claim-body"), d);
 }
